@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Yeo-un",
-    "slug": "yeo-un",
+    "name": "yeoun-client",
+    "slug": "yeoun-client",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -50,8 +50,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "e5bea3da-821e-4a7f-b83b-c24eabde65a3"
+        "projectId": "5b7c3663-50fc-480d-b5ae-6ea8093c9893"
       }
-    }
+    },
+    "owner": "hoimook"
   }
 }
