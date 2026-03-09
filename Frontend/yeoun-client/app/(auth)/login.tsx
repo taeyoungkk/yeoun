@@ -2,10 +2,9 @@ import { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
+  Image,
   TouchableOpacity,
   StyleSheet,
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,7 +13,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
+
+import { FormField } from '@/components/ui/form-field';
+import { PasswordToggle } from '@/components/ui/password-toggle';
 
 interface LoginForm {
   email: string;
@@ -55,76 +56,52 @@ export default function LoginScreen() {
           <Text style={styles.title}>로그인</Text>
 
           {/* Email field */}
-          <View style={styles.fieldWrapper}>
-            <Controller
-              control={control}
-              name="email"
-              rules={{
-                required: '이메일을 입력해주세요',
-                pattern: {
-                  value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                  message: '올바른 이메일 형식이 아닙니다',
-                },
-              }}
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  style={[styles.input, errors.email && styles.inputError]}
-                  placeholder="이메일"
-                  placeholderTextColor="#CACACA"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  onBlur={onBlur}
-                  onChangeText={onChange}
-                  value={value}
-                />
-              )}
-            />
-            {errors.email && (
-              <Text style={styles.errorText}>{errors.email.message}</Text>
+          <Controller
+            control={control}
+            name="email"
+            rules={{
+              required: '이메일을 입력해주세요',
+              pattern: {
+                value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                message: '올바른 이메일 형식이 아닙니다',
+              },
+            }}
+            render={({ field: { onChange, onBlur, value } }) => (
+              <FormField
+                placeholder="이메일"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+                error={errors.email?.message}
+              />
             )}
-          </View>
+          />
 
           {/* Password field */}
-          <View style={styles.fieldWrapper}>
-            <Controller
-              control={control}
-              name="password"
-              rules={{ required: '비밀번호를 입력해주세요' }}
-              render={({ field: { onChange, onBlur, value } }) => (
-                <View
-                  style={[
-                    styles.inputRow,
-                    errors.password && styles.inputError,
-                  ]}
-                >
-                  <TextInput
-                    style={styles.passwordInput}
-                    placeholder="비밀번호"
-                    placeholderTextColor="#CACACA"
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    onBlur={onBlur}
-                    onChangeText={onChange}
-                    value={value}
+          <Controller
+            control={control}
+            name="password"
+            rules={{ required: '비밀번호를 입력해주세요' }}
+            render={({ field: { onChange, onBlur, value } }) => (
+              <FormField
+                placeholder="비밀번호"
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+                error={errors.password?.message}
+                rightElement={
+                  <PasswordToggle
+                    visible={showPassword}
+                    onToggle={() => setShowPassword((v) => !v)}
                   />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword((v) => !v)}
-                    style={styles.eyeButton}
-                    accessibilityLabel="비밀번호 보기/숨기기"
-                  >
-                    <Ionicons
-                      name={showPassword ? 'eye-outline' : 'eye-off-outline'}
-                      size={20}
-                      color="#CACACA"
-                    />
-                  </TouchableOpacity>
-                </View>
-              )}
-            />
-            {errors.password && (
-              <Text style={styles.errorText}>{errors.password.message}</Text>
+                }
+              />
             )}
-          </View>
+          />
 
           {/* Forgot password */}
           <TouchableOpacity
@@ -209,59 +186,11 @@ const styles = StyleSheet.create({
     marginBottom: 48,
   },
 
-  // ── Fields ────────────────────────────────────────────────────────────────
-  fieldWrapper: {
-    marginBottom: 16,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#CBCBCB',
-    borderRadius: 15,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontFamily: 'Poppins',
-    fontWeight: '500',
-    fontSize: 14,
-    color: '#333333',
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#CBCBCB',
-    borderRadius: 15,
-    paddingHorizontal: 16,
-  },
-  passwordInput: {
-    flex: 1,
-    paddingVertical: 14,
-    fontFamily: 'Poppins',
-    fontWeight: '500',
-    fontSize: 14,
-    color: '#333333',
-  },
-  eyeButton: {
-    padding: 4,
-  },
-  eyeIcon: {
-    fontSize: 16,
-  },
-  inputError: {
-    borderColor: '#E53935',
-  },
-  errorText: {
-    fontFamily: 'Poppins',
-    fontWeight: '600',
-    fontSize: 12,
-    color: '#3629B7',
-    marginTop: 4,
-    marginLeft: 4,
-  },
-
-  // ── Forgot ─────────────────────────────────────────────────────────────────
+  // ── Forgot ────────────────────────────────────────────────────────────────
   forgotWrapper: {
     alignSelf: 'flex-end',
     marginBottom: 28,
+    marginTop: -8,
   },
   forgotText: {
     fontFamily: 'Poppins',
