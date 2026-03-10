@@ -7,9 +7,10 @@ interface Props {
   title: string;
   trips: TripData[];
   onViewMore?: () => void;
+  onToggleFavorite?: (id: string) => void;
 }
 
-export function TripList({ title, trips, onViewMore }: Props) {
+export function TripList({ title, trips, onViewMore, onToggleFavorite }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -22,11 +23,16 @@ export function TripList({ title, trips, onViewMore }: Props) {
       
       <ScrollView 
         horizontal 
-        showsHorizontalScrollIndicator={false}
+        showsHorizontalScrollIndicator={true}
         contentContainerStyle={styles.scrollContent}
       >
         {trips.map(trip => (
-          <TripCard key={trip.id} data={trip} onPress={() => console.log('Trip pressed:', trip.id)} />
+          <TripCard 
+            key={trip.id} 
+            data={trip} 
+            onPress={() => console.log('Trip pressed:', trip.id)} 
+            onPressHeart={() => onToggleFavorite?.(trip.id)}
+          />
         ))}
       </ScrollView>
     </View>
@@ -62,5 +68,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingLeft: 20,
     paddingRight: 4, // Leaves 16 from last item's marginRight
+    paddingBottom: 16, // Pushes scrollbar lower
   }
 });
