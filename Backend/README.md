@@ -35,6 +35,14 @@ docker ps
 ./mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
+### IntelliJ 실행 방법 (Shift+F10)
+`Run/Debug Configurations`에서 아래처럼 설정하면 터미널 실행과 동일하게 `local` 프로필로 실행됩니다.
+
+- `Main class`: `com.yeoun.YeounApplication`
+- `Active profiles`: `local`
+
+설정 저장 후 해당 Run Configuration을 선택하고 `Shift+F10`으로 실행하세요.
+
 ## 5) 로컬 인프라 종료
 ```bash
 docker compose -f docker-compose.dev.yml down

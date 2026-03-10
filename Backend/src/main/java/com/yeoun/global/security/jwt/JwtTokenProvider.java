@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.nio.charset.StandardCharsets;
 
 @Component
@@ -29,7 +31,20 @@ public class JwtTokenProvider {
 
     @PostConstruct
     void init() {
-        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        if (keyBytes.length < 32) {
+            keyBytes = sha256(keyBytes);
+        }
+        this.secretKey = Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    private byte[] sha256(byte[] input) {
+        try {
+            MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
+            return messageDigest.digest(input);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("Failed to initialize JWT secret key.", e);
+        }
     }
 
     public String getSecret() {

@@ -180,4 +180,29 @@
 		</plugins>
 	</build>
 
+	<profiles>
+		<profile>
+			<id>local-flyway</id>
+			<properties>
+				<flyway.url>jdbc:postgresql://localhost:5432/yeoun</flyway.url>
+				<flyway.user>postgres</flyway.user>
+				<flyway.password>postgres</flyway.password>
+			</properties>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.flywaydb</groupId>
+						<artifactId>flyway-maven-plugin</artifactId>
+						<configuration>
+							<url>${flyway.url}</url>
+							<user>${flyway.user}</user>
+							<password>${flyway.password}</password>
+							<cleanDisabled>false</cleanDisabled>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+
 </project>
