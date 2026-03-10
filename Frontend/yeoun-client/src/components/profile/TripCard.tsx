@@ -14,9 +14,10 @@ export interface TripData {
 interface Props {
   data: TripData;
   onPress?: () => void;
+  onPressHeart?: () => void;
 }
 
-export function TripCard({ data, onPress }: Props) {
+export function TripCard({ data, onPress, onPressHeart }: Props) {
   return (
     <Pressable onPress={onPress}>
       <ImageBackground 
@@ -25,11 +26,13 @@ export function TripCard({ data, onPress }: Props) {
         imageStyle={styles.image}
       >
         <View style={styles.heartContainer}>
-          <Ionicons 
-            name={data.isFavorite ? "heart" : "heart-outline"} 
-            size={22} 
-            color={data.isFavorite ? "#E74C3C" : "rgba(255,255,255,0.9)"} 
-          />
+          <Pressable onPress={onPressHeart}>
+            <Ionicons 
+              name={data.isFavorite ? "heart" : "heart-outline"} 
+              size={22} 
+              color={data.isFavorite ? "#E74C3C" : "rgba(255,255,255,0.9)"} 
+            />
+          </Pressable>
         </View>
         
         <View style={styles.infoOverlay}>
@@ -54,12 +57,6 @@ const styles = StyleSheet.create({
     height: 240,
     marginRight: 16,
     justifyContent: 'space-between',
-    // shadow for the card
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 4,
   },
   image: {
     borderRadius: 24,
