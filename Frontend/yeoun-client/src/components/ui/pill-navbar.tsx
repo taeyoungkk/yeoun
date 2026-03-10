@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Image, Platform, ImageSourcePropType } from 'react-native';
+import { View, Pressable, StyleSheet, Image, Platform, ImageSourcePropType } from 'react-native';
 import { Link, usePathname } from 'expo-router';
 import Animated, {
   useSharedValue,
