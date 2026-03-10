@@ -64,8 +64,6 @@ export const RegisterScreen = () => {
 
   const passwordsMatch =
     passwordConfirm.length > 0 && password === passwordConfirm;
-  const passwordsMismatch =
-    passwordConfirm.length > 0 && password !== passwordConfirm;
 
   // Simulate duplicate nickname check (replace with real API call)
   const checkNickname = async () => {
