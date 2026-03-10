@@ -1,14 +1,18 @@
 package com.yeoun.global.security.jwt;
 
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtTokenProvider {
@@ -61,5 +65,26 @@ public class JwtTokenProvider {
 
     public SecretKey getSecretKey() {
         return secretKey;
+    }
+
+    public String createAccessToken(UUID userId) {
+        return createToken(userId, "access", accessTokenExpirationSeconds);
+    }
+
+    public String createRefreshToken(UUID userId) {
+        return createToken(userId, "refresh", refreshTokenExpirationSeconds);
+    }
+
+    private String createToken(UUID userId, String tokenType, long expiresInSeconds) {
+        Instant now = Instant.now();
+        Instant expiry = now.plusSeconds(expiresInSeconds);
+
+        return Jwts.builder()
+                .subject(userId.toString())
+                .claim("tokenType", tokenType)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(expiry))
+                .signWith(secretKey)
+                .compact();
     }
 }

@@ -7,6 +7,7 @@ public enum ErrorCode {
     INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "Invalid request value."),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "Email is already in use."),
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "Nickname is already in use."),
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid email or password."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found."),
     AUTH_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "Auth account not found."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "Authentication is required."),
