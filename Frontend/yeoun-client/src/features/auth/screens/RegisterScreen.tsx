@@ -82,7 +82,7 @@ export const RegisterScreen = () => {
     if (nicknameStatus !== "available") return;
     // TODO: connect to register API
     console.log("Register:", data);
-    router.replace("/(tabs)");
+    router.replace("/(auth)/login");
   };
 
   return (
