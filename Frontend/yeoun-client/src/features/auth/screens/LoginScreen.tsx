@@ -1,21 +1,21 @@
-import { useState } from 'react';
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import {
-  View,
-  Text,
   Image,
-  TouchableOpacity,
-  StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { useForm, Controller } from 'react-hook-form';
-import { StatusBar } from 'expo-status-bar';
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { FormField } from '@/src/components/ui/form-field';
-import { PasswordToggle } from '@/src/components/ui/password-toggle';
+import { FormField } from "@/src/components/ui/form-field";
+import { PasswordToggle } from "@/src/components/ui/password-toggle";
 
 interface LoginForm {
   email: string;
@@ -31,13 +31,13 @@ export const LoginScreen = () => {
     handleSubmit,
     formState: { errors },
   } = useForm<LoginForm>({
-    defaultValues: { email: '', password: '' },
+    defaultValues: { email: "", password: "" },
   });
 
   const onSubmit = (data: LoginForm) => {
     // TODO: connect to auth API
-    console.log('Login:', data);
-    router.replace('/(tabs)');
+    console.log("Login:", data);
+    router.replace("/(tabs)");
   };
 
   return (
@@ -45,7 +45,7 @@ export const LoginScreen = () => {
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
           contentContainerStyle={styles.container}
@@ -60,10 +60,10 @@ export const LoginScreen = () => {
             control={control}
             name="email"
             rules={{
-              required: '이메일을 입력해주세요',
+              required: "이메일을 입력해주세요",
               pattern: {
                 value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                message: '올바른 이메일 형식이 아닙니다',
+                message: "올바른 이메일 형식이 아닙니다",
               },
             }}
             render={({ field: { onChange, onBlur, value } }) => (
@@ -83,7 +83,7 @@ export const LoginScreen = () => {
           <Controller
             control={control}
             name="password"
-            rules={{ required: '비밀번호를 입력해주세요' }}
+            rules={{ required: "비밀번호를 입력해주세요" }}
             render={({ field: { onChange, onBlur, value } }) => (
               <FormField
                 placeholder="비밀번호"
@@ -94,7 +94,7 @@ export const LoginScreen = () => {
                 value={value}
                 error={errors.password?.message}
                 rightElement={
-                   <PasswordToggle
+                  <PasswordToggle
                     visible={showPassword}
                     onToggle={() => setShowPassword((v) => !v)}
                   />
@@ -117,13 +117,13 @@ export const LoginScreen = () => {
             onPress={handleSubmit(onSubmit)}
             accessibilityLabel="로그인 버튼"
           >
-            <Text style={styles.signInText}>Sign in</Text>
+            <Text style={styles.signInText}>로그인</Text>
           </TouchableOpacity>
 
           {/* Or with divider */}
           <View style={styles.dividerRow}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>Or with</Text>
+            <Text style={styles.dividerText}>또는</Text>
             <View style={styles.dividerLine} />
           </View>
 
@@ -134,7 +134,7 @@ export const LoginScreen = () => {
           >
             <View style={styles.googleInner}>
               <Image
-                source={require('@/assets/images/Google__G__logo.png')}
+                source={require("@/assets/images/Google__G__logo.png")}
                 style={styles.googleLogoImg}
                 resizeMode="contain"
               />
@@ -145,12 +145,11 @@ export const LoginScreen = () => {
           {/* Sign up link */}
           <TouchableOpacity
             style={styles.signUpWrapper}
-            onPress={() => router.push('/(auth)/register' as never)}
+            onPress={() => router.push("/(auth)/register" as never)}
             accessibilityLabel="회원가입 페이지로 이동"
           >
             <Text style={styles.signUpText}>
-              계정이 없으신가요?{' '}
-              <Text style={styles.signUpLink}>회원가입</Text>
+              계정이 없으신가요? <Text style={styles.signUpLink}>회원가입</Text>
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -162,7 +161,7 @@ export const LoginScreen = () => {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
   },
   flex: {
     flex: 1,
@@ -176,78 +175,78 @@ const styles = StyleSheet.create({
 
   // ── Title ─────────────────────────────────────────────────────────────────
   title: {
-    fontFamily: 'Poppins',
-    fontWeight: '700',
+    fontFamily: "Poppins",
+    fontWeight: "700",
     fontSize: 30,
     lineHeight: 39,
-    textAlign: 'center',
+    textAlign: "center",
     letterSpacing: -0.01 * 30,
-    color: '#4D3E3E',
+    color: "#4D3E3E",
     marginBottom: 48,
   },
 
   // ── Forgot ────────────────────────────────────────────────────────────────
   forgotWrapper: {
-    alignSelf: 'flex-end',
+    alignSelf: "flex-end",
     marginBottom: 28,
     marginTop: -8,
   },
   forgotText: {
-    fontFamily: 'Poppins',
-    fontWeight: '500',
+    fontFamily: "Poppins",
+    fontWeight: "500",
     fontSize: 12,
-    color: '#CACACA',
+    color: "#CACACA",
   },
 
   // ── Sign in button ────────────────────────────────────────────────────────
   signInButton: {
-    backgroundColor: '#344966',
+    backgroundColor: "#344966",
     borderRadius: 15,
     paddingVertical: 18,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 36,
   },
   signInText: {
-    fontFamily: 'Poppins',
-    fontWeight: '500',
+    fontFamily: "Poppins",
+    fontWeight: "500",
     fontSize: 16,
     lineHeight: 24,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
 
   // ── Divider ───────────────────────────────────────────────────────────────
   dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 20,
     gap: 12,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#D8DADC',
+    backgroundColor: "#D8DADC",
   },
   dividerText: {
-    fontFamily: 'Inter',
-    fontWeight: '400',
+    fontFamily: "Inter",
+    fontWeight: "400",
     fontSize: 14,
-    color: 'rgba(0,0,0,0.7)',
+    color: "rgba(0,0,0,0.7)",
   },
 
   // ── Google button ─────────────────────────────────────────────────────────
   googleButton: {
     borderWidth: 1,
-    borderColor: '#D8DADC',
+    borderColor: "#D8DADC",
     borderRadius: 10,
     paddingVertical: 18,
     paddingHorizontal: 45,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 36,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
   },
   googleInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   googleLogoImg: {
@@ -255,24 +254,24 @@ const styles = StyleSheet.create({
     height: 20,
   },
   googleText: {
-    fontFamily: 'Inter',
-    fontWeight: '500',
+    fontFamily: "Inter",
+    fontWeight: "500",
     fontSize: 14,
-    color: '#344966',
+    color: "#344966",
   },
 
   // ── Sign up ───────────────────────────────────────────────────────────────
   signUpWrapper: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   signUpText: {
-    fontFamily: 'Inter',
-    fontWeight: '400',
+    fontFamily: "Inter",
+    fontWeight: "400",
     fontSize: 14,
-    color: 'rgba(0,0,0,0.7)',
+    color: "rgba(0,0,0,0.7)",
   },
   signUpLink: {
-    fontWeight: '700',
-    color: '#344966',
+    fontWeight: "700",
+    color: "#344966",
   },
 });

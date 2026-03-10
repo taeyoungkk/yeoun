@@ -6,4 +6,9 @@
   text {
     font-family: Pretendard-Regular;
   }
+
+  /* Remove browser default focus ring on inputs — handled by our custom border */
+  input:focus {
+    outline: none;
+  }
 }
