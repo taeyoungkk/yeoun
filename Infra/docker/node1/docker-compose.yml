@@ -1,29 +1,67 @@
-# Infra/docker/node1/docker-compose.yml
-
-version: '3.8'
-
 services:
   postgres:
     image: postgis/postgis:15-3.3
     container_name: yeoun-postgres
-    restart: always
-    env_file: .env
-    ports:
-      - "5432:5432"
+    restart: unless-stopped
+    env_file:
+      - .env
     volumes:
       - ./volumes/postgres_data:/var/lib/postgresql/data
-      - ./init-db:/docker-entrypoint-initdb.d
+      - ./init-db:/docker-entrypoint-initdb.d:ro
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - service-net
 
   redis:
     image: redis:7.0-alpine
     container_name: yeoun-redis
-    restart: always
-    command: redis-server --requirepass ${REDIS_PASSWORD}
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
     volumes:
       - ./volumes/redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "PING"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - service-net
+
+  api:
+    image: ${API_IMAGE:-yeoun-api:local}
+    container_name: yeoun-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "${API_CONTAINER_PORT:-8080}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - service-net
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: yeoun-service-nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - service-net
+
+networks:
+  service-net:
+    driver: bridge
