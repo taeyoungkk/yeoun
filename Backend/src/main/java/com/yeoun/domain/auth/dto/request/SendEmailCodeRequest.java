@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
 public record SendEmailCodeRequest(
-        @Schema(description = "Email address for verification", example = "user@example.com")
+        @Schema(description = "인증코드를 받을 이메일", example = "user@example.com")
         @NotBlank(message = "Email is required.")
         @Email(message = "Email format is invalid.")
         String email
