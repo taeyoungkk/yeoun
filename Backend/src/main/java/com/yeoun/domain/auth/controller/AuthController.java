@@ -1,6 +1,8 @@
 package com.yeoun.domain.auth.controller;
 
 import com.yeoun.domain.auth.dto.request.LoginRequest;
+import com.yeoun.domain.auth.dto.request.RefreshTokenRequest;
+import com.yeoun.domain.auth.dto.response.AuthTokenResponse;
 import com.yeoun.domain.auth.dto.response.LoginResponse;
 import com.yeoun.domain.auth.service.LocalLoginService;
 import com.yeoun.global.response.ApiResponse;
@@ -27,6 +29,13 @@ public class AuthController {
     @Operation(summary = "로그인", description = "이메일과 비밀번호로 로그인합니다.")
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         LoginResponse response = localLoginService.login(request);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/refresh")
+    @Operation(summary = "토큰 재발급", description = "Refresh token으로 access token과 refresh token을 재발급합니다.")
+    public ApiResponse<AuthTokenResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        AuthTokenResponse response = localLoginService.refresh(request);
         return ApiResponse.ok(response);
     }
 }

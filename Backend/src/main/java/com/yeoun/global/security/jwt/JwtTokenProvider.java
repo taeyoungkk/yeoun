@@ -1,6 +1,11 @@
 package com.yeoun.global.security.jwt;
 
+import com.yeoun.global.exception.BaseException;
+import com.yeoun.global.exception.ErrorCode;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
@@ -75,6 +80,27 @@ public class JwtTokenProvider {
         return createToken(userId, "refresh", refreshTokenExpirationSeconds);
     }
 
+    public UUID getUserId(String token) {
+        Claims claims = parseClaims(token);
+        return UUID.fromString(claims.getSubject());
+    }
+
+    public void validateRefreshToken(String token) {
+        Claims claims = parseClaims(token);
+        String tokenType = claims.get("tokenType", String.class);
+        if (!"refresh".equals(tokenType)) {
+            throw new BaseException(ErrorCode.INVALID_JWT_TOKEN);
+        }
+    }
+
+    public void validateAccessToken(String token) {
+        Claims claims = parseClaims(token);
+        String tokenType = claims.get("tokenType", String.class);
+        if (!"access".equals(tokenType)) {
+            throw new BaseException(ErrorCode.INVALID_JWT_TOKEN);
+        }
+    }
+
     private String createToken(UUID userId, String tokenType, long expiresInSeconds) {
         Instant now = Instant.now();
         Instant expiry = now.plusSeconds(expiresInSeconds);
@@ -86,5 +112,19 @@ public class JwtTokenProvider {
                 .expiration(Date.from(expiry))
                 .signWith(secretKey)
                 .compact();
+    }
+
+    private Claims parseClaims(String token) {
+        try {
+            return Jwts.parser()
+                    .verifyWith(secretKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+        } catch (ExpiredJwtException e) {
+            throw new BaseException(ErrorCode.EXPIRED_JWT_TOKEN);
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new BaseException(ErrorCode.INVALID_JWT_TOKEN);
+        }
     }
 }
