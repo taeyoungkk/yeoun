@@ -101,17 +101,17 @@ export const TreeRingsChart = () => {
   const currentTotal = selectedRegion ? selectedRegion.total : globalTotal;
   const currentPercent = selectedRegion ? Math.round((currentVisited / currentTotal) * 100) : globalPercent;
 
-  // Manual touch handler for SVG wedges to ensure it works reliably across platforms
+  // 다양한 플랫폼에서 안정적으로 작동하도록 SVG 요소에 대한 수동 터치 핸들러
   const handleTouch = (evt: any) => {
-    // Get Coordinates relative to the SVG wrapper center
+    // SVG 래퍼 중심을 기준으로 한 좌표 가져오기
     const { locationX, locationY } = evt.nativeEvent;
-    // Map view is 400x400 internally, but it's rendered in a responsive container.
-    // However, touch events are from the Svg wrapper view!
-    // We assume the view is square because of aspectRatio: 1.
-    const rectSize = Dimensions.get('window').width - 40; // Approx width of the container
+    // 내부적으로 맵 뷰는 400x400이지만 반응형 컨테이너에서 렌더링됩니다.
+    // 하지만 터치 이벤트는 Svg 래퍼 뷰에서 발생합니다!
+    // aspectRatio: 1 이므로 뷰가 정사각형이라고 가정합니다.
+    const rectSize = Dimensions.get('window').width - 40; // 컨테이너의 대략적인 너비
     const scale = 400 / rectSize;
     
-    // Convert touch point to SVG 400x400 coordinate space
+    // 터치 포인트를 SVG 400x400 좌표계로 변환
     const x = locationX * scale;
     const y = locationY * scale;
 
@@ -119,17 +119,17 @@ export const TreeRingsChart = () => {
     const dy = y - CENTER;
     const distance = Math.sqrt(dx * dx + dy * dy);
 
-    // If outside the max radius or inside the inner radius, reset
+    // 최대 반지름을 벗어나거나 내부 반지름 안쪽인 경우 초기화
     if (distance > MAX_RADIUS + 40 || distance < INNER_RADIUS - 10) {
       setSelectedRegionId(null);
       return;
     }
 
-    // Calculate angle in degrees (0 is up, clockwise)
+    // 각도를 도로 계산 (0도는 위, 시계 방향)
     let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
     if (angle < 0) angle += 360;
 
-    // Find which region region this angle belongs to
+    // 이 각도가 어느 권역에 속하는지 확인
     const index = Math.floor(angle / ANGLE_STEP);
     if (index >= 0 && index < SIDES) {
       setSelectedRegionId(regionsData[index].id);
@@ -140,16 +140,16 @@ export const TreeRingsChart = () => {
 
   return (
     <View style={styles.container}>
-      {/* SVG Tree Rings */}
+      {/* SVG 나이테 차트 */}
       <View style={styles.svgContainer}>
-        {/* We use a View with onStartShouldSetResponder to capture touches reliably */}
+        {/* 터치를 안정적으로 캡처하기 위해 onStartShouldSetResponder가 있는 View 사용 */}
         <View 
           style={styles.svgWrapper}
           onStartShouldSetResponder={() => true}
           onResponderRelease={handleTouch}
         >
           <Svg viewBox="0 0 400 400" width="100%" height="100%">
-            {/* ... SVG content ... */}
+            {/* ... SVG 내용 ... */}
             <G id="bg-rings">
               {Array.from({ length: RINGS_COUNT }).map((_, i) => {
                 const r = RINGS_COUNT - i;
@@ -221,7 +221,7 @@ export const TreeRingsChart = () => {
                     {selectedRegionId === region.id && (
                       <Path d={wedgePath} fill="#6C584C" opacity="0.08" pointerEvents="none" />
                     )}
-                    {/* Render invisible paths for visuals but don't rely on their onPress */}
+                    {/* 시각적 효과를 위해 보이지 않는 경로를 렌더링하지만 해당 요소의 onPress에 의존하지 않음 */}
                     <Path
                       d={wedgePath}
                       fill="transparent"
@@ -233,14 +233,14 @@ export const TreeRingsChart = () => {
             </G>
           </Svg>
 
-          {/* Core Node */}
+          {/* 중심 노드 */}
           <View style={styles.coreNode}>
             <View style={styles.coreInner}></View>
           </View>
         </View>
       </View>
 
-      {/* Info Card */}
+      {/* 정보 카드 */}
       <View style={[styles.infoCard, selectedRegionId ? styles.infoCardActive : {}]}>
         <View style={styles.infoCardHeader}>
           <View style={styles.infoCardHeaderLeft}>
@@ -278,7 +278,7 @@ export const TreeRingsChart = () => {
         </View>
       </View>
 
-      {/* Grid Legend - As seen in user screenshot there is a grid legend at the bottom */}
+      {/* 하단 그리드 범례 - 사용자 스크린샷에 보이는 하단 범례 */}
       <View style={styles.gridLegend}>
         {regionsData.map(region => (
           <TouchableOpacity 
