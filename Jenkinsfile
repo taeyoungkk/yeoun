@@ -1,8 +1,11 @@
 pipeline {
   agent any
 
+  parameters {
+    string(name: 'DOCKERHUB_NAMESPACE', defaultValue: '', description: 'Docker Hub namespace. Leave blank to use Jenkins env var.')
+  }
+
   environment {
-    DOCKERHUB_NAMESPACE = credentials('dockerhub-namespace')
     DOCKERHUB_CREDENTIALS = 'dockerhub-creds'
     EC2_NODE1_SSH = 'ec2-node1-ssh'
     EC2_NODE2_SSH = 'ec2-node2-ssh'
@@ -23,7 +26,11 @@ pipeline {
         script {
           env.GIT_SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
-          env.IS_DEVELOP = (env.BRANCH_NAME == 'develop').toString()
+
+          def branchName = env.BRANCH_NAME ?: env.GIT_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+          env.IS_DEVELOP = (branchName == 'develop' || branchName.endsWith('/develop')).toString()
+
+          env.DOCKERHUB_NAMESPACE_EFFECTIVE = (params.DOCKERHUB_NAMESPACE?.trim()) ? params.DOCKERHUB_NAMESPACE.trim() : (env.DOCKERHUB_NAMESPACE ?: '').trim()
 
           def diffOutput = sh(
             script: '''
@@ -39,17 +46,26 @@ pipeline {
           def changedFiles = diffOutput ? diffOutput.split('\n') as List : []
           env.CHANGED_API = changedFiles.any { it == 'Jenkinsfile' || it.startsWith('Backend/') || it.startsWith('Infra/docker/node1/') || it == 'Infra/scripts/common.sh' || it == 'Infra/scripts/check-env.sh' || it == 'Infra/scripts/deploy-node1.sh' || it == 'Infra/scripts/rollback-node1.sh' }.toString()
           env.CHANGED_WORKER = changedFiles.any { it == 'Jenkinsfile' || it.startsWith('Worker/') || it.startsWith('Infra/docker/node2/') || it == 'Infra/scripts/common.sh' || it == 'Infra/scripts/check-env.sh' || it == 'Infra/scripts/deploy-node2.sh' || it == 'Infra/scripts/rollback-node2.sh' }.toString()
+
+          echo "Branch=${branchName}"
+          echo "IS_DEVELOP=${env.IS_DEVELOP}"
+          echo "CHANGED_API=${env.CHANGED_API}"
+          echo "CHANGED_WORKER=${env.CHANGED_WORKER}"
+          echo "DOCKERHUB_NAMESPACE_EFFECTIVE=${env.DOCKERHUB_NAMESPACE_EFFECTIVE}"
         }
       }
     }
 
     stage('Build API Image') {
       when {
-        expression { env.IS_DEVELOP == 'true' && env.CHANGED_API == 'true' && fileExists('Backend/Dockerfile') && fileExists('Backend/pom.xml') }
+        expression { env.CHANGED_API == 'true' && fileExists('Backend/Dockerfile') && fileExists('Backend/pom.xml') }
       }
       steps {
         script {
-          env.API_IMAGE = "${env.DOCKERHUB_NAMESPACE}/yeoun-api:${env.IMAGE_TAG}"
+          if (!env.DOCKERHUB_NAMESPACE_EFFECTIVE?.trim()) {
+            error('DOCKERHUB_NAMESPACE is not set. Set the build parameter or Jenkins environment variable.')
+          }
+          env.API_IMAGE = "${env.DOCKERHUB_NAMESPACE_EFFECTIVE}/yeoun-api:${env.IMAGE_TAG}"
         }
         dir('Backend') {
           sh 'docker build -t "$API_IMAGE" .'
@@ -59,11 +75,14 @@ pipeline {
 
     stage('Build Worker Image') {
       when {
-        expression { env.IS_DEVELOP == 'true' && env.CHANGED_WORKER == 'true' && fileExists('Worker/Dockerfile') }
+        expression { env.CHANGED_WORKER == 'true' && fileExists('Worker/Dockerfile') }
       }
       steps {
         script {
-          env.WORKER_IMAGE = "${env.DOCKERHUB_NAMESPACE}/yeoun-worker:${env.IMAGE_TAG}"
+          if (!env.DOCKERHUB_NAMESPACE_EFFECTIVE?.trim()) {
+            error('DOCKERHUB_NAMESPACE is not set. Set the build parameter or Jenkins environment variable.')
+          }
+          env.WORKER_IMAGE = "${env.DOCKERHUB_NAMESPACE_EFFECTIVE}/yeoun-worker:${env.IMAGE_TAG}"
         }
         dir('Worker') {
           sh 'docker build -t "$WORKER_IMAGE" .'
@@ -73,7 +92,7 @@ pipeline {
 
     stage('Push Images') {
       when {
-        expression { env.IS_DEVELOP == 'true' && (env.API_IMAGE?.trim() || env.WORKER_IMAGE?.trim()) }
+        expression { env.API_IMAGE?.trim() || env.WORKER_IMAGE?.trim() }
       }
       steps {
         withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
@@ -160,8 +179,11 @@ pipeline {
   }
 
   post {
-    always {
-      sh 'docker logout || true'
+    success {
+      echo 'Pipeline completed successfully.'
+    }
+    failure {
+      echo 'Pipeline failed. Check the failed stage and Jenkins credentials/env.'
     }
   }
 }
