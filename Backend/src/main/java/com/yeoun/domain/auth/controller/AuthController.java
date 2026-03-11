@@ -3,7 +3,12 @@ package com.yeoun.domain.auth.controller;
 import com.yeoun.domain.auth.dto.request.LoginRequest;
 import com.yeoun.domain.auth.dto.request.RefreshTokenRequest;
 import com.yeoun.domain.auth.dto.response.AuthTokenResponse;
+import com.yeoun.domain.auth.dto.request.SendEmailCodeRequest;
+import com.yeoun.domain.auth.dto.request.VerifyEmailCodeRequest;
+import com.yeoun.domain.auth.dto.response.EmailCodeSendResponse;
+import com.yeoun.domain.auth.dto.response.EmailVerificationResponse;
 import com.yeoun.domain.auth.dto.response.LoginResponse;
+import com.yeoun.domain.auth.service.EmailVerificationService;
 import com.yeoun.domain.auth.service.LocalLoginService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.jwt.JwtTokenResolver;
@@ -26,9 +31,15 @@ public class AuthController {
 
     private final LocalLoginService localLoginService;
     private final JwtTokenResolver jwtTokenResolver;
+    private final EmailVerificationService emailVerificationService;
 
-    public AuthController(LocalLoginService localLoginService, JwtTokenResolver jwtTokenResolver) {
+    public AuthController(
+            LocalLoginService localLoginService,
+            EmailVerificationService emailVerificationService,
+            JwtTokenResolver jwtTokenResolver
+    ) {
         this.localLoginService = localLoginService;
+        this.emailVerificationService = emailVerificationService;
         this.jwtTokenResolver = jwtTokenResolver;
     }
 
@@ -56,5 +67,20 @@ public class AuthController {
         String accessToken = jwtTokenResolver.resolveAccessToken(request);
         localLoginService.logout(principal.userId(), accessToken);
         return ApiResponse.ok();
+    }
+    
+    @PostMapping("/email/code")
+    @Operation(summary = "이메일 인증코드 발송", description = "입력한 이메일로 6자리 인증코드를 발송합니다.")
+    public ApiResponse<EmailCodeSendResponse> sendEmailCode(@Valid @RequestBody SendEmailCodeRequest request) {
+        EmailCodeSendResponse response = emailVerificationService.sendCode(request.email());
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/email/verify")
+    @Operation(summary = "이메일 인증코드 검증", description = "이메일과 6자리 인증코드를 검증해 인증 완료 상태를 저장합니다.")
+    public ApiResponse<EmailVerificationResponse> verifyEmailCode(@Valid @RequestBody VerifyEmailCodeRequest request) {
+        EmailVerificationResponse response = emailVerificationService.verifyCode(request.email(), request.code());
+        return ApiResponse.ok(response);
+
     }
 }

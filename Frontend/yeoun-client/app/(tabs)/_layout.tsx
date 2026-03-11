@@ -28,8 +28,8 @@ export default function TabLayout() {
       icon: ({ color, size }: { color: string; size: number }) => <CreditCardSvg color={color} size={size} />
     },
     { 
-      label: 'Profile', 
-      href: '/profile', 
+      label: 'My Page', 
+      href: '/mypage', 
       icon: ({ color, size }: { color: string; size: number }) => <ProfileRoundSvg color={color} size={size} />
     },
   ];
@@ -67,9 +67,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="profile"
+        name="mypage"
         options={{
-          title: 'Profile',
+          title: 'My Page',
         }}
       />
     </Tabs>
