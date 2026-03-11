@@ -10,6 +10,8 @@ public record AuthTokenResponse(
         @Schema(description = "토큰 타입", example = "Bearer")
         String tokenType,
         @Schema(description = "액세스 토큰 만료 시간(초)", example = "1800")
-        long expiresIn
+        long expiresIn,
+        @Schema(description = "신규 사용자 여부")
+        boolean isNewUser
 ) {
 }

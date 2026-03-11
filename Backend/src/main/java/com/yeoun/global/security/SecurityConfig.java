@@ -30,6 +30,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/signup",
                                 "/api/v1/auth/login",
+                                "/api/v1/auth/oauth/google",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/email/code",
                                 "/api/v1/auth/email/verify",
