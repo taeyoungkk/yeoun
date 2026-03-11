@@ -20,6 +20,7 @@ import { PasswordToggle } from "@/src/components/ui/password-toggle";
 interface RegisterForm {
   email: string;
   nickname: string;
+  phone: string;
   password: string;
   passwordConfirm: string;
 }
@@ -52,6 +53,7 @@ export const RegisterScreen = () => {
     defaultValues: {
       email: "",
       nickname: "",
+      phone: "",
       password: "",
       passwordConfirm: "",
     },
@@ -205,8 +207,32 @@ export const RegisterScreen = () => {
             )}
           />
 
+          {/* Phone */}
+          <Text style={styles.label}>휴대폰 번호</Text>
+          <Controller
+            control={control}
+            name="phone"
+            rules={{
+              required: "휴대폰 번호를 입력해주세요",
+              pattern: {
+                value: /^010-?\d{3,4}-?\d{4}$/,
+                message: "올바른 휴대폰 번호 형식이 아닙니다",
+              },
+            }}
+            render={({ field: { onChange, onBlur, value } }) => (
+              <FormField
+                placeholder="휴대폰 번호 (예: 010-0000-0000)"
+                keyboardType="phone-pad"
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+                error={errors.phone?.message}
+              />
+            )}
+          />
+
           {/* Password */}
-          <Text style={styles.label}>비밀번호</Text>
+          <Text style={[styles.label, { marginTop: 16 }]}>비밀번호</Text>
           <Controller
             control={control}
             name="password"

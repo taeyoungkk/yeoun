@@ -1,7 +1,8 @@
 import { StyleSheet, View, Text, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { router } from 'expo-router';
+import { globalUserState, subscribeUser } from '@/src/store/userStore';
 
 import { ProfileHeader } from "@/src/components/profile/ProfileHeader";
 import { UserInfoCard } from "@/src/components/profile/UserInfoCard";
@@ -10,12 +11,6 @@ import { TripData } from "@/src/components/profile/TripCard";
 import { TravelMap } from "@/src/components/profile/TravelMap";
 import { TreeRingsChart } from "@/src/components/profile/TreeRingsChart";
 
-const MOCK_USER_DATA = {
-  email: 'qwerty@gmail.com',
-  phone: '010-0000-0000',
-  joinDate: '2026/03/09',
-  friendsCount: 5,
-};
 
 const MOCK_FAVORITE_TRIPS: TripData[] = [
   {
@@ -56,6 +51,16 @@ const MOCK_PAST_TRIPS: TripData[] = [
 export default function MyPageScreen() {
   const [favoriteTrips, setFavoriteTrips] = useState<TripData[]>(MOCK_FAVORITE_TRIPS);
   const [pastTrips, setPastTrips] = useState<TripData[]>(MOCK_PAST_TRIPS);
+  
+  const [userData, setUserData] = useState({ ...globalUserState });
+  
+  useEffect(() => {
+    // Subscribe to changes from edit profile
+    const unsubscribe = subscribeUser(() => {
+      setUserData({ ...globalUserState });
+    });
+    return unsubscribe;
+  }, []);
 
   const handleToggleFavorite = (id: string, isFavList: boolean) => {
     if (isFavList) {
@@ -66,15 +71,16 @@ export default function MyPageScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+    <SafeAreaView className="flex-1 bg-[#F3F6EB]" edges={['top', 'left', 'right']}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         <ProfileHeader 
-          nickname="지우" 
+          nickname={userData.nickname} 
           location="대한민국, 대전광역시" 
+          avatarUrl={userData.avatarUrl || undefined}
           onSettingsPress={() => router.push('/settings')}
         />
         
-        <UserInfoCard data={MOCK_USER_DATA} />
+        <UserInfoCard data={userData} />
         
         <TripList 
           title="좋아한 여행" 
@@ -98,13 +104,3 @@ export default function MyPageScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F3F6EB', // Matching the earthy green from your design
-  },
-  scrollContent: {
-    paddingBottom: 120, // Add padding for the Pill Navbar at bottom
-  },
-});
