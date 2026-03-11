@@ -8,6 +8,7 @@ import {
   Modal,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -202,7 +203,7 @@ function getFilteredDays(activeFilter: DayFilter) {
 export default function TripRecordingScreen() {
   const router = useRouter();
   const cameraRef = useRef<Mapbox.Camera>(null);
-  const scrollRef = useRef<Animated.ScrollView>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const cardPositionsRef = useRef<Record<string, number>>({});
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -308,6 +309,12 @@ export default function TripRecordingScreen() {
     setMapErrorDetail('Mapbox style or network loading failed.');
   };
 
+  const handleMapLoadFailure = ((event?: unknown) => {
+    setIsMapReady(false);
+    setMapLoadFailed(true);
+    setMapFailureDetail(event);
+  }) as () => void;
+
   const totalDistanceLabel = `${filteredDays.reduce((sum, day) => sum + day.distanceKm, 0).toFixed(1)}km`;
 
   return (
@@ -352,7 +359,7 @@ export default function TripRecordingScreen() {
 
       <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={() => setIsInfoOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setIsInfoOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={(event) => event.stopPropagation()}>
+          <Pressable style={styles.modalCard} onPress={() => undefined}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>자동 기록 안내</Text>
               <TouchableOpacity onPress={() => setIsInfoOpen(false)} activeOpacity={0.85}>
@@ -378,11 +385,7 @@ export default function TripRecordingScreen() {
             setMapLoadFailed(false);
             setMapErrorDetail(null);
           }}
-          onDidFailLoadingMap={(event) => {
-            setIsMapReady(false);
-            setMapLoadFailed(true);
-            setMapFailureDetail(event);
-          }}
+          onDidFailLoadingMap={handleMapLoadFailure}
         >
           <Mapbox.Camera ref={cameraRef} zoomLevel={13.4} centerCoordinate={routeCoordinates[0] ?? [126.9784, 37.5667]} />
           <Mapbox.ShapeSource id="trip-route" shape={routeShape}>
