@@ -9,6 +9,8 @@ public enum ErrorCode {
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "Nickname is already in use."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid email or password."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found."),
+    USER_INACTIVE(HttpStatus.FORBIDDEN, "Inactive user cannot log in."),
+    USER_DELETED(HttpStatus.FORBIDDEN, "Deleted user cannot log in."),
     AUTH_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "Auth account not found."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "Authentication is required."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "Access denied."),

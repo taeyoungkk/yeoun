@@ -1,5 +1,6 @@
 package com.yeoun.global.security.jwt;
 
+import com.yeoun.domain.user.entity.UserRole;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import io.jsonwebtoken.Claims;
@@ -72,17 +73,26 @@ public class JwtTokenProvider {
         return secretKey;
     }
 
-    public String createAccessToken(UUID userId) {
-        return createToken(userId, "access", accessTokenExpirationSeconds);
+    public String createAccessToken(UUID userId, UserRole role) {
+        return createToken(userId, role, "access", accessTokenExpirationSeconds);
     }
 
-    public String createRefreshToken(UUID userId) {
-        return createToken(userId, "refresh", refreshTokenExpirationSeconds);
+    public String createRefreshToken(UUID userId, UserRole role) {
+        return createToken(userId, role, "refresh", refreshTokenExpirationSeconds);
     }
 
     public UUID getUserId(String token) {
         Claims claims = parseClaims(token);
         return UUID.fromString(claims.getSubject());
+    }
+
+    public UserRole getUserRole(String token) {
+        Claims claims = parseClaims(token);
+        String role = claims.get("role", String.class);
+        if (role == null) {
+            throw new BaseException(ErrorCode.INVALID_JWT_TOKEN);
+        }
+        return UserRole.valueOf(role);
     }
 
     public void validateRefreshToken(String token) {
@@ -101,12 +111,19 @@ public class JwtTokenProvider {
         }
     }
 
-    private String createToken(UUID userId, String tokenType, long expiresInSeconds) {
+    public long getRemainingExpirationSeconds(String token) {
+        Claims claims = parseClaims(token);
+        long remainingMillis = claims.getExpiration().getTime() - System.currentTimeMillis();
+        return Math.max(0, remainingMillis / 1000);
+    }
+
+    private String createToken(UUID userId, UserRole role, String tokenType, long expiresInSeconds) {
         Instant now = Instant.now();
         Instant expiry = now.plusSeconds(expiresInSeconds);
 
         return Jwts.builder()
                 .subject(userId.toString())
+                .claim("role", role.name())
                 .claim("tokenType", tokenType)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))

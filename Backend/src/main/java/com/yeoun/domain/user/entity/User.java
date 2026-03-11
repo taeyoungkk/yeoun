@@ -44,6 +44,11 @@ public class User {
     @Column(name = "status", nullable = false)
     private UserStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role", nullable = false)
+    @Builder.Default
+    private UserRole role = UserRole.USER;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

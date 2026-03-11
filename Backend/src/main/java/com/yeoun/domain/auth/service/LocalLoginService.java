@@ -4,11 +4,14 @@ import com.yeoun.domain.auth.dto.request.LoginRequest;
 import com.yeoun.domain.auth.dto.request.RefreshTokenRequest;
 import com.yeoun.domain.auth.dto.response.AuthTokenResponse;
 import com.yeoun.domain.auth.dto.response.LoginResponse;
+import com.yeoun.domain.auth.repository.AccessTokenBlacklistRedisRepository;
 import com.yeoun.domain.auth.repository.RefreshTokenRedisRepository;
 import com.yeoun.domain.user.entity.AuthProvider;
 import com.yeoun.domain.user.entity.User;
 import com.yeoun.domain.user.entity.UserAuthAccount;
+import com.yeoun.domain.user.entity.UserStatus;
 import com.yeoun.domain.user.repository.UserAuthAccountRepository;
+import com.yeoun.domain.user.repository.UserRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import com.yeoun.global.security.jwt.JwtTokenProvider;
@@ -25,39 +28,43 @@ public class LocalLoginService {
     private static final String TOKEN_TYPE = "Bearer";
 
     private final UserAuthAccountRepository userAuthAccountRepository;
+    private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenRedisRepository refreshTokenRedisRepository;
+    private final AccessTokenBlacklistRedisRepository accessTokenBlacklistRedisRepository;
 
     public LocalLoginService(
             UserAuthAccountRepository userAuthAccountRepository,
+            UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtTokenProvider jwtTokenProvider,
-            RefreshTokenRedisRepository refreshTokenRedisRepository
+            RefreshTokenRedisRepository refreshTokenRedisRepository,
+            AccessTokenBlacklistRedisRepository accessTokenBlacklistRedisRepository
     ) {
         this.userAuthAccountRepository = userAuthAccountRepository;
+        this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
         this.refreshTokenRedisRepository = refreshTokenRedisRepository;
+        this.accessTokenBlacklistRedisRepository = accessTokenBlacklistRedisRepository;
     }
 
     public LoginResponse login(LoginRequest request) {
-        //Local + Email 계정 조회
         UserAuthAccount authAccount = userAuthAccountRepository
                 .findByProviderAndLoginEmail(AuthProvider.LOCAL, request.email())
                 .orElseThrow(() -> new BaseException(ErrorCode.INVALID_CREDENTIALS));
 
-        //비밀번호 검증
         String passwordHash = authAccount.getPasswordHash();
         if (passwordHash == null || !passwordEncoder.matches(request.password(), passwordHash)) {
             throw new BaseException(ErrorCode.INVALID_CREDENTIALS);
         }
 
-        //토큰 생성
         User user = authAccount.getUser();
-        String accessToken = jwtTokenProvider.createAccessToken(user.getUserId());
-        String refreshToken = jwtTokenProvider.createRefreshToken(user.getUserId());
-        //redis에 저장
+        validateLoginAllowed(user);
+
+        String accessToken = jwtTokenProvider.createAccessToken(user.getUserId(), user.getRole());
+        String refreshToken = jwtTokenProvider.createRefreshToken(user.getUserId(), user.getRole());
         refreshTokenRedisRepository.save(
                 user.getUserId(),
                 refreshToken,
@@ -92,8 +99,12 @@ public class LocalLoginService {
             throw new BaseException(ErrorCode.INVALID_JWT_TOKEN);
         }
 
-        String newAccessToken = jwtTokenProvider.createAccessToken(userId);
-        String newRefreshToken = jwtTokenProvider.createRefreshToken(userId);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BaseException(ErrorCode.USER_NOT_FOUND));
+        validateLoginAllowed(user);
+
+        String newAccessToken = jwtTokenProvider.createAccessToken(userId, user.getRole());
+        String newRefreshToken = jwtTokenProvider.createRefreshToken(userId, user.getRole());
         refreshTokenRedisRepository.save(
                 userId,
                 newRefreshToken,
@@ -106,5 +117,22 @@ public class LocalLoginService {
                 TOKEN_TYPE,
                 jwtTokenProvider.getAccessTokenExpirationSeconds()
         );
+    }
+
+    public void logout(UUID userId, String accessToken) {
+        refreshTokenRedisRepository.delete(userId);
+        long remainingExpirationSeconds = jwtTokenProvider.getRemainingExpirationSeconds(accessToken);
+        if (remainingExpirationSeconds > 0) {
+            accessTokenBlacklistRedisRepository.blacklist(accessToken, remainingExpirationSeconds);
+        }
+    }
+
+    private void validateLoginAllowed(User user) {
+        if (user.getStatus() == UserStatus.INACTIVE) {
+            throw new BaseException(ErrorCode.USER_INACTIVE);
+        }
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new BaseException(ErrorCode.USER_DELETED);
+        }
     }
 }

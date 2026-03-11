@@ -1,6 +1,9 @@
 package com.yeoun.global.security.jwt;
 
+import com.yeoun.domain.auth.repository.AccessTokenBlacklistRedisRepository;
+import com.yeoun.domain.user.entity.UserRole;
 import com.yeoun.global.exception.BaseException;
+import com.yeoun.global.exception.ErrorCode;
 import com.yeoun.global.security.principal.CustomUserPrincipal;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -8,13 +11,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 
 @Component
@@ -22,13 +26,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenResolver jwtTokenResolver;
     private final JwtTokenProvider jwtTokenProvider;
+    private final AccessTokenBlacklistRedisRepository accessTokenBlacklistRedisRepository;
 
     public JwtAuthenticationFilter(
             JwtTokenResolver jwtTokenResolver,
-            JwtTokenProvider jwtTokenProvider
+            JwtTokenProvider jwtTokenProvider,
+            AccessTokenBlacklistRedisRepository accessTokenBlacklistRedisRepository
     ) {
         this.jwtTokenResolver = jwtTokenResolver;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.accessTokenBlacklistRedisRepository = accessTokenBlacklistRedisRepository;
     }
 
     @Override
@@ -46,13 +53,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             jwtTokenProvider.validateAccessToken(accessToken);
+            if (accessTokenBlacklistRedisRepository.isBlacklisted(accessToken)) {
+                throw new BaseException(ErrorCode.INVALID_JWT_TOKEN, "Logged out access token.");
+            }
             UUID userId = jwtTokenProvider.getUserId(accessToken);
-            CustomUserPrincipal principal = new CustomUserPrincipal(userId);
+            UserRole role = jwtTokenProvider.getUserRole(accessToken);
+            CustomUserPrincipal principal = new CustomUserPrincipal(userId, role);
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
                             principal,
                             null,
-                            AuthorityUtils.NO_AUTHORITIES
+                            List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))
                     );
             SecurityContextHolder.getContext().setAuthentication(authentication);
             filterChain.doFilter(request, response);
