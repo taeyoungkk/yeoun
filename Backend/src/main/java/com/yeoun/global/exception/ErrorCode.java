@@ -13,6 +13,7 @@ public enum ErrorCode {
     GOOGLE_EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN, "Google email is not verified."),
     GOOGLE_OAUTH_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "Failed to communicate with Google OAuth provider."),
     GOOGLE_OAUTH_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "Google OAuth provider request timed out."),
+    AUTH_PROVIDER_MISMATCH(HttpStatus.CONFLICT, "This email is already registered with a different login provider."),
     INVALID_EMAIL_FORMAT(HttpStatus.BAD_REQUEST, "Email format is invalid."),
     INVALID_EMAIL_CODE_FORMAT(HttpStatus.BAD_REQUEST, "Verification code format is invalid."),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "Email is already in use."),
