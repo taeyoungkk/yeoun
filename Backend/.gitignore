@@ -43,6 +43,7 @@ logs/
 ### Env ###
 .env
 .env.*
+!.env.example
 
 ### Local Spring config ###
 application-local.properties

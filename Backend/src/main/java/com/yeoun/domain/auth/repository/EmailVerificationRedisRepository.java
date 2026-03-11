@@ -85,6 +85,10 @@ public class EmailVerificationRedisRepository {
         return Boolean.TRUE.equals(stringRedisTemplate.hasKey(resendBlockKey(email)));
     }
 
+    public void deleteResendBlock(String email) {
+        stringRedisTemplate.delete(resendBlockKey(email));
+    }
+
     public void saveFailCount(String email, int failCount) {
         stringRedisTemplate.opsForValue().set(failKey(email), String.valueOf(failCount), FAIL_TTL);
     }
