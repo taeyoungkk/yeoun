@@ -17,6 +17,7 @@ public enum ErrorCode {
     INVALID_EMAIL_FORMAT(HttpStatus.BAD_REQUEST, "Email format is invalid."),
     INVALID_EMAIL_CODE_FORMAT(HttpStatus.BAD_REQUEST, "Verification code format is invalid."),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "Email is already in use."),
+    EMAIL_NOT_VERIFIED(HttpStatus.BAD_REQUEST, "Email verification is required before sign up."),
     EMAIL_ALREADY_VERIFIED(HttpStatus.CONFLICT, "Email is already verified."),
     EMAIL_CODE_MISMATCH(HttpStatus.BAD_REQUEST, "Verification code is incorrect."),
     EMAIL_CODE_EXPIRED(HttpStatus.BAD_REQUEST, "Verification code has expired."),

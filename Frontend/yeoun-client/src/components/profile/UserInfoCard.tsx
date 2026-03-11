@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { router } from 'expo-router';
 
 export interface UserInfoData {
   email: string;
@@ -14,7 +15,13 @@ interface Props {
 
 export function UserInfoCard({ data }: Props) {
   return (
-    <View style={styles.card}>
+    <View className="bg-white rounded-3xl py-7 px-8 mx-5 mb-8 shadow-sm">
+      <View className="flex-row justify-between items-start absolute right-6 top-6 z-10">
+        <TouchableOpacity onPress={() => router.push('/edit-profile')} className="px-2 py-1 bg-[#F3F6EB] rounded-lg">
+          <Text className="text-xs font-bold text-[#6D7759]">수정하기</Text>
+        </TouchableOpacity>
+      </View>
+
       <InfoItem label="이메일" value={data.email} />
       <InfoItem label="휴대폰" value={data.phone} />
       <InfoItem label="가입일" value={data.joinDate} />
@@ -24,41 +31,8 @@ export function UserInfoCard({ data }: Props) {
 }
 
 const InfoItem = ({ label, value, isLast }: { label: string; value: string; isLast?: boolean }) => (
-  <View style={[styles.itemContainer, !isLast && styles.itemMargin]}>
-    <Text style={styles.label}>{label}</Text>
-    <Text style={styles.value}>{value}</Text>
+  <View className={`justify-start ${!isLast ? 'mb-5' : ''}`}>
+    <Text className="text-[17px] font-bold text-black mb-2">{label}</Text>
+    <Text className="text-[15px] text-[#A0A0A0]">{value}</Text>
   </View>
 );
-
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    paddingVertical: 28,
-    paddingHorizontal: 32,
-    marginHorizontal: 20,
-    marginBottom: 32,
-    // Very soft shadow for separation
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  itemContainer: {
-    justifyContent: 'flex-start',
-  },
-  itemMargin: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 8,
-  },
-  value: {
-    fontSize: 15,
-    color: '#A0A0A0',
-  }
-});

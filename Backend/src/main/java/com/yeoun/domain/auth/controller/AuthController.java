@@ -3,15 +3,19 @@ package com.yeoun.domain.auth.controller;
 import com.yeoun.domain.auth.dto.request.GoogleLoginRequest;
 import com.yeoun.domain.auth.dto.request.LoginRequest;
 import com.yeoun.domain.auth.dto.request.RefreshTokenRequest;
+import com.yeoun.domain.auth.dto.request.SignUpRequest;
+import com.yeoun.domain.auth.dto.response.AuthTokenResponse;
 import com.yeoun.domain.auth.dto.request.SendEmailCodeRequest;
 import com.yeoun.domain.auth.dto.request.VerifyEmailCodeRequest;
 import com.yeoun.domain.auth.dto.response.AuthTokenResponse;
 import com.yeoun.domain.auth.dto.response.EmailCodeSendResponse;
 import com.yeoun.domain.auth.dto.response.EmailVerificationResponse;
 import com.yeoun.domain.auth.dto.response.LoginResponse;
+import com.yeoun.domain.auth.dto.response.SignUpResponse;
 import com.yeoun.domain.auth.service.EmailVerificationService;
 import com.yeoun.domain.auth.service.LocalLoginService;
 import com.yeoun.domain.auth.service.OAuthService;
+import com.yeoun.domain.auth.service.LocalSignUpService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.jwt.JwtTokenResolver;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -33,19 +37,29 @@ public class AuthController {
 
     private final LocalLoginService localLoginService;
     private final OAuthService oAuthService;
+    private final LocalSignUpService localSignUpService;
     private final JwtTokenResolver jwtTokenResolver;
     private final EmailVerificationService emailVerificationService;
 
     public AuthController(
             LocalLoginService localLoginService,
             OAuthService oAuthService,
+            LocalSignUpService localSignUpService,
             EmailVerificationService emailVerificationService,
             JwtTokenResolver jwtTokenResolver
     ) {
         this.localLoginService = localLoginService;
         this.oAuthService = oAuthService;
+        this.localSignUpService = localSignUpService;
         this.emailVerificationService = emailVerificationService;
         this.jwtTokenResolver = jwtTokenResolver;
+    }
+
+    @PostMapping("/signup")
+    @Operation(summary = "Sign up", description = "Sign up with email, password, and nickname.")
+    public ApiResponse<SignUpResponse> signUp(@Valid @RequestBody SignUpRequest request) {
+        SignUpResponse response = localSignUpService.signUp(request);
+        return ApiResponse.ok(response);
     }
 
     @PostMapping("/login")
