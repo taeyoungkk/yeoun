@@ -5,6 +5,14 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode {
 
     INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "Invalid request value."),
+    GOOGLE_INVALID_ID_TOKEN(HttpStatus.UNAUTHORIZED, "Google idToken is invalid."),
+    GOOGLE_EXPIRED_ID_TOKEN(HttpStatus.UNAUTHORIZED, "Google idToken is expired."),
+    GOOGLE_INVALID_AUDIENCE(HttpStatus.UNAUTHORIZED, "Google token audience is invalid."),
+    GOOGLE_INVALID_ISSUER(HttpStatus.UNAUTHORIZED, "Google token issuer is invalid."),
+    GOOGLE_USER_INFO_MISSING(HttpStatus.BAD_REQUEST, "Required Google user information is missing."),
+    GOOGLE_EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN, "Google email is not verified."),
+    GOOGLE_OAUTH_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "Failed to communicate with Google OAuth provider."),
+    GOOGLE_OAUTH_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "Google OAuth provider request timed out."),
     INVALID_EMAIL_FORMAT(HttpStatus.BAD_REQUEST, "Email format is invalid."),
     INVALID_EMAIL_CODE_FORMAT(HttpStatus.BAD_REQUEST, "Verification code format is invalid."),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "Email is already in use."),
