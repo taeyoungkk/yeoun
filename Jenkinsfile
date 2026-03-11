@@ -59,7 +59,7 @@
 
     stage('Build Worker Image') {
       when {
-        expression { env.IS_DEVELOP == 'true' && env.CHANGED_WORKER == 'true' && fileExists('Worker/Dockerfile') && fileExists('Worker/requirements.txt') }
+        expression { env.IS_DEVELOP == 'true' && env.CHANGED_WORKER == 'true' && fileExists('Worker/Dockerfile') }
       }
       steps {
         script {

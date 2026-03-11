@@ -1,5 +1,4 @@
-﻿# Spring Boot API image build template.
-# Assumes a Maven-based backend under Backend/.
+﻿# syntax=docker/dockerfile:1
 
 FROM maven:3.9.9-eclipse-temurin-21 AS builder
 WORKDIR /app
@@ -7,14 +6,18 @@ WORKDIR /app
 COPY pom.xml ./
 COPY mvnw ./
 COPY .mvn ./.mvn
-RUN chmod +x mvnw || true
-RUN if [ -f ./mvnw ]; then ./mvnw -q -DskipTests dependency:go-offline; else mvn -q -DskipTests dependency:go-offline; fi
+RUN chmod +x mvnw
+
+RUN ./mvnw -q -DskipTests dependency:go-offline
 
 COPY src ./src
-RUN if [ -f ./mvnw ]; then ./mvnw -q -DskipTests package; else mvn -q -DskipTests package; fi
+RUN ./mvnw -q -DskipTests package
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY --from=builder /app/target/*.jar app.jar
+
+COPY --from=builder /app/target/*.jar /app/app.jar
+
 EXPOSE 8080
+
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
