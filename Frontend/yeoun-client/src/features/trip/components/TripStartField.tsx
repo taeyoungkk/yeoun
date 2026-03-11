@@ -48,9 +48,7 @@ export function TripStartField({
         )}
       </View>
 
-      <View style={styles.sideSlot}>
-        {rightSlot}
-      </View>
+      <View style={styles.sideSlot}>{rightSlot}</View>
     </Pressable>
   );
 }
@@ -94,21 +92,13 @@ export function TripMemberCounter({
 }) {
   return (
     <View style={styles.counterWrap}>
-      <TouchableOpacity
-        style={styles.counterButton}
-        onPress={onDecrease}
-        activeOpacity={0.8}
-      >
+      <TouchableOpacity style={styles.counterButton} onPress={onDecrease} activeOpacity={0.8}>
         <MaterialIcons name="remove" size={16} color="#5D6967" />
       </TouchableOpacity>
 
       <Text style={styles.counterValue}>{count}명</Text>
 
-      <TouchableOpacity
-        style={styles.counterButton}
-        onPress={onIncrease}
-        activeOpacity={0.8}
-      >
+      <TouchableOpacity style={styles.counterButton} onPress={onIncrease} activeOpacity={0.8}>
         <MaterialIcons name="add" size={16} color="#5D6967" />
       </TouchableOpacity>
     </View>

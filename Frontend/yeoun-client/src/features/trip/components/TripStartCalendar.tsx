@@ -94,32 +94,32 @@ export function TripStartCalendar({
       {pickerMode ? (
         <View style={styles.verticalPickerOverlay}>
           <View style={styles.verticalPickerCard}>
-          <ScrollView showsVerticalScrollIndicator={false} style={styles.verticalPickerScroll}>
-            {(pickerMode === 'month' ? monthLabels : years).map((item) => {
-              const label = String(item);
-              const active =
-                pickerMode === 'month'
-                  ? calendarMonth.getMonth() === monthLabels.indexOf(label)
-                  : calendarMonth.getFullYear() === Number(label);
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.verticalPickerScroll}>
+              {(pickerMode === 'month' ? monthLabels : years).map((item) => {
+                const label = String(item);
+                const active =
+                  pickerMode === 'month'
+                    ? calendarMonth.getMonth() === monthLabels.indexOf(label)
+                    : calendarMonth.getFullYear() === Number(label);
 
-              return (
-                <TouchableOpacity
-                  key={label}
-                  style={[styles.pickerOption, active && styles.pickerOptionActive]}
-                  onPress={() =>
-                    pickerMode === 'month'
-                      ? onSelectMonth(monthLabels.indexOf(label))
-                      : onSelectYear(Number(label))
-                  }
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.pickerOptionText, active && styles.pickerOptionTextActive]}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+                return (
+                  <TouchableOpacity
+                    key={label}
+                    style={[styles.pickerOption, active && styles.pickerOptionActive]}
+                    onPress={() =>
+                      pickerMode === 'month'
+                        ? onSelectMonth(monthLabels.indexOf(label))
+                        : onSelectYear(Number(label))
+                    }
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.pickerOptionText, active && styles.pickerOptionTextActive]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         </View>
       ) : null}
@@ -136,6 +136,7 @@ export function TripStartCalendar({
         {days.map(({ date, currentMonth }) => {
           const selected = isSameDay(date, startDate) || isSameDay(date, endDate);
           const inRange = isDateBetween(date, startDate, endDate);
+
           return (
             <View key={date.toISOString()} style={styles.dayCell}>
               <TouchableOpacity

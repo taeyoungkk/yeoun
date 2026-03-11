@@ -3,10 +3,9 @@ import { StyleSheet, Text, View } from 'react-native';
 
 type TripStartHeaderProps = {
   nickname: string;
-  onBack: () => void;
 };
 
-export function TripStartHeader({ nickname, onBack }: TripStartHeaderProps) {
+export function TripStartHeader({ nickname }: TripStartHeaderProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>
@@ -22,18 +21,10 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     paddingHorizontal: 6,
   },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-  },
   title: {
     fontFamily: 'Pretendard-Bold',
-    fontSize: 24,
-    lineHeight: 32,
+    fontSize: 20,
+    lineHeight: 28,
     color: '#162018',
   },
 });

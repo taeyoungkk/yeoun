@@ -1,29 +1,97 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type InviteStatus = 'pending' | 'accepted' | 'expired';
+export type InviteStatus = 'pending' | 'accepted' | 'expired' | 'canceled';
 
-type InviteMember = {
+export type InviteCandidate = {
   id: number;
   name: string;
+  nickname: string;
+};
+
+export type InviteMember = {
+  id: number;
+  name: string;
+  nickname: string;
   status: InviteStatus;
 };
 
 type TripInviteScreenProps = {
   query: string;
+  candidates: InviteCandidate[];
   members: InviteMember[];
+  inviteLink: string;
   onBack: () => void;
   onChangeQuery: (value: string) => void;
+  onInviteMember: (candidate: InviteCandidate) => void;
+  onCancelInvite: (memberId: number) => void;
 };
+
+function getStatusLabel(status: InviteStatus) {
+  switch (status) {
+    case 'accepted':
+      return '수락';
+    case 'expired':
+      return '만료';
+    case 'canceled':
+      return '취소';
+    default:
+      return '보냄';
+  }
+}
+
+function getStatusIcon(status: InviteStatus) {
+  switch (status) {
+    case 'accepted':
+      return 'check-circle';
+    case 'expired':
+      return 'cancel';
+    case 'canceled':
+      return 'remove-circle';
+    default:
+      return 'schedule';
+  }
+}
+
+function getStatusColor(status: InviteStatus) {
+  switch (status) {
+    case 'accepted':
+      return '#73B487';
+    case 'expired':
+      return '#E57E7E';
+    case 'canceled':
+      return '#A6AFAB';
+    default:
+      return '#89A9A1';
+  }
+}
 
 export function TripInviteScreen({
   query,
+  candidates,
   members,
+  inviteLink,
   onBack,
   onChangeQuery,
+  onInviteMember,
+  onCancelInvite,
 }: TripInviteScreenProps) {
+  const handleCopyLink = async () => {
+    const Clipboard = await import('expo-clipboard');
+    await Clipboard.setStringAsync(inviteLink);
+    Alert.alert('링크 복사', '초대 링크를 클립보드에 복사했습니다.');
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -46,6 +114,49 @@ export function TripInviteScreen({
           />
         </View>
 
+        {query.trim().length > 0 ? (
+          <View style={styles.resultCard}>
+            <View style={styles.resultHeader}>
+              <Text style={styles.resultTitle}>검색 결과</Text>
+              <Text style={styles.resultCount}>{candidates.length}명</Text>
+            </View>
+
+            <ScrollView
+              style={styles.resultList}
+              showsVerticalScrollIndicator
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+            >
+              {candidates.length > 0 ? (
+                candidates.map((candidate, index) => (
+                  <View
+                    key={candidate.id}
+                    style={[
+                      styles.resultRow,
+                      index !== candidates.length - 1 && styles.resultDivider,
+                    ]}
+                  >
+                    <View style={styles.resultInfo}>
+                      <Text style={styles.resultName}>{candidate.name}</Text>
+                      <Text style={styles.resultNickname}>@{candidate.nickname}</Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.inviteButton}
+                      onPress={() => onInviteMember(candidate)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.inviteButtonText}>초대</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>검색 결과가 없습니다.</Text>
+              )}
+            </ScrollView>
+          </View>
+        ) : null}
+
         <View style={styles.orDivider}>
           <View style={styles.dividerLine} />
           <Text style={styles.dividerLabel}>또는</Text>
@@ -58,7 +169,13 @@ export function TripInviteScreen({
             <Text style={styles.shareTitle}>초대 링크 공유</Text>
           </View>
 
-          <TouchableOpacity style={styles.copyButton} activeOpacity={0.85}>
+          <View style={styles.linkPreview}>
+            <Text style={styles.linkPreviewText} numberOfLines={2}>
+              {inviteLink}
+            </Text>
+          </View>
+
+          <TouchableOpacity style={styles.copyButton} onPress={handleCopyLink} activeOpacity={0.85}>
             <Text style={styles.copyButtonText}>링크 복사</Text>
             <MaterialIcons name="content-copy" size={18} color="#40503F" />
           </TouchableOpacity>
@@ -72,39 +189,32 @@ export function TripInviteScreen({
                 key={member.id}
                 style={[styles.statusRow, index !== members.length - 1 && styles.statusDivider]}
               >
-                <Text style={styles.memberName}>{member.name}</Text>
-                <View style={styles.statusBadgeWrap}>
-                  <MaterialIcons
-                    name={
-                      member.status === 'accepted'
-                        ? 'check-circle'
-                        : member.status === 'expired'
-                          ? 'cancel'
-                          : 'schedule'
-                    }
-                    size={16}
-                    color={
-                      member.status === 'accepted'
-                        ? '#73B487'
-                        : member.status === 'expired'
-                          ? '#E57E7E'
-                          : '#89A9A1'
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.statusText,
-                      member.status === 'accepted' && styles.acceptedText,
-                      member.status === 'expired' && styles.expiredText,
-                      member.status === 'pending' && styles.pendingText,
-                    ]}
-                  >
-                    {member.status === 'accepted'
-                      ? '수락'
-                      : member.status === 'expired'
-                        ? '만료'
-                        : '보냄'}
-                  </Text>
+                <View style={styles.memberInfo}>
+                  <Text style={styles.memberName}>{member.name}</Text>
+                  <Text style={styles.memberNickname}>@{member.nickname}</Text>
+                </View>
+
+                <View style={styles.statusRight}>
+                  <View style={styles.statusBadgeWrap}>
+                    <MaterialIcons
+                      name={getStatusIcon(member.status)}
+                      size={16}
+                      color={getStatusColor(member.status)}
+                    />
+                    <Text style={[styles.statusText, { color: getStatusColor(member.status) }]}>
+                      {getStatusLabel(member.status)}
+                    </Text>
+                  </View>
+
+                  {member.status === 'pending' ? (
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={() => onCancelInvite(member.id)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.cancelButtonText}>취소</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
             ))}
@@ -126,8 +236,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingTop: 60,
+    paddingBottom: 18,
   },
   backButton: {
     width: 36,
@@ -137,7 +247,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: 'Pretendard-Bold',
-    fontSize: 22,
+    fontSize: 20,
     color: '#151A17',
   },
   headerSpacer: {
@@ -145,7 +255,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 22,
     paddingBottom: 36,
   },
   searchWrap: {
@@ -162,6 +272,78 @@ const styles = StyleSheet.create({
     fontFamily: 'Pretendard-Medium',
     fontSize: 15,
     color: '#151A17',
+  },
+  resultCard: {
+    marginTop: 12,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  resultTitle: {
+    fontFamily: 'Pretendard-SemiBold',
+    fontSize: 14,
+    color: '#7F8E86',
+  },
+  resultCount: {
+    fontFamily: 'Pretendard-Medium',
+    fontSize: 13,
+    color: '#96A19B',
+  },
+  resultList: {
+    maxHeight: 220,
+  },
+  resultRow: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  resultInfo: {
+    flex: 1,
+  },
+  resultDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDF1EC',
+  },
+  resultName: {
+    fontFamily: 'Pretendard-Medium',
+    fontSize: 15,
+    color: '#151A17',
+  },
+  resultNickname: {
+    marginTop: 2,
+    fontFamily: 'Pretendard-Regular',
+    fontSize: 13,
+    color: '#96A19B',
+  },
+  inviteButton: {
+    height: 34,
+    minWidth: 62,
+    borderRadius: 17,
+    paddingHorizontal: 14,
+    backgroundColor: '#DCE6D9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteButtonText: {
+    fontFamily: 'Pretendard-SemiBold',
+    fontSize: 14,
+    color: '#40503F',
+  },
+  emptyText: {
+    paddingVertical: 20,
+    textAlign: 'center',
+    fontFamily: 'Pretendard-Regular',
+    fontSize: 14,
+    color: '#97A39C',
   },
   orDivider: {
     flexDirection: 'row',
@@ -196,6 +378,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#151A17',
   },
+  linkPreview: {
+    minHeight: 56,
+    borderRadius: 18,
+    backgroundColor: '#F6F8F4',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  linkPreviewText: {
+    fontFamily: 'Pretendard-Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#627067',
+  },
   copyButton: {
     height: 48,
     borderRadius: 24,
@@ -226,19 +423,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   statusRow: {
-    height: 56,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
   },
   statusDivider: {
     borderBottomWidth: 1,
     borderBottomColor: '#EDF1EC',
   },
+  memberInfo: {
+    gap: 2,
+  },
   memberName: {
     fontFamily: 'Pretendard-Medium',
     fontSize: 16,
     color: '#151A17',
+  },
+  memberNickname: {
+    fontFamily: 'Pretendard-Regular',
+    fontSize: 13,
+    color: '#96A19B',
+  },
+  statusRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   statusBadgeWrap: {
     flexDirection: 'row',
@@ -249,14 +460,19 @@ const styles = StyleSheet.create({
     fontFamily: 'Pretendard-SemiBold',
     fontSize: 15,
   },
-  acceptedText: {
-    color: '#73B487',
+  cancelButton: {
+    height: 30,
+    minWidth: 48,
+    borderRadius: 15,
+    paddingHorizontal: 10,
+    backgroundColor: '#F1F3F0',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  expiredText: {
-    color: '#E57E7E',
-  },
-  pendingText: {
-    color: '#89A9A1',
+  cancelButtonText: {
+    fontFamily: 'Pretendard-Medium',
+    fontSize: 13,
+    color: '#66726A',
   },
   expireNote: {
     marginTop: 14,
