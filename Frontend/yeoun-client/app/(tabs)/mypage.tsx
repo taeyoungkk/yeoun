@@ -7,6 +7,8 @@ import { ProfileHeader } from "@/src/components/profile/ProfileHeader";
 import { UserInfoCard } from "@/src/components/profile/UserInfoCard";
 import { TripList } from "@/src/components/profile/TripList";
 import { TripData } from "@/src/components/profile/TripCard";
+import { TravelMap } from "@/src/components/profile/TravelMap";
+import { TreeRingsChart } from "@/src/components/profile/TreeRingsChart";
 
 const MOCK_USER_DATA = {
   email: 'qwerty@gmail.com',
@@ -87,6 +89,10 @@ export default function MyPageScreen() {
           onViewMore={() => console.log('View more past trips')} 
           onToggleFavorite={(id) => handleToggleFavorite(id, false)}
         />
+        
+        <TravelMap />
+        
+        <TreeRingsChart />
         
       </ScrollView>
     </SafeAreaView>
