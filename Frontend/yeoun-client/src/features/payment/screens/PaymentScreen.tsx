@@ -2,11 +2,16 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useColorScheme } from '@/src/hooks/use-color-scheme';
+import { useRouter } from 'expo-router';
 import { ExpenseGraph } from '@/src/features/payment/components/ExpenseGraph';
+import { BankCard } from '@/src/features/payment/components/BankCard';
+import { useCardStore } from '@/src/store/cardStore';
 
 export default function PaymentScreen() {
-  // Using explicit colors from the Figma design properties
+  const router = useRouter();
+  const { cards, removeCard } = useCardStore();
+
+  // Explicit colors from the Figma design properties
   const bgColor = '#EBF3EA';
 
   return (
@@ -36,28 +41,34 @@ export default function PaymentScreen() {
         <View className="mt-10 px-2">
           <View className="flex-row justify-between items-end mb-4">
             <Text className="text-black font-bold text-xl" style={{ fontFamily: 'DM Sans' }}>연동된 카드/계좌</Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/add-card' as any)}>
               <Text className="text-black text-sm" style={{ fontFamily: 'DM Sans' }}>추가하기</Text>
             </TouchableOpacity>
           </View>
           
-          <View style={styles.glassCard} className="p-5 flex-row items-center">
-            {/* KB Logo Placeholder */}
-            <View className="w-12 h-12 bg-[#FFD600] rounded-full mr-4 items-center justify-center">
-              <Text className="text-xs font-bold text-gray-800">KB</Text>
+          {cards.length > 0 ? (
+            cards.map((card) => (
+              <BankCard 
+                key={card.id} 
+                card={card}
+                onDelete={removeCard}
+              />
+            ))
+          ) : (
+            <View className="py-8 items-center justify-center opacity-50">
+              <Text style={{ fontFamily: 'DM Sans' }}>등록된 카드가 없습니다.</Text>
             </View>
-            <View>
-              <Text className="text-gray-500 text-xs mb-1" style={{ fontFamily: 'DM Sans' }}>국민은행</Text>
-              <Text className="text-black text-base font-medium tracking-widest" style={{ fontFamily: 'DM Sans' }}>**** 0345</Text>
-            </View>
-          </View>
+          )}
         </View>
 
         {/* Trip Expenses */}
         <View className="mt-8 px-2">
           <View className="flex-row justify-between items-end mb-4">
             <Text className="text-black font-bold text-xl" style={{ fontFamily: 'DM Sans' }}>현재 여행 지출</Text>
-            <TouchableOpacity className="flex-row items-center">
+            <TouchableOpacity 
+              onPress={() => router.push('/payment-details' as any)} 
+              className="flex-row items-center"
+            >
               <Text className="font-bold text-sm mr-1" style={{ fontFamily: 'DM Sans', color: '#DE7254' }}>자세히 보기</Text>
               <Ionicons name="arrow-forward" size={16} color="#DE7254" />
             </TouchableOpacity>
