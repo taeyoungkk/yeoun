@@ -1,5 +1,7 @@
 package com.yeoun.domain.user.controller;
 
+import com.yeoun.domain.auth.dto.response.AuthTokenResponse;
+import com.yeoun.domain.user.dto.request.ChangePasswordRequest;
 import com.yeoun.domain.user.dto.request.UpdateMeRequest;
 import com.yeoun.domain.user.dto.response.MeResponse;
 import com.yeoun.domain.user.service.UserProfileService;
@@ -60,5 +62,15 @@ public class UserController {
         String accessToken = jwtTokenResolver.resolveAccessToken(request);
         userProfileService.withdrawMe(principal.userId(), accessToken);
         return ApiResponse.ok();
+    }
+
+    @PatchMapping("/me/password")
+    @Operation(summary = "비밀번호 변경", description = "현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다.")
+    public ApiResponse<AuthTokenResponse> changePassword(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @Valid @RequestBody ChangePasswordRequest changePasswordRequest
+    ) {
+        AuthTokenResponse response = userProfileService.changePassword(principal.userId(), changePasswordRequest);
+        return ApiResponse.ok(response);
     }
 }

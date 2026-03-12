@@ -16,6 +16,10 @@ public final class PasswordPolicyValidator {
             throw new BaseException(ErrorCode.PASSWORD_LENGTH_INVALID);
         }
 
+        if (!containsLetter(password)) {
+            throw new BaseException(ErrorCode.PASSWORD_LETTER_REQUIRED);
+        }
+
         if (!containsDigit(password)) {
             throw new BaseException(ErrorCode.PASSWORD_NUMBER_REQUIRED);
         }
@@ -28,6 +32,15 @@ public final class PasswordPolicyValidator {
     private static boolean containsDigit(String value) {
         for (int i = 0; i < value.length(); i++) {
             if (Character.isDigit(value.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean containsLetter(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            if (Character.isLetter(value.charAt(i))) {
                 return true;
             }
         }
