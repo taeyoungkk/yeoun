@@ -15,6 +15,7 @@ import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import com.yeoun.global.security.jwt.JwtTokenProvider;
 import com.yeoun.global.util.EmailNormalizer;
+import com.yeoun.global.util.PasswordPolicyValidator;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +54,8 @@ public class LocalSignUpService {
 
     @Transactional
     public SignUpResponse signUp(SignUpRequest request) {
+        PasswordPolicyValidator.validateOrThrow(request.password());
+
         // 중복 체크와 저장에 사용할 수 있도록 이메일을 일관된 형태로 맞춘다.
         String normalizedEmail = EmailNormalizer.normalize(request.email());
 
@@ -88,7 +91,8 @@ public class LocalSignUpService {
                         accessToken,
                         refreshToken,
                         TOKEN_TYPE,
-                        jwtTokenProvider.getAccessTokenExpirationSeconds()
+                        jwtTokenProvider.getAccessTokenExpirationSeconds(),
+                        true
                 )
         );
     }

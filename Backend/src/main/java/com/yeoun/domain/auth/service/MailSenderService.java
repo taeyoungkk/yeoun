@@ -13,7 +13,8 @@ import java.security.SecureRandom;
 public class MailSenderService {
 
     private static final int EMAIL_CODE_LENGTH = 6;
-    private static final String EMAIL_SUBJECT = "[Yeoun] 이메일 인증코드 안내";
+    private static final String EMAIL_SUBJECT = "[Yeoun] 이메일 인증 코드 안내";
+    private static final String PASSWORD_RESET_SUBJECT = "[Yeoun] 비밀번호 재설정 코드 안내";
 
     private final JavaMailSender javaMailSender;
     private final SecureRandom secureRandom;
@@ -37,24 +38,44 @@ public class MailSenderService {
     }
 
     public void sendVerificationCodeEmail(String toEmail, String code) {
+        sendCodeEmail(
+                toEmail,
+                EMAIL_SUBJECT,
+                """
+                        안녕하세요. Yeoun 이메일 인증 코드입니다.
+
+                        인증코드: %s
+                        유효시간: 3분
+
+                        본인이 요청하지 않았다면 이 메일을 무시해 주세요.
+                        """.formatted(code)
+        );
+    }
+
+    public void sendPasswordResetCodeEmail(String toEmail, String code) {
+        sendCodeEmail(
+                toEmail,
+                PASSWORD_RESET_SUBJECT,
+                """
+                        안녕하세요. Yeoun 비밀번호 재설정 코드입니다.
+
+                        인증코드: %s
+                        유효시간: 3분
+
+                        본인이 요청하지 않았다면 이 메일을 무시해 주세요.
+                        """.formatted(code)
+        );
+    }
+
+    private void sendCodeEmail(String toEmail, String subject, String body) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromAddress);
             message.setTo(toEmail);
-            message.setSubject(EMAIL_SUBJECT);
-            // 정책상 인증코드 유효시간(3분)을 본문에 명시한다.
-            message.setText("""
-                    안녕하세요. Yeoun 이메일 인증코드입니다.
-
-                    인증코드: %s
-                    유효시간: 3분
-
-                    본인이 요청하지 않았다면 이 메일을 무시해 주세요.
-                    """.formatted(code));
-
+            message.setSubject(subject);
+            message.setText(body);
             javaMailSender.send(message);
         } catch (Exception ex) {
-            // 발송 실패는 인증 플로우를 진행할 수 없으므로 비즈니스 예외로 변환한다.
             throw new BaseException(ErrorCode.EMAIL_SEND_FAILED);
         }
     }

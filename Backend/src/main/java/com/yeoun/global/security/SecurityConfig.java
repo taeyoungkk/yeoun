@@ -34,6 +34,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/email/code",
                                 "/api/v1/auth/email/verify",
+                                "/api/v1/auth/password/reset/request",
+                                "/api/v1/auth/password/reset/confirm",
                                 "/actuator/**",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",

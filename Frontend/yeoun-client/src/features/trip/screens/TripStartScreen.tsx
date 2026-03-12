@@ -281,7 +281,7 @@ export default function TripStartScreen() {
 
   const handleStartTrip = () => {
     setNoticeModalType(null);
-    router.push('/trip/record-ready');
+    router.push('/trip/recording');
   };
 
   if (screenMode === 'invite') {
