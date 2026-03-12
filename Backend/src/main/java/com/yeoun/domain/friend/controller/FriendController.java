@@ -18,6 +18,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -52,6 +53,26 @@ public class FriendController {
         // 본인과 대상 사용자 사이에 관계가 없을 때만 REQUESTED row를 생성한다.
         FriendRequestCreateResponse response = friendCommandService.createFriendRequest(principal.userId(), request);
         return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/requests/{friendshipId}/accept")
+    @Operation(summary = "친구 요청 수락", description = "현재 사용자가 받은 친구 요청을 수락합니다.")
+    public ApiResponse<Void> acceptFriendRequest(
+            @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("friendshipId") java.util.UUID friendshipId
+    ) {
+        friendCommandService.acceptFriendRequest(principal.userId(), friendshipId);
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/requests/{friendshipId}/decline")
+    @Operation(summary = "친구 요청 거절", description = "현재 사용자가 받은 친구 요청을 거절합니다.")
+    public ApiResponse<Void> declineFriendRequest(
+            @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("friendshipId") java.util.UUID friendshipId
+    ) {
+        friendCommandService.declineFriendRequest(principal.userId(), friendshipId);
+        return ApiResponse.ok();
     }
 
     @GetMapping("/requests/received")

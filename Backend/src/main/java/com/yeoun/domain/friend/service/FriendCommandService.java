@@ -71,6 +71,38 @@ public class FriendCommandService {
         );
     }
 
+    public void acceptFriendRequest(UUID currentUserId, UUID friendshipId) {
+        validateActiveUser(currentUserId);
+
+        Friendship friendship = friendshipRepository.findById(friendshipId)
+                .orElseThrow(() -> new BaseException(ErrorCode.FRIEND_REQUEST_NOT_FOUND));
+
+        if (!friendship.getFriendUserId().equals(currentUserId)) {
+            throw new BaseException(ErrorCode.FRIEND_REQUEST_ACCEPT_FORBIDDEN);
+        }
+        if (friendship.getStatus() != FriendshipStatus.REQUESTED) {
+            throw new BaseException(ErrorCode.FRIEND_REQUEST_NOT_PENDING);
+        }
+
+        friendship.accept(Instant.now());
+    }
+
+    public void declineFriendRequest(UUID currentUserId, UUID friendshipId) {
+        validateActiveUser(currentUserId);
+
+        Friendship friendship = friendshipRepository.findById(friendshipId)
+                .orElseThrow(() -> new BaseException(ErrorCode.FRIEND_REQUEST_NOT_FOUND));
+
+        if (!friendship.getFriendUserId().equals(currentUserId)) {
+            throw new BaseException(ErrorCode.FRIEND_REQUEST_DECLINE_FORBIDDEN);
+        }
+        if (friendship.getStatus() != FriendshipStatus.REQUESTED) {
+            throw new BaseException(ErrorCode.FRIEND_REQUEST_NOT_PENDING);
+        }
+
+        friendship.decline(Instant.now());
+    }
+
     private void validateActiveUser(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BaseException(ErrorCode.USER_NOT_FOUND));
