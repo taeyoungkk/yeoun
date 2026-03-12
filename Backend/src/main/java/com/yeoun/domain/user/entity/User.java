@@ -63,4 +63,10 @@ public class User {
         this.profileImageUrl = profileImageUrl;
         this.updatedAt = now;
     }
+
+    public void withdraw(Instant now) {
+        this.status = UserStatus.DELETED;
+        this.deletedAt = now;
+        this.updatedAt = now;
+    }
 }

@@ -1,8 +1,10 @@
 package com.yeoun.domain.user.service;
 
+import com.yeoun.domain.auth.service.LocalLoginService;
 import com.yeoun.domain.user.dto.request.UpdateMeRequest;
 import com.yeoun.domain.user.dto.response.MeResponse;
 import com.yeoun.domain.user.entity.User;
+import com.yeoun.domain.user.entity.UserStatus;
 import com.yeoun.domain.user.repository.UserRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
@@ -17,9 +19,11 @@ import java.util.UUID;
 public class UserProfileService {
 
     private final UserRepository userRepository;
+    private final LocalLoginService localLoginService;
 
-    public UserProfileService(UserRepository userRepository) {
+    public UserProfileService(UserRepository userRepository, LocalLoginService localLoginService) {
         this.userRepository = userRepository;
+        this.localLoginService = localLoginService;
     }
 
     public MeResponse getMe(UUID userId) {
@@ -36,6 +40,21 @@ public class UserProfileService {
 
         user.updateProfile(nextNickname, nextProfileImageUrl, Instant.now());
         return toMeResponse(user);
+    }
+
+    @Transactional
+    public void withdrawMe(UUID userId, String accessToken) {
+        if (accessToken == null || accessToken.isBlank()) {
+            throw new BaseException(ErrorCode.UNAUTHORIZED);
+        }
+
+        User user = getUserOrThrow(userId);
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new BaseException(ErrorCode.USER_DELETED);
+        }
+
+        user.withdraw(Instant.now());
+        localLoginService.logout(userId, accessToken);
     }
 
     private User getUserOrThrow(UUID userId) {
