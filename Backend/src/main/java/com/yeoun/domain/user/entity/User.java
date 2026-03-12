@@ -57,4 +57,10 @@ public class User {
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    public void updateProfile(String nickname, String profileImageUrl, Instant now) {
+        this.nickname = nickname;
+        this.profileImageUrl = profileImageUrl;
+        this.updatedAt = now;
+    }
 }

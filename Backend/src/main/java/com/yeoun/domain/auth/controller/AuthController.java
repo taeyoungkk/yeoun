@@ -21,6 +21,7 @@ import com.yeoun.global.security.jwt.JwtTokenResolver;
 import com.yeoun.global.security.principal.CurrentUser;
 import com.yeoun.global.security.principal.CustomUserPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -90,7 +91,7 @@ public class AuthController {
     @Operation(summary = "로그아웃", description = "현재 사용자의 리프레시 토큰을 Redis에서 삭제합니다.")
     @SecurityRequirement(name = "bearerAuth")
     public ApiResponse<Void> logout(
-            @CurrentUser CustomUserPrincipal principal,
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             HttpServletRequest request
     ) {
         String accessToken = jwtTokenResolver.resolveAccessToken(request);
