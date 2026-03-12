@@ -29,6 +29,7 @@ public enum ErrorCode {
     EMAIL_RESEND_BLOCKED(HttpStatus.TOO_MANY_REQUESTS, "Verification code resend is not allowed yet."),
     EMAIL_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to send verification email."),
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "Nickname is already in use."),
+    TRIP_INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "Trip start date must be before or equal to end date."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid email or password."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found."),
     USER_INACTIVE(HttpStatus.FORBIDDEN, "Inactive user cannot log in."),
