@@ -2,15 +2,15 @@ pipeline {
   agent any
 
   parameters {
-    string(name: 'DOCKERHUB_NAMESPACE', defaultValue: '', description: 'Docker Hub namespace. Leave blank to use Jenkins env var.')
-  }
+  string(name: 'DOCKERHUB_NAMESPACE', defaultValue: 'kss095', description: 'Docker Hub namespace')
+}
 
   environment {
     DOCKERHUB_CREDENTIALS = 'dockerhub-creds'
     EC2_NODE1_SSH = 'ec2-node1-ssh'
     EC2_NODE2_SSH = 'ec2-node2-ssh'
-    NODE1_HOST = 'ubuntu@NODE1_HOST'
-    NODE2_HOST = 'ubuntu@NODE2_HOST'
+    NODE1_HOST = 'ubuntu@13.124.37.66'
+    NODE2_HOST = 'ubuntu@54.180.230.198'
     PROJECT_PATH = '/opt/yeoun'
   }
 
@@ -104,6 +104,14 @@ pipeline {
         }
       }
     }
+
+    stage('Print Images') {
+      steps {
+        echo "API_IMAGE=${env.API_IMAGE ?: ''}"
+        echo "WORKER_IMAGE=${env.WORKER_IMAGE ?: ''}"
+      }
+    }
+
 
     stage('Deploy Node1') {
       when {
