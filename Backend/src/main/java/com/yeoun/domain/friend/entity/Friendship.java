@@ -53,4 +53,14 @@ public class Friendship {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public void accept(Instant now) {
+        this.status = FriendshipStatus.ACCEPTED;
+        this.updatedAt = now;
+    }
+
+    public void decline(Instant now) {
+        this.status = FriendshipStatus.DECLINED;
+        this.updatedAt = now;
+    }
 }
