@@ -2,6 +2,7 @@ package com.yeoun.domain.friend.service;
 
 import com.yeoun.domain.friend.dto.response.FriendListResponse;
 import com.yeoun.domain.friend.dto.response.FriendRelationshipStatus;
+import com.yeoun.domain.friend.dto.response.FriendRequestListItemResponse;
 import com.yeoun.domain.friend.dto.response.FriendSearchResponse;
 import com.yeoun.domain.friend.entity.Friendship;
 import com.yeoun.domain.friend.entity.FriendshipStatus;
@@ -14,7 +15,6 @@ import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -108,6 +108,20 @@ public class FriendQueryService {
                 .toList();
     }
 
+    public List<FriendRequestListItemResponse> getReceivedFriendRequests(UUID currentUserId) {
+        validateActiveUser(currentUserId);
+
+        List<Friendship> friendships = friendshipRepository.findAllReceivedRequests(currentUserId, FriendshipStatus.REQUESTED);
+        return mapFriendRequestResponses(friendships, Friendship::getUserId);
+    }
+
+    public List<FriendRequestListItemResponse> getSentFriendRequests(UUID currentUserId) {
+        validateActiveUser(currentUserId);
+
+        List<Friendship> friendships = friendshipRepository.findAllSentRequests(currentUserId, FriendshipStatus.REQUESTED);
+        return mapFriendRequestResponses(friendships, Friendship::getFriendUserId);
+    }
+
     private void validateActiveUser(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BaseException(ErrorCode.USER_NOT_FOUND));
@@ -126,6 +140,38 @@ public class FriendQueryService {
             return friendship.getFriendUserId();
         }
         return friendship.getUserId();
+    }
+
+    private List<FriendRequestListItemResponse> mapFriendRequestResponses(
+            List<Friendship> friendships,
+            Function<Friendship, UUID> targetUserIdExtractor
+    ) {
+        if (friendships.isEmpty()) {
+            return List.of();
+        }
+
+        Set<UUID> targetUserIds = friendships.stream()
+                .map(targetUserIdExtractor)
+                .collect(Collectors.toSet());
+
+        Map<UUID, User> users = userRepository.findAllById(targetUserIds).stream()
+                .filter(user -> user.getStatus() == UserStatus.ACTIVE)
+                .collect(Collectors.toMap(User::getUserId, Function.identity()));
+
+        return friendships.stream()
+                .filter(friendship -> users.containsKey(targetUserIdExtractor.apply(friendship)))
+                .map(friendship -> {
+                    UUID targetUserId = targetUserIdExtractor.apply(friendship);
+                    User user = users.get(targetUserId);
+                    return new FriendRequestListItemResponse(
+                            friendship.getFriendshipId(),
+                            user.getUserId(),
+                            user.getNickname(),
+                            user.getProfileImageUrl(),
+                            friendship.getStatus().name()
+                    );
+                })
+                .toList();
     }
 
     private FriendRelationshipStatus resolveRelationshipStatus(UUID currentUserId, Friendship friendship) {
