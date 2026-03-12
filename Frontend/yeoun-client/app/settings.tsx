@@ -78,6 +78,25 @@ export default function SettingsScreen() {
     updateUser({ [key]: value });
   };
 
+  const setRouteOnlyMode = (enabled: boolean) => {
+    if (enabled) {
+      updateUser({
+        showPhotoPins: false,
+        showPaymentPins: false,
+        showMemoPins: false,
+      });
+      return;
+    }
+
+    updateUser({
+      showPhotoPins: true,
+      showPaymentPins: settings.showPaymentPins,
+      showMemoPins: settings.showMemoPins,
+    });
+  };
+
+  const isRouteOnlyMode = !settings.showPhotoPins && !settings.showPaymentPins && !settings.showMemoPins;
+
   return (
     <SafeAreaView className="flex-1 bg-[#F3F6EB]" edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -89,7 +108,7 @@ export default function SettingsScreen() {
         <Text className="text-3xl font-bold text-[#1A1A1A]">설정</Text>
       </View>
 
-      <View className="px-5 mt-2">
+      <View className="px-5 mt-2 pb-10">
         <Text className="text-xl font-bold text-[#1A1A1A] mb-4">알림</Text>
         <View className="bg-white rounded-3xl p-5 mb-8">
           <View className="flex-row justify-between items-center mb-6">
@@ -101,7 +120,7 @@ export default function SettingsScreen() {
           </View>
           <View className="w-full h-[1px] bg-[#F0F0F0] mb-6" />
           <View className="flex-row justify-between items-center">
-            <Text className="text-lg font-medium text-[#1A1A1A]">끝 알림 받기</Text>
+            <Text className="text-lg font-medium text-[#1A1A1A]">여행 종료 알림 받기</Text>
             <IosSwitch
               value={settings.endNotif}
               onValueChange={(val) => toggleSetting('endNotif', val)}
@@ -110,7 +129,7 @@ export default function SettingsScreen() {
         </View>
 
         <Text className="text-xl font-bold text-[#1A1A1A] mb-4">권한</Text>
-        <View className="bg-white rounded-[32px] p-5">
+        <View className="bg-white rounded-[32px] p-5 mb-8">
           <View className="flex-row justify-between items-center mb-6 px-1">
             <Text className="text-lg font-medium text-[#1A1A1A]">사진 권한</Text>
             <IosSwitch
@@ -124,6 +143,44 @@ export default function SettingsScreen() {
             <IosSwitch
               value={settings.locationPerm}
               onValueChange={(val) => toggleSetting('locationPerm', val)}
+            />
+          </View>
+        </View>
+
+        <Text className="text-xl font-bold text-[#1A1A1A] mb-4">지도 표시 항목</Text>
+        <View className="bg-white rounded-[32px] p-5">
+          <View className="mb-5">
+            <Text className="text-lg font-medium text-[#1A1A1A]">동선만 보기</Text>
+            <Text className="text-sm text-[#7B867E] mt-1">
+              지도 위 기록 마커를 모두 숨기고 이동 경로만 보여줘요.
+            </Text>
+          </View>
+          <View className="flex-row justify-between items-center mb-6">
+            <Text className="text-lg font-medium text-[#1A1A1A]">동선만 표시</Text>
+            <IosSwitch value={isRouteOnlyMode} onValueChange={setRouteOnlyMode} />
+          </View>
+          <View className="w-full h-[1px] bg-[#F0F0F0] mb-6" />
+          <View className="flex-row justify-between items-center mb-6">
+            <Text className="text-lg font-medium text-[#1A1A1A]">사진 표시</Text>
+            <IosSwitch
+              value={settings.showPhotoPins}
+              onValueChange={(val) => toggleSetting('showPhotoPins', val)}
+            />
+          </View>
+          <View className="w-full h-[1px] bg-[#F0F0F0] mb-6" />
+          <View className="flex-row justify-between items-center mb-6">
+            <Text className="text-lg font-medium text-[#1A1A1A]">결제 표시</Text>
+            <IosSwitch
+              value={settings.showPaymentPins}
+              onValueChange={(val) => toggleSetting('showPaymentPins', val)}
+            />
+          </View>
+          <View className="w-full h-[1px] bg-[#F0F0F0] mb-6" />
+          <View className="flex-row justify-between items-center">
+            <Text className="text-lg font-medium text-[#1A1A1A]">메모 표시</Text>
+            <IosSwitch
+              value={settings.showMemoPins}
+              onValueChange={(val) => toggleSetting('showMemoPins', val)}
             />
           </View>
         </View>
