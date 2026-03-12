@@ -25,36 +25,61 @@ pipeline {
     disableConcurrentBuilds()
   }
 
+  properties([
+    pipelineTriggers([
+      [
+        $class: 'GitLabPushTrigger',
+        branchFilterType: 'All',
+        triggerOnPush: true,
+        triggerOnMergeRequest: true,
+        triggerOnAcceptedMergeRequest: false, // Prevents double firing when an MR is merged
+        triggerOnClosedMergeRequest: false,
+        triggerOpenMergeRequestOnPush: 'both',
+        triggerOnNoteRequest: false,
+        noteRegex: '',
+        ciSkip: true,
+        skipWorkInProgressMergeRequest: true,
+        secretToken: ''
+      ]
+    ])
+  ])
+
   stages {
     stage('Checkout & Detect Context') {
       steps {
         checkout scm
         script {
+          // ------------------------------------------------------------
+          // GitLab Webhook Plugin 변수 매핑 보완
+          // Generic Webhook Trigger 또는 GitLab Plugin 등을 위한 변수 직접 참조 및 Fallback
+          // ------------------------------------------------------------
           def pick = { List<String> keys ->
             for (k in keys) {
-              def v = env."${k}"
+              // env 맵퍼, params 맵퍼 양쪽을 모두 탐색
+              def v = env.getProperty(k) ?: params.getProperty(k)
               if (v != null && v.toString().trim()) return v.toString().trim()
             }
             return ''
           }
 
-          env.EVENT_KIND = pick(['OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
+          env.EVENT_KIND = pick(['gitlabActionType','OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
           if (env.EVENT_KIND.toLowerCase().contains('merge')) env.EVENT_KIND = 'merge_request'
           if (env.EVENT_KIND.toLowerCase().contains('push'))  env.EVENT_KIND = 'push'
 
           env.ACTOR = pick([
+            'gitlabUserName','gitlabUserUsername',
             'MR_USER_NAME','MR_USER_USERNAME',
             'PUSH_USER_NAME','PUSH_USER_USERNAME',
             'user_name','user_username',
-            'GITLAB_USER_NAME','GITLAB_USER_USERNAME',
-            'gitlabUserName','gitlabUserUsername'
+            'GITLAB_USER_NAME','GITLAB_USER_USERNAME'
           ]).trim()
           if (!env.ACTOR) env.ACTOR = 'unknown'
 
-          def refRaw = pick(['REF','ref','GIT_REF','gitRef','refChanges_0_refId'])
+          def refRaw = pick(['gitlabBranch','REF','ref','GIT_REF','gitRef','refChanges_0_refId'])
           env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').trim()
-          env.MR_SOURCE = pick(['MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch','gitlabSourceBranch']).trim()
-          env.MR_TARGET = pick(['MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch','gitlabTargetBranch']).trim()
+          
+          env.MR_SOURCE = pick(['gitlabSourceBranch','MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch']).trim()
+          env.MR_TARGET = pick(['gitlabTargetBranch','MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch']).trim()
 
           env.GIT_SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
@@ -295,7 +320,7 @@ EOT
         def payload = groovy.json.JsonOutput.toJson([
           username  : "Jenkins Operator",
           icon_emoji: icon,
-          text      : title + "\\n" + lines.join("\\n")
+          text      : title + "\n" + lines.join("\n")
         ])
 
         writeFile file: 'mm_payload.json', text: payload
