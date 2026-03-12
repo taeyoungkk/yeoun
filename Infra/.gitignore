@@ -1,0 +1,5 @@
+docker/node1/.env
+docker/node2/.env
+
+docker/node1/volumes/
+docker/node2/volumes/
