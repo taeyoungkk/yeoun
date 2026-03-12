@@ -43,7 +43,7 @@ export function ExpenseGraph() {
   ];
 
   return (
-    <View style={styles.glassCard} className="pt-8 pb-5 px-3">
+    <View className="pt-8 pb-5 px-3">
       <View className="items-center ml-[-15px]">
         <BarChart
           stackData={stackData}
@@ -70,10 +70,4 @@ export function ExpenseGraph() {
   );
 }
 
-const styles = StyleSheet.create({
-  glassCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    borderRadius: 24,
-    overflow: 'hidden',
-  }
-});
+const styles = StyleSheet.create({});

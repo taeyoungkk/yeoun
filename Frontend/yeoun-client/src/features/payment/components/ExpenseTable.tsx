@@ -1,13 +1,24 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useExpenseStore, ExpenseItem } from '@/src/store/expenseStore';
 
 export function ExpenseTable() {
-  const { expenses, members, toggleMemberInExpense, toggleExpandExpense } = useExpenseStore();
+  const { 
+    expenses, 
+    members, 
+    toggleMemberInExpense, 
+    toggleExpandExpense,
+    draggingMemberId,
+    hoveredExpenseId,
+    setHoveredExpense,
+    registerDropZone,
+    unregisterDropZone
+  } = useExpenseStore();
   
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
+  const tableContainerRef = useRef<View>(null);
 
   // Helper to find specific expense item deeply
   const getExpenseById = (items: ExpenseItem[], id: string | null): ExpenseItem | null => {
@@ -24,7 +35,7 @@ export function ExpenseTable() {
 
   const activeExpense = getExpenseById(expenses, selectedExpenseId);
 
-  // Calculate totals locally and memoize to avoid infinite loop with Zustand selectors returning new objects
+  // Calculate totals locally and memoize 
   const memberTotals = useMemo(() => {
     const totals: Record<string, number> = {};
     members.forEach(m => totals[m.id] = 0);
@@ -48,18 +59,37 @@ export function ExpenseTable() {
     return totals;
   }, [expenses, members]);
 
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
+
   const renderMemberAvatars = (item: ExpenseItem) => {
     const activeMembers = members.filter(m => item.memberIds.includes(m.id));
     
     return (
       <View className="flex-row items-center justify-center gap-1 flex-wrap px-1">
         {activeMembers.map(member => (
-          <View
+          <TouchableOpacity
             key={member.id}
-            style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: member.color }}
-          />
+            onPress={() => setSelectedAvatarId(selectedAvatarId === `${item.id}-${member.id}` ? null : `${item.id}-${member.id}`)}
+            className="relative"
+            style={{ width: 18, height: 18 }}
+          >
+            <View
+              style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: member.color }}
+            />
+            {selectedAvatarId === `${item.id}-${member.id}` && (
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  toggleMemberInExpense(item.id, member.id);
+                  setSelectedAvatarId(null);
+                }}
+                className="absolute -top-1 -right-1 bg-red-500 rounded-full w-4 h-4 items-center justify-center border border-white z-10"
+              >
+                <Ionicons name="remove" size={10} color="white" />
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
         ))}
-        {/* Plus Button to Open Modal */}
         <TouchableOpacity 
           onPress={() => {
             setSelectedExpenseId(item.id);
@@ -78,10 +108,54 @@ export function ExpenseTable() {
       ? Math.round(item.amount / item.memberIds.length) 
       : 0;
 
+    const isHovered = hoveredExpenseId === item.id;
+    const canDrop = !!draggingMemberId;
+    const viewRef = useRef<View>(null);
+
+    // Optimized measurement: only when layout changes or dragging starts
+    useEffect(() => {
+      const updateMeasure = () => {
+        if (viewRef.current) {
+          viewRef.current.measureInWindow((x, y, width, height) => {
+            if (width > 0 && height > 0) {
+              registerDropZone(item.id, { x, y, width, height });
+            }
+          });
+        }
+      };
+
+      // Initial measurement
+      const timeoutId = setTimeout(updateMeasure, 300);
+
+      // Measure once when a drag operation begins to ensure coordinates are fresh
+      if (draggingMemberId) {
+        updateMeasure();
+      }
+
+      return () => {
+        clearTimeout(timeoutId);
+        unregisterDropZone(item.id);
+      };
+    }, [item.id, !!draggingMemberId]);
+
     return (
-      <View key={item.id} className={`flex-row border-b border-gray-200 py-3 ${isSubItem ? 'bg-gray-50' : ''}`} style={{ minWidth: 500 }}>
-        {/* Location/Item */}
-        <View className="w-32 flex-row items-center border-r border-gray-200 px-2">
+      <View 
+        key={item.id} 
+        ref={viewRef}
+        className={`flex-row border-b border-gray-200 py-3 ${isSubItem ? 'bg-gray-50' : ''} ${isHovered ? 'bg-blue-100 border-blue-300' : ''}`} 
+        style={{ minWidth: 500 }}
+      >
+        <TouchableOpacity 
+          className="w-32 flex-row items-center border-r border-gray-200 px-2"
+          activeOpacity={canDrop ? 0.6 : 1}
+          onPress={() => {
+            if (canDrop && draggingMemberId) {
+              toggleMemberInExpense(item.id, draggingMemberId);
+            }
+          }}
+          onPressIn={() => canDrop && setHoveredExpense(item.id)}
+          onPressOut={() => canDrop && setHoveredExpense(null)}
+        >
           {!isSubItem && item.subItems && (
             <TouchableOpacity onPress={() => toggleExpandExpense(item.id)} className="mr-1">
               <Ionicons 
@@ -92,31 +166,31 @@ export function ExpenseTable() {
             </TouchableOpacity>
           )}
           {isSubItem && <View className="w-4" />}
-          <Text className="text-black text-sm" style={{ fontFamily: 'DM Sans' }} numberOfLines={2}>
+          <Text 
+            className={`text-sm ${canDrop ? 'text-blue-600 font-bold' : 'text-black'}`} 
+            style={{ fontFamily: 'DM Sans' }} 
+            numberOfLines={2}
+          >
             {item.name}
           </Text>
-        </View>
+        </TouchableOpacity>
 
-        {/* Time */}
         <View className="w-16 justify-center items-center border-r border-gray-200 px-1">
           <Text className="text-gray-500 text-xs" style={{ fontFamily: 'DM Sans' }}>{item.time}</Text>
         </View>
 
-        {/* Amount */}
         <View className="w-24 justify-center items-end border-r border-gray-200 px-2">
           <Text className="text-black text-sm font-bold tracking-tight" style={{ fontFamily: 'DM Sans' }}>
             {item.amount.toLocaleString()}
           </Text>
         </View>
 
-        {/* Per Person */}
         <View className="w-24 justify-center items-end border-r border-gray-200 px-2 bg-gray-50/50">
           <Text className="text-black text-sm font-medium tracking-tight" style={{ fontFamily: 'DM Sans' }}>
             {perPerson > 0 ? perPerson.toLocaleString() : ''}
           </Text>
         </View>
 
-        {/* Members */}
         <View className="w-32 justify-center py-1">
           {renderMemberAvatars(item)}
         </View>
@@ -125,12 +199,15 @@ export function ExpenseTable() {
   };
 
   return (
-    <View className="mt-6 flex-1">
-      {/* Table Container */}
+    <View className="mt-6 flex-1" ref={tableContainerRef}>
       <View className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
-        <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={true}>
+        <ScrollView 
+          horizontal 
+          bounces={false} 
+          showsHorizontalScrollIndicator={true}
+          scrollEnabled={!draggingMemberId}
+        >
           <View>
-            {/* Header */}
             <View className="flex-row border-b border-gray-300 py-3 bg-gray-100" style={{ minWidth: 500 }}>
               <View className="w-32 justify-center items-center border-r border-gray-300">
                 <Text className="font-bold text-xs" style={{ fontFamily: 'DM Sans' }}>지점/아이템</Text>
@@ -149,8 +226,7 @@ export function ExpenseTable() {
               </View>
             </View>
 
-            {/* Body */}
-            <ScrollView className="max-h-[400px]">
+            <View className="max-h-[600px]">
               {expenses.map(item => (
                 <React.Fragment key={item.id}>
                   {renderRow(item)}
@@ -159,12 +235,11 @@ export function ExpenseTable() {
                   )}
                 </React.Fragment>
               ))}
-            </ScrollView>
+            </View>
           </View>
         </ScrollView>
       </View>
 
-      {/* Member Totals Summary Footer */}
       <View className="mt-6 bg-white rounded-xl shadow-sm p-5 border border-gray-200">
         <Text className="text-black font-bold text-lg mb-4" style={{ fontFamily: 'DM Sans' }}>멤버별 정산 (총액)</Text>
         {members.map(member => (
@@ -180,7 +255,6 @@ export function ExpenseTable() {
         ))}
       </View>
 
-      {/* Overlaid Modal for selecting members per expense item */}
       <Modal visible={modalVisible} transparent animationType="fade">
         <Pressable 
           className="flex-1 bg-black/50 justify-center items-center"

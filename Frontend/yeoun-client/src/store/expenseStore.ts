@@ -22,8 +22,17 @@ interface ExpenseStore {
   addMember: (member: Omit<Member, 'id'>) => void;
   removeMember: (memberId: string) => void;
   toggleMemberInExpense: (expenseId: string, memberId: string) => void;
+  addMemberToExpense: (expenseId: string, memberId: string) => void;
   toggleExpandExpense: (expenseId: string) => void;
   getMemberTotals: () => Record<string, number>;
+  draggingMemberId: string | null;
+  setDraggingMember: (id: string | null) => void;
+  hoveredExpenseId: string | null;
+  setHoveredExpense: (id: string | null) => void;
+  dropZones: Record<string, { x: number; y: number; width: number; height: number }>;
+  registerDropZone: (id: string, layout: { x: number; y: number; width: number; height: number }) => void;
+  unregisterDropZone: (id: string) => void;
+  findDropTarget: (x: number, y: number) => string | null;
 }
 
 // Initial mock data based on the provided UI design
@@ -130,6 +139,27 @@ export const useExpenseStore = create<ExpenseStore>((set, get) => ({
       return { expenses: updateExpenses(state.expenses) };
     }),
     
+  addMemberToExpense: (expenseId, memberId) =>
+    set((state) => {
+      const updateExpenses = (items: ExpenseItem[]): ExpenseItem[] => {
+        return items.map(item => {
+          if (item.id === expenseId) {
+            if (item.memberIds.includes(memberId)) return item;
+            return {
+              ...item,
+              memberIds: [...item.memberIds, memberId]
+            };
+          }
+          if (item.subItems) {
+            return { ...item, subItems: updateExpenses(item.subItems) };
+          }
+          return item;
+        });
+      };
+      
+      return { expenses: updateExpenses(state.expenses) };
+    }),
+    
   toggleExpandExpense: (expenseId) =>
     set((state) => ({
       expenses: state.expenses.map(item => 
@@ -159,5 +189,29 @@ export const useExpenseStore = create<ExpenseStore>((set, get) => ({
 
     expenses.forEach(processItem);
     return totals;
+  },
+  draggingMemberId: null,
+  setDraggingMember: (id) => set({ draggingMemberId: id }),
+  hoveredExpenseId: null,
+  setHoveredExpense: (id) => set({ hoveredExpenseId: id }),
+  dropZones: {},
+  registerDropZone: (id, layout) => set((state) => ({ 
+    dropZones: { ...state.dropZones, [id]: layout } 
+  })),
+  unregisterDropZone: (id) => set((state) => {
+    const newZones = { ...state.dropZones };
+    delete newZones[id];
+    return { dropZones: newZones };
+  }),
+  findDropTarget: (x, y) => {
+    const { dropZones } = get();
+    for (const id in dropZones) {
+      const zone = dropZones[id];
+      // Added vertical forgiveness (5px) for easier dropping on emulator
+      if (x >= zone.x && x <= zone.x + zone.width && y >= zone.y - 5 && y <= zone.y + zone.height + 5) {
+        return id;
+      }
+    }
+    return null;
   }
 }));
