@@ -1,6 +1,6 @@
 pipeline {
   agent any
- 
+
   parameters {
     string(name: 'DOCKERHUB_NAMESPACE', defaultValue: '', description: 'Docker Hub namespace. Leave blank to use Jenkins env var.')
   }
@@ -57,17 +57,27 @@ pipeline {
             for (k in keys) {
               // env 맵퍼, params 맵퍼 양쪽을 모두 탐색
               def v = env.getProperty(k) ?: params.getProperty(k)
-              if (v != null && v.toString().trim()) return v.toString().trim()
+              // /usr/share/jenkins/ref 와 같은 도커 내부 환경변수는 거르기
+              if (v != null && v.toString().trim() && !v.toString().contains('/usr/share/jenkins')) {
+                return v.toString().trim()
+              }
             }
             return ''
           }
 
+          // 1. 이벤트 종류 매핑
           env.EVENT_KIND = pick(['gitlabActionType','OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
-          if (env.EVENT_KIND.toLowerCase().contains('merge')) env.EVENT_KIND = 'merge_request'
-          if (env.EVENT_KIND.toLowerCase().contains('push'))  env.EVENT_KIND = 'push'
+          if (env.CHANGE_ID || env.EVENT_KIND.toLowerCase().contains('merge')) {
+              env.EVENT_KIND = 'merge_request'
+          } else {
+              // 이외의 모든 이벤트(웹훅 변수가 아예 안 잡혔거나 수동 빌드 포함)는 일반적인 Push 로직을 타도록 간주
+              env.EVENT_KIND = 'push'
+          }
 
+          // 2. 실행자(액터) 매핑
           env.ACTOR = pick([
             'gitlabUserName','gitlabUserUsername',
+            'CHANGE_AUTHOR',
             'MR_USER_NAME','MR_USER_USERNAME',
             'PUSH_USER_NAME','PUSH_USER_USERNAME',
             'user_name','user_username',
@@ -75,16 +85,22 @@ pipeline {
           ]).trim()
           if (!env.ACTOR) env.ACTOR = 'unknown'
 
-          def refRaw = pick(['gitlabBranch','REF','ref','GIT_REF','gitRef','refChanges_0_refId'])
-          env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').trim()
+          // 3. 브랜치명 추출 (기존 REF, ref 때문에 /usr/share/jenkins/ref 에러가 발생하던 부분 완전 제거!!)
+          def refRaw = pick(['gitlabBranch','GIT_BRANCH','gitBranch','GIT_LOCAL_BRANCH','BRANCH_NAME','CHANGE_BRANCH','refChanges_0_refId'])
+          env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').replace('origin/', '').trim()
           
-          env.MR_SOURCE = pick(['gitlabSourceBranch','MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch']).trim()
-          env.MR_TARGET = pick(['gitlabTargetBranch','MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch']).trim()
+          env.MR_SOURCE = pick(['gitlabSourceBranch','CHANGE_BRANCH','MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch']).trim()
+          env.MR_TARGET = pick(['gitlabTargetBranch','CHANGE_TARGET','MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch']).trim()
 
           env.GIT_SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
 
-          def branchName = env.BRANCH_NAME ?: env.GIT_BRANCH ?: env.PUSH_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+          def branchName = env.PUSH_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).replace('origin/', '').trim()
+          if (branchName == 'HEAD') {
+             try {
+                 branchName = sh(script: "git branch -a --contains HEAD | grep -v 'HEAD' | head -n 1 || echo 'unknown'", returnStdout: true).replace('*', '').replace('remotes/origin/', '').trim()
+             } catch(Exception e) { branchName = 'unknown' }
+          }
           env.IS_DEVELOP = (branchName == 'develop' || branchName.endsWith('/develop')).toString()
           env.DOCKERHUB_NAMESPACE_EFFECTIVE = (params.DOCKERHUB_NAMESPACE?.trim()) ? params.DOCKERHUB_NAMESPACE.trim() : (env.DOCKERHUB_NAMESPACE ?: '').trim()
 
