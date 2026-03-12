@@ -4,6 +4,8 @@ import com.yeoun.domain.friend.dto.request.FriendRequestCreateRequest;
 import com.yeoun.domain.friend.dto.response.FriendListResponse;
 import com.yeoun.domain.friend.dto.response.FriendListResult;
 import com.yeoun.domain.friend.dto.response.FriendRequestCreateResponse;
+import com.yeoun.domain.friend.dto.response.FriendRequestListItemResponse;
+import com.yeoun.domain.friend.dto.response.FriendRequestListResult;
 import com.yeoun.domain.friend.dto.response.FriendSearchResponse;
 import com.yeoun.domain.friend.dto.response.FriendSearchResult;
 import com.yeoun.domain.friend.service.FriendCommandService;
@@ -26,7 +28,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/friends")
-@Tag(name = "Friend", description = "Friend query API")
+@Tag(name = "친구", description = "친구 관련 API")
 @SecurityRequirement(name = "bearerAuth")
 public class FriendController {
 
@@ -42,7 +44,7 @@ public class FriendController {
     }
 
     @PostMapping("/requests")
-    @Operation(summary = "Send friend request", description = "Send a friend request to another user.")
+    @Operation(summary = "친구 요청 보내기", description = "다른 사용자에게 친구 요청을 보냅니다.")
     public ApiResponse<FriendRequestCreateResponse> createFriendRequest(
             @CurrentUser CustomUserPrincipal principal,
             @Valid @RequestBody FriendRequestCreateRequest request
@@ -52,8 +54,22 @@ public class FriendController {
         return ApiResponse.ok(response);
     }
 
+    @GetMapping("/requests/received")
+    @Operation(summary = "받은 친구 요청 목록 조회", description = "현재 사용자가 받은 친구 요청 목록을 조회합니다.")
+    public ApiResponse<FriendRequestListResult> getReceivedFriendRequests(@CurrentUser CustomUserPrincipal principal) {
+        List<FriendRequestListItemResponse> response = friendQueryService.getReceivedFriendRequests(principal.userId());
+        return ApiResponse.ok(new FriendRequestListResult(response));
+    }
+
+    @GetMapping("/requests/sent")
+    @Operation(summary = "보낸 친구 요청 목록 조회", description = "현재 사용자가 보낸 친구 요청 목록을 조회합니다.")
+    public ApiResponse<FriendRequestListResult> getSentFriendRequests(@CurrentUser CustomUserPrincipal principal) {
+        List<FriendRequestListItemResponse> response = friendQueryService.getSentFriendRequests(principal.userId());
+        return ApiResponse.ok(new FriendRequestListResult(response));
+    }
+
     @GetMapping("/search")
-    @Operation(summary = "Search users", description = "Search users by nickname and include relationship status.")
+    @Operation(summary = "친구 검색", description = "닉네임으로 사용자를 검색하고 현재 친구 상태를 함께 반환합니다.")
     public ApiResponse<FriendSearchResult> searchFriends(
             @CurrentUser CustomUserPrincipal principal,
             @RequestParam("keyword") String keyword
@@ -64,7 +80,7 @@ public class FriendController {
     }
 
     @GetMapping
-    @Operation(summary = "Get friend list", description = "Return accepted friends for the current user.")
+    @Operation(summary = "친구 목록 조회", description = "현재 사용자의 친구 목록을 조회합니다.")
     public ApiResponse<FriendListResult> getFriends(@CurrentUser CustomUserPrincipal principal) {
         // 현재 사용자의 확정된 친구만 조회한다.
         List<FriendListResponse> response = friendQueryService.getFriends(principal.userId());

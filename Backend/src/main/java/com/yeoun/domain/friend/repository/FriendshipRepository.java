@@ -39,4 +39,24 @@ public interface FriendshipRepository extends JpaRepository<Friendship, UUID> {
             order by f.updatedAt desc
             """)
     List<Friendship> findAllByUserIdAndStatus(UUID userId, FriendshipStatus status);
+
+    // 내가 받은 친구 요청은 상대가 보냈고 내가 받은 REQUESTED row들이다.
+    @Query("""
+            select f
+            from Friendship f
+            where f.friendUserId = :userId
+              and f.status = :status
+            order by f.updatedAt desc
+            """)
+    List<Friendship> findAllReceivedRequests(UUID userId, FriendshipStatus status);
+
+    // 내가 보낸 친구 요청은 내가 보낸 REQUESTED row들이다.
+    @Query("""
+            select f
+            from Friendship f
+            where f.userId = :userId
+              and f.status = :status
+            order by f.updatedAt desc
+            """)
+    List<Friendship> findAllSentRequests(UUID userId, FriendshipStatus status);
 }
