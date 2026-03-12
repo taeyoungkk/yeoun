@@ -61,4 +61,10 @@ public class UserAuthAccount {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public void updatePassword(String encodedPassword, Instant now) {
+        this.passwordHash = encodedPassword;
+        this.passwordChangedAt = now;
+        this.updatedAt = now;
+    }
 }

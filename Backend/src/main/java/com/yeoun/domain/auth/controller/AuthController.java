@@ -2,6 +2,8 @@ package com.yeoun.domain.auth.controller;
 
 import com.yeoun.domain.auth.dto.request.GoogleLoginRequest;
 import com.yeoun.domain.auth.dto.request.LoginRequest;
+import com.yeoun.domain.auth.dto.request.PasswordResetConfirmRequest;
+import com.yeoun.domain.auth.dto.request.PasswordResetRequestRequest;
 import com.yeoun.domain.auth.dto.request.RefreshTokenRequest;
 import com.yeoun.domain.auth.dto.request.SignUpRequest;
 import com.yeoun.domain.auth.dto.response.AuthTokenResponse;
@@ -11,10 +13,13 @@ import com.yeoun.domain.auth.dto.response.AuthTokenResponse;
 import com.yeoun.domain.auth.dto.response.EmailCodeSendResponse;
 import com.yeoun.domain.auth.dto.response.EmailVerificationResponse;
 import com.yeoun.domain.auth.dto.response.LoginResponse;
+import com.yeoun.domain.auth.dto.response.PasswordResetConfirmResponse;
+import com.yeoun.domain.auth.dto.response.PasswordResetRequestResponse;
 import com.yeoun.domain.auth.dto.response.SignUpResponse;
 import com.yeoun.domain.auth.service.EmailVerificationService;
 import com.yeoun.domain.auth.service.LocalLoginService;
 import com.yeoun.domain.auth.service.OAuthService;
+import com.yeoun.domain.auth.service.PasswordResetService;
 import com.yeoun.domain.auth.service.LocalSignUpService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.jwt.JwtTokenResolver;
@@ -41,18 +46,21 @@ public class AuthController {
     private final LocalSignUpService localSignUpService;
     private final JwtTokenResolver jwtTokenResolver;
     private final EmailVerificationService emailVerificationService;
+    private final PasswordResetService passwordResetService;
 
     public AuthController(
             LocalLoginService localLoginService,
             OAuthService oAuthService,
             LocalSignUpService localSignUpService,
             EmailVerificationService emailVerificationService,
+            PasswordResetService passwordResetService,
             JwtTokenResolver jwtTokenResolver
     ) {
         this.localLoginService = localLoginService;
         this.oAuthService = oAuthService;
         this.localSignUpService = localSignUpService;
         this.emailVerificationService = emailVerificationService;
+        this.passwordResetService = passwordResetService;
         this.jwtTokenResolver = jwtTokenResolver;
     }
 
@@ -110,6 +118,28 @@ public class AuthController {
     @Operation(summary = "이메일 인증코드 검증", description = "이메일과 6자리 인증코드를 검증해 인증 완료 상태를 저장합니다.")
     public ApiResponse<EmailVerificationResponse> verifyEmailCode(@Valid @RequestBody VerifyEmailCodeRequest request) {
         EmailVerificationResponse response = emailVerificationService.verifyCode(request.email(), request.code());
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/password/reset/request")
+    @Operation(summary = "비밀번호 재설정 요청", description = "입력한 이메일로 비밀번호 재설정 인증코드를 발송합니다.")
+    public ApiResponse<PasswordResetRequestResponse> requestPasswordReset(
+            @Valid @RequestBody PasswordResetRequestRequest request
+    ) {
+        PasswordResetRequestResponse response = passwordResetService.requestReset(request.email());
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/password/reset/confirm")
+    @Operation(summary = "비밀번호 재설정 완료", description = "이메일/인증코드 검증 후 새 비밀번호로 변경합니다.")
+    public ApiResponse<PasswordResetConfirmResponse> confirmPasswordReset(
+            @Valid @RequestBody PasswordResetConfirmRequest request
+    ) {
+        PasswordResetConfirmResponse response = passwordResetService.confirmReset(
+                request.email(),
+                request.code(),
+                request.newPassword()
+        );
         return ApiResponse.ok(response);
     }
 }
