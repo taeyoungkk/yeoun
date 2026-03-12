@@ -25,25 +25,9 @@ pipeline {
     disableConcurrentBuilds()
   }
 
-  triggers {
-    gitlab(
-      triggerOnPush: true,
-      triggerOnMergeRequest: true,
-      triggerOnAcceptedMergeRequest: false,
-      triggerOnClosedMergeRequest: false,
-      triggerOpenMergeRequestOnPush: 'both',
-      triggerOnNoteRequest: false,
-      noteRegex: '',
-      skipWorkInProgressMergeRequest: true,
-      ciSkip: true,
-      setBuildDescription: true,
-      addNoteOnMergeRequest: true,
-      addCiMessage: true,
-      addVoteOnMergeRequest: true,
-      acceptMergeRequestOnSuccess: false,
-      branchFilterType: 'All'
-    )
-  }
+  // Jenkins Declarative Pipeline 최신 버전에 맞춰 속성 블록을 삭제합니다.
+  // 에러 원인: 설치된 플러그인이 gitlab 트리거를 지원하지 않거나, 문법 버전이 맞지 않음.
+  // 해결: 푸시 및 MR 트리거는 Jenkins UI(구성 - 빌드 유발 - Generic Webhook Trigger 등)에서 직접 설정하세요.
 
   stages {
     stage('Checkout & Detect Context') {
