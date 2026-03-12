@@ -1,7 +1,9 @@
 package com.yeoun.domain.trip.controller;
 
 import com.yeoun.domain.trip.dto.request.TripCreateRequest;
+import com.yeoun.domain.trip.dto.request.TripInviteUsersRequest;
 import com.yeoun.domain.trip.dto.response.TripCreateResponse;
+import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
 import com.yeoun.domain.trip.service.TripService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PathVariable;
 
 @RestController
 @RequestMapping("/api/v1/trips")
@@ -35,6 +38,17 @@ public class TripController {
             @Valid @RequestBody TripCreateRequest request
     ) {
         TripCreateResponse response = tripService.createTrip(principal.userId(), request);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/{tripId}/invites/users")
+    @Operation(summary = "사용자 직접 초대", description = "여행 소유자가 특정 사용자를 여행에 초대합니다.")
+    public ApiResponse<TripInviteUsersResponse> inviteUsers(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") java.util.UUID tripId,
+            @Valid @RequestBody TripInviteUsersRequest request
+    ) {
+        TripInviteUsersResponse response = tripService.inviteUsers(principal.userId(), tripId, request);
         return ApiResponse.ok(response);
     }
 }
