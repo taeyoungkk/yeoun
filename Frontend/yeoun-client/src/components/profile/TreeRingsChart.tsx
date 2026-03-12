@@ -139,12 +139,12 @@ export const TreeRingsChart = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <View className="w-full px-5 mt-0 mb-10 items-center">
       {/* SVG 나이테 차트 */}
-      <View style={styles.svgContainer}>
+      <View className="w-full max-w-[400px] aspect-square mb-6 justify-center items-center">
         {/* 터치를 안정적으로 캡처하기 위해 onStartShouldSetResponder가 있는 View 사용 */}
         <View 
-          style={styles.svgWrapper}
+          className="w-full h-full relative"
           onStartShouldSetResponder={() => true}
           onResponderRelease={handleTouch}
         >
@@ -234,60 +234,60 @@ export const TreeRingsChart = () => {
           </Svg>
 
           {/* 중심 노드 */}
-          <View style={styles.coreNode}>
-            <View style={styles.coreInner}></View>
+          <View className="absolute top-1/2 left-1/2 w-12 h-12 -ml-6 -mt-6 bg-[#6C584C] rounded-full border-4 border-[#A98467] items-center justify-center shadow-md pointer-events-none">
+            <View className="w-5 h-5 rounded-full border-2 border-[#ADC178] opacity-80"></View>
           </View>
         </View>
       </View>
 
       {/* 정보 카드 */}
-      <View style={[styles.infoCard, selectedRegionId ? styles.infoCardActive : {}]}>
-        <View style={styles.infoCardHeader}>
-          <View style={styles.infoCardHeaderLeft}>
-            <View style={[styles.infoIcon, selectedRegionId ? styles.infoIconActive : {}]}>
-              <Text style={styles.infoIconText}>{selectedRegionId ? '📍' : '🇰🇷'}</Text>
+      <View className={`w-full bg-[#F0EAD2] rounded-2xl border-2 border-[#DDE5B6] p-5 mb-6 ${selectedRegionId ? 'border-[#A98467] bg-[#FDFBF7]' : ''}`}>
+        <View className="flex-row justify-between items-end mb-3">
+          <View className="flex-row items-center gap-3">
+            <View className={`w-10 h-10 rounded-full border-2 border-[#A98467] bg-[#EBF3EA] items-center justify-center ${selectedRegionId ? 'bg-[#F0EAD2]' : ''}`}>
+              <Text className="text-lg">{selectedRegionId ? '📍' : '🇰🇷'}</Text>
             </View>
             <View>
-              <Text style={styles.infoSubtitle}>
+              <Text className="text-[10px] text-[#A98467] font-bold mb-[2px]">
                 {selectedRegionId ? selectedRegion?.desc : '대한민국 전체'}
               </Text>
-              <Text style={styles.infoTitle}>
+              <Text className="text-xl font-black text-[#6C584C]">
                 {selectedRegionId ? selectedRegion?.name : '전국 정복률'}
               </Text>
             </View>
           </View>
-          <Text style={styles.infoPercent}>{currentPercent}%</Text>
+          <Text className="text-2xl font-black text-[#6C584C]">{currentPercent}%</Text>
         </View>
         
-        <View style={styles.progressContainer}>
+        <View className="w-full h-3 bg-[#DDE5B6] rounded-full overflow-hidden mb-3">
           <LinearGradient
             colors={['#ADC178', '#A98467', '#6C584C']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={[styles.progressBar, { width: `${currentPercent}%` }]}
+            style={{ width: `${currentPercent}%`, height: '100%', borderRadius: 6 }}
           />
         </View>
         
-        <View style={styles.infoFooter}>
-          <Text style={styles.infoLabel}>
+        <View className="flex-row justify-between items-center">
+          <Text className="text-sm text-[#A98467] font-medium">
             {selectedRegionId ? `${selectedRegion?.name} 방문 지역` : '총 방문 읍·면·동'}
           </Text>
-          <Text style={styles.infoStats}>
-            <Text style={styles.infoVisited}>{currentVisited.toLocaleString()}</Text> / {currentTotal.toLocaleString()}
+          <Text className="text-sm text-[#A98467] font-medium">
+            <Text className="text-[#6C584C] font-bold text-base">{currentVisited.toLocaleString()}</Text> / {currentTotal.toLocaleString()}
           </Text>
         </View>
       </View>
 
       {/* 하단 그리드 범례 - 사용자 스크린샷에 보이는 하단 범례 */}
-      <View style={styles.gridLegend}>
+      <View className="w-full flex-row flex-wrap bg-white rounded-2xl p-4 gap-y-2 gap-x-3">
         {regionsData.map(region => (
           <TouchableOpacity 
             key={region.id} 
-            style={styles.gridLegendItem}
+            className="w-[45%] flex-row justify-between my-1"
             onPress={() => setSelectedRegionId(region.id)}
           >
-            <Text style={styles.gridLegendLabel}>{region.name}</Text>
-            <Text style={styles.gridLegendValue}>{region.visited}/{region.total}</Text>
+            <Text className="text-xs text-[#6C584C] font-medium">{region.name}</Text>
+            <Text className="text-xs text-[#333333] font-medium w-[50px] text-right">{region.visited}/{region.total}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -296,167 +296,3 @@ export const TreeRingsChart = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 20,
-    marginTop: 0,
-    marginBottom: 40,
-    alignItems: 'center',
-  },
-  svgContainer: {
-    width: '100%',
-    aspectRatio: 1,
-    maxWidth: 400,
-    marginBottom: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  svgWrapper: {
-    width: '100%',
-    height: '100%',
-    position: 'relative',
-  },
-  coreNode: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    width: 48,
-    height: 48,
-    marginLeft: -24,
-    marginTop: -24,
-    backgroundColor: '#6C584C',
-    borderRadius: 24,
-    borderWidth: 4,
-    borderColor: '#A98467',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-    pointerEvents: 'none',
-  },
-  coreInner: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#ADC178',
-    opacity: 0.8,
-  },
-  infoCard: {
-    width: '100%',
-    backgroundColor: '#F0EAD2',
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#DDE5B6',
-    padding: 20,
-    marginBottom: 24,
-  },
-  infoCardActive: {
-    borderColor: '#A98467',
-    backgroundColor: '#FDFBF7',
-  },
-  infoCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: 12,
-  },
-  infoCardHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  infoIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#A98467',
-    backgroundColor: '#EBF3EA',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoIconActive: {
-    backgroundColor: '#F0EAD2',
-  },
-  infoIconText: {
-    fontSize: 18,
-  },
-  infoSubtitle: {
-    fontSize: 10,
-    color: '#A98467',
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  infoTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#6C584C',
-  },
-  infoPercent: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#6C584C',
-  },
-  progressContainer: {
-    width: '100%',
-    height: 12,
-    backgroundColor: '#DDE5B6',
-    borderRadius: 6,
-    overflow: 'hidden',
-    marginBottom: 12,
-  },
-  progressBar: {
-    height: '100%',
-    borderRadius: 6,
-  },
-  infoFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  infoLabel: {
-    fontSize: 14,
-    color: '#A98467',
-    fontWeight: '500',
-  },
-  infoStats: {
-    fontSize: 14,
-    color: '#A98467',
-    fontWeight: '500',
-  },
-  infoVisited: {
-    color: '#6C584C',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  gridLegend: {
-    width: '100%',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    gap: 12,
-  },
-  gridLegendItem: {
-    width: '45%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 4,
-  },
-  gridLegendLabel: {
-    fontSize: 12,
-    color: '#6C584C',
-    fontWeight: '500',
-  },
-  gridLegendValue: {
-    fontSize: 12,
-    color: '#333',
-    fontWeight: '500',
-    width: 50,
-  }
-});

@@ -75,7 +75,8 @@ public class LocalLoginService {
                 accessToken,
                 refreshToken,
                 TOKEN_TYPE,
-                jwtTokenProvider.getAccessTokenExpirationSeconds()
+                jwtTokenProvider.getAccessTokenExpirationSeconds(),
+                false
         );
 
         LoginResponse.UserSummary userSummary = new LoginResponse.UserSummary(
@@ -115,7 +116,8 @@ public class LocalLoginService {
                 newAccessToken,
                 newRefreshToken,
                 TOKEN_TYPE,
-                jwtTokenProvider.getAccessTokenExpirationSeconds()
+                jwtTokenProvider.getAccessTokenExpirationSeconds(),
+                false
         );
     }
 
