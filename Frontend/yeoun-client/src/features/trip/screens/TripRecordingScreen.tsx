@@ -24,7 +24,10 @@ const hasMapboxToken = configureMapbox();
 const MAX_MAP_HEIGHT = 620;
 const MIN_MAP_HEIGHT = 250;
 const MAP_COLLAPSE_DISTANCE = 260;
-const INITIAL_PANEL_PEEK = 170;
+const INITIAL_PANEL_PEEK = 120;
+const MAP_SIDE_MARGIN = 16;
+const MAP_TOP_OFFSET = 82;
+const PANEL_TOP_OFFSET = 118;
 
 type DayFilter = 'all' | 'day1' | 'day2' | 'day3';
 type TimelineEventType = 'location' | 'photo' | 'payment' | 'memo' | 'voice' | 'emotion';
@@ -214,7 +217,7 @@ export default function TripRecordingScreen() {
   const cameraRef = useRef<Mapbox.Camera>(null);
   const scrollRef = useRef<ScrollView | null>(null);
   const cardPositionsRef = useRef<Record<string, number>>({});
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const [scrollOffset, setScrollOffset] = useState(0);
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -292,21 +295,10 @@ export default function TripRecordingScreen() {
   );
   const totalDistanceLabel = `${filteredDays.reduce((sum, day) => sum + day.distanceKm, 0).toFixed(1)}km`;
 
-  const animatedMapHeight = scrollY.interpolate({
-    inputRange: [0, MAP_COLLAPSE_DISTANCE],
-    outputRange: [MAX_MAP_HEIGHT, MIN_MAP_HEIGHT],
-    extrapolate: 'clamp',
-  });
-  const animatedMapRadius = scrollY.interpolate({
-    inputRange: [0, MAP_COLLAPSE_DISTANCE],
-    outputRange: [32, 24],
-    extrapolate: 'clamp',
-  });
-  const animatedPanelLift = scrollY.interpolate({
-    inputRange: [0, MAP_COLLAPSE_DISTANCE],
-    outputRange: [0, -110],
-    extrapolate: 'clamp',
-  });
+  const collapseProgress = Math.min(scrollOffset / MAP_COLLAPSE_DISTANCE, 1);
+  const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
+  const mapRadius = 32 - 8 * collapseProgress;
+  const panelLift = -145 * collapseProgress;
 
   useEffect(() => {
     if (routeCoordinates.length < 2) {
@@ -328,6 +320,12 @@ export default function TripRecordingScreen() {
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (selectedEventId && !filteredEvents.some((event) => event.id === selectedEventId)) {
+      setSelectedEventId(null);
+    }
+  }, [filteredEvents, selectedEventId]);
 
   const handleMapReady = () => {
     setIsMapReady(true);
@@ -357,10 +355,10 @@ export default function TripRecordingScreen() {
     }
   };
 
-  const handleMapLoadFailure = (() => {
+  const handleMapLoadFailure = () => {
     setIsMapReady(false);
     setMapLoadFailed(true);
-  }) as () => void;
+  };
 
   const toggleMapPreference = (key: MapFilterKey) => {
     updateUser({ [key]: !mapPreferences[key] });
@@ -368,7 +366,11 @@ export default function TripRecordingScreen() {
 
   const toggleRouteOnlyMode = () => {
     if (routeOnlyMode) {
-      updateUser({ showPhotoPins: true });
+      updateUser({
+        showPhotoPins: true,
+        showPaymentPins: true,
+        showMemoPins: true,
+      });
       return;
     }
 
@@ -443,10 +445,11 @@ export default function TripRecordingScreen() {
         </Pressable>
       </Modal>
 
-      <Animated.View style={[styles.floatingMapWrap, { height: animatedMapHeight, borderRadius: animatedMapRadius }]}>
+      <View style={[styles.floatingMapWrap, { height: mapHeight, borderRadius: mapRadius }]}>
         <Mapbox.MapView
           style={StyleSheet.absoluteFill}
           styleURL={Mapbox.StyleURL.Outdoors}
+          localizeLabels={{ locale: 'ko' }}
           scaleBarEnabled={false}
           attributionEnabled
           logoEnabled
@@ -553,14 +556,16 @@ export default function TripRecordingScreen() {
             );
           })}
         </ScrollView>
-      </Animated.View>
+      </View>
 
       <Animated.ScrollView
         ref={scrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+        onScroll={(event) => {
+          setScrollOffset(event.nativeEvent.contentOffset.y);
+        }}
         refreshControl={
           <RefreshControl
             refreshing={false}
@@ -573,17 +578,18 @@ export default function TripRecordingScreen() {
           />
         }
       >
-        <Animated.View
+        <View
           style={[
             styles.panel,
             {
               paddingTop: MAX_MAP_HEIGHT - INITIAL_PANEL_PEEK,
-              transform: [{ translateY: animatedPanelLift }],
+              transform: [{ translateY: panelLift }],
             },
           ]}
         >
-          <View style={styles.panelHandle} />
-          <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayTabRow}>
+          <View style={styles.contentSheet}>
+            <View style={styles.panelHandle} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayTabRow}>
             <Pressable style={[styles.dayTab, activeFilter === 'all' && styles.dayTabActive]} onPress={() => setActiveFilter('all')}>
               <Text style={[styles.dayTabText, activeFilter === 'all' && styles.dayTabTextActive]}>전체</Text>
             </Pressable>
@@ -596,11 +602,11 @@ export default function TripRecordingScreen() {
                 </Pressable>
               );
             })}
-          </Animated.ScrollView>
+            </ScrollView>
 
           {filteredDays.map((day) => (
             <View key={day.id} style={styles.daySummaryRow}>
-              <View>
+              <View style={styles.daySummaryCopy}>
                 <Text style={styles.daySummaryTitle}>{day.label} · {day.dateLabel}</Text>
                 <Text style={styles.daySummaryText}>{day.summary}</Text>
               </View>
@@ -662,7 +668,8 @@ export default function TripRecordingScreen() {
               <Text style={styles.endButtonText}>여행 종료</Text>
             </TouchableOpacity>
           </View>
-        </Animated.View>
+          </View>
+        </View>
       </Animated.ScrollView>
     </SafeAreaView>
   );
@@ -691,7 +698,20 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   modalTitle: { fontFamily: 'Pretendard-Bold', fontSize: 20, color: '#182119' },
   modalBody: { marginTop: 12, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 22, color: '#66756C' },
-  floatingMapWrap: { position: 'absolute', top: 96, left: 16, right: 16, overflow: 'hidden', backgroundColor: '#CBD7CE', shadowColor: '#1E2B22', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 10 }, elevation: 8, zIndex: 1 },
+  floatingMapWrap: {
+    position: 'absolute',
+    top: MAP_TOP_OFFSET,
+    left: MAP_SIDE_MARGIN,
+    right: MAP_SIDE_MARGIN,
+    overflow: 'hidden',
+    backgroundColor: '#CBD7CE',
+    shadowColor: '#1E2B22',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+    zIndex: 1,
+  },
   content: { paddingBottom: 34 },
   mapFilterScroll: { position: 'absolute', left: 14, right: 14, top: 22 },
   mapFilterRow: { gap: 8, paddingRight: 14 },
@@ -703,26 +723,39 @@ const styles = StyleSheet.create({
   mapStatusCard: { width: '100%', borderRadius: 24, backgroundColor: 'rgba(248, 250, 247, 0.96)', paddingHorizontal: 18, paddingVertical: 18 },
   mapStatusTitle: { marginTop: 10, fontFamily: 'Pretendard-Bold', fontSize: 17, color: '#1B261E' },
   mapStatusText: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 13, lineHeight: 20, color: '#65746B' },
-  panel: { marginTop: 180, backgroundColor: '#EFF4EC', borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 16, minHeight: 1200 },
-  panelHandle: { width: 54, height: 5, borderRadius: 999, backgroundColor: '#CDD6CA', alignSelf: 'center', marginBottom: 18 },
-  dayTabRow: { gap: 10, paddingTop: 8, paddingBottom: 18 },
+  panel: {
+    marginTop: PANEL_TOP_OFFSET,
+    marginHorizontal: MAP_SIDE_MARGIN,
+    backgroundColor: 'transparent',
+    minHeight: 1200,
+    zIndex: 3,
+  },
+  contentSheet: {
+    backgroundColor: '#EFF4EC',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 16,
+  },
+  panelHandle: { width: 54, height: 5, borderRadius: 999, backgroundColor: '#CDD6CA', alignSelf: 'center', marginBottom: 14 },
+  dayTabRow: { gap: 10, paddingTop: 18, paddingBottom: 18 },
   dayTab: { minWidth: 76, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 22, backgroundColor: '#E4ECE2', alignItems: 'center' },
   dayTabActive: { backgroundColor: '#244934' },
   dayTabText: { fontFamily: 'Pretendard-SemiBold', fontSize: 14, color: '#536258' },
   dayTabTextActive: { color: '#F7FBF6' },
   dayTabSubText: { marginTop: 2, fontFamily: 'Pretendard-Medium', fontSize: 11, color: '#8A978F' },
   dayTabSubTextActive: { color: '#C6D8CC' },
-  daySummaryRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14, paddingHorizontal: 6 },
+  daySummaryRow: { width: '100%', marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14, paddingHorizontal: 6 },
+  daySummaryCopy: { flex: 1, minWidth: 0 },
   daySummaryTitle: { fontFamily: 'Pretendard-SemiBold', fontSize: 16, color: '#1A241D' },
   daySummaryText: { marginTop: 4, fontFamily: 'Pretendard-Regular', fontSize: 13, color: '#728077' },
   dayDistanceBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, backgroundColor: '#E3ECE2' },
   dayDistanceText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#5A6D61' },
-  timelineWrap: { marginTop: 22, paddingBottom: 8 },
-  timelineRow: { flexDirection: 'row', alignItems: 'stretch', gap: 14 },
+  timelineWrap: { width: '100%', marginTop: 22, paddingBottom: 8 },
+  timelineRow: { width: '100%', flexDirection: 'row', alignItems: 'stretch', gap: 14 },
   timelineRail: { width: 30, alignItems: 'center' },
   timelineDot: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   timelineLine: { width: 3, flex: 1, marginTop: 8, marginBottom: -2, borderRadius: 999, backgroundColor: '#9ABCEA' },
-  eventCard: { flex: 1, marginBottom: 18, borderRadius: 26, backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 16 },
+  eventCard: { flex: 1, minWidth: 0, marginBottom: 18, borderRadius: 26, backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 16 },
   eventCardSelected: { borderWidth: 2, borderColor: '#9ABCEA' },
   eventHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   eventTime: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#91A19A' },
@@ -734,7 +767,7 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
   eventChip: { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999 },
   eventChipText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12 },
-  bottomActions: { flexDirection: 'row', gap: 10, marginTop: 12, marginBottom: 14 },
+  bottomActions: { width: '100%', flexDirection: 'row', gap: 10, marginTop: 12, marginBottom: 14 },
   ghostButton: { flex: 1, height: 54, borderRadius: 27, backgroundColor: '#E3EAE0', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   ghostButtonText: { fontFamily: 'Pretendard-SemiBold', fontSize: 15, color: '#54655B' },
   endButton: { flex: 1.2, height: 54, borderRadius: 27, backgroundColor: '#234634', alignItems: 'center', justifyContent: 'center' },
