@@ -25,25 +25,25 @@ pipeline {
     disableConcurrentBuilds()
   }
 
-  properties([
-    pipelineTriggers([
-      [
-        $class: 'GitLabPushTrigger',
-        // 브랜치 필터: 모든 브랜치의 이벤트를 수신하도록 설정
-        branchFilterType: 'All',
-        triggerOnPush: true,
-        triggerOnMergeRequest: true,
-        triggerOnAcceptedMergeRequest: false,
-        triggerOnClosedMergeRequest: false,
-        triggerOpenMergeRequestOnPush: 'both',
-        triggerOnNoteRequest: false,
-        noteRegex: '',
-        ciSkip: true,
-        skipWorkInProgressMergeRequest: true,
-        secretToken: ''
-      ]
-    ])
-  ])
+  triggers {
+    gitlab(
+      triggerOnPush: true,
+      triggerOnMergeRequest: true,
+      triggerOnAcceptedMergeRequest: false,
+      triggerOnClosedMergeRequest: false,
+      triggerOpenMergeRequestOnPush: 'both',
+      triggerOnNoteRequest: false,
+      noteRegex: '',
+      skipWorkInProgressMergeRequest: true,
+      ciSkip: true,
+      setBuildDescription: true,
+      addNoteOnMergeRequest: true,
+      addCiMessage: true,
+      addVoteOnMergeRequest: true,
+      acceptMergeRequestOnSuccess: false,
+      branchFilterType: 'All'
+    )
+  }
 
   stages {
     stage('Checkout & Detect Context') {
