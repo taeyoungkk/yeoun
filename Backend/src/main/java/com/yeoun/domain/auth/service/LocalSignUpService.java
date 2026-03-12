@@ -88,7 +88,8 @@ public class LocalSignUpService {
                         accessToken,
                         refreshToken,
                         TOKEN_TYPE,
-                        jwtTokenProvider.getAccessTokenExpirationSeconds()
+                        jwtTokenProvider.getAccessTokenExpirationSeconds(),
+                        true
                 )
         );
     }
