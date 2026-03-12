@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface FriendshipRepository extends JpaRepository<Friendship, UUID> {
@@ -19,6 +20,15 @@ public interface FriendshipRepository extends JpaRepository<Friendship, UUID> {
                 or (f.friendUserId = :userId and f.userId in :targetUserIds))
             """)
     List<Friendship> findAllRelationships(UUID userId, Collection<UUID> targetUserIds);
+
+    // 두 사용자 사이에 기존 관계가 있는지 방향 상관없이 찾는다.
+    @Query("""
+            select f
+            from Friendship f
+            where (f.userId = :userId and f.friendUserId = :friendUserId)
+               or (f.userId = :friendUserId and f.friendUserId = :userId)
+            """)
+    Optional<Friendship> findRelationship(UUID userId, UUID friendUserId);
 
     // 친구 목록은 ACCEPTED 상태만 필요하므로 현재 사용자 기준 양방향으로 조회한다.
     @Query("""

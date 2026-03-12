@@ -1,9 +1,12 @@
 package com.yeoun.domain.friend.controller;
 
+import com.yeoun.domain.friend.dto.request.FriendRequestCreateRequest;
 import com.yeoun.domain.friend.dto.response.FriendListResponse;
 import com.yeoun.domain.friend.dto.response.FriendListResult;
+import com.yeoun.domain.friend.dto.response.FriendRequestCreateResponse;
 import com.yeoun.domain.friend.dto.response.FriendSearchResponse;
 import com.yeoun.domain.friend.dto.response.FriendSearchResult;
+import com.yeoun.domain.friend.service.FriendCommandService;
 import com.yeoun.domain.friend.service.FriendQueryService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -11,7 +14,10 @@ import com.yeoun.global.security.principal.CustomUserPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,10 +30,26 @@ import java.util.List;
 @SecurityRequirement(name = "bearerAuth")
 public class FriendController {
 
+    private final FriendCommandService friendCommandService;
     private final FriendQueryService friendQueryService;
 
-    public FriendController(FriendQueryService friendQueryService) {
+    public FriendController(
+            FriendCommandService friendCommandService,
+            FriendQueryService friendQueryService
+    ) {
+        this.friendCommandService = friendCommandService;
         this.friendQueryService = friendQueryService;
+    }
+
+    @PostMapping("/requests")
+    @Operation(summary = "Send friend request", description = "Send a friend request to another user.")
+    public ApiResponse<FriendRequestCreateResponse> createFriendRequest(
+            @CurrentUser CustomUserPrincipal principal,
+            @Valid @RequestBody FriendRequestCreateRequest request
+    ) {
+        // 본인과 대상 사용자 사이에 관계가 없을 때만 REQUESTED row를 생성한다.
+        FriendRequestCreateResponse response = friendCommandService.createFriendRequest(principal.userId(), request);
+        return ApiResponse.ok(response);
     }
 
     @GetMapping("/search")
