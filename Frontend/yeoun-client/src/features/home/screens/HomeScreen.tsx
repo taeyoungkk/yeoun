@@ -3,6 +3,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+
 import { HomeSearchBar } from '../components/HomeSearchBar';
 import { PastTravelSection } from '../components/PastTravelSection';
 
