@@ -33,8 +33,13 @@ type DayFilter = 'all' | 'day1' | 'day2' | 'day3';
 type TimelineEventType = 'location' | 'photo' | 'payment' | 'memo' | 'voice' | 'emotion';
 type Coordinate = [number, number];
 type MapFilterKey = 'showPhotoPins' | 'showPaymentPins' | 'showMemoPins';
+type PhotoContributor = {
+  id: string;
+  name: string;
+  color: string;
+};
 
-type TimelineEvent = {
+export type TimelineEvent = {
   id: string;
   day: Exclude<DayFilter, 'all'>;
   type: TimelineEventType;
@@ -44,7 +49,15 @@ type TimelineEvent = {
   amount?: string;
   chips?: string[];
   coordinate?: Coordinate;
-  photoSources?: number[];
+  placeName?: string;
+  eventMemo?: string;
+  photoContributors?: PhotoContributor[];
+  photoItems?: {
+    id: string;
+    source: number;
+    memo?: string;
+    contributorId?: string;
+  }[];
 };
 
 type TripDay = {
@@ -107,15 +120,16 @@ const TRIP_DAYS: TripDay[] = [
   },
 ];
 
-const TIMELINE_EVENTS: TimelineEvent[] = [
+export const TIMELINE_EVENTS: TimelineEvent[] = [
   {
     id: 'ev-1',
     day: 'day1',
     type: 'location',
     time: '10:20',
-    title: '도착 기록',
-    subtitle: 'GPS 위치가 자동으로 저장되며 동선이 시작되었어요.',
-    chips: ['이동 1.2km', '도보'],
+    title: '여행 시작',
+    placeName: '서울시청',
+    subtitle: '',
+    chips: ['기록 시작', '현재 위치 저장'],
     coordinate: [126.9822, 37.5703],
   },
   {
@@ -123,11 +137,23 @@ const TIMELINE_EVENTS: TimelineEvent[] = [
     day: 'day1',
     type: 'photo',
     time: '11:05',
-    title: '거리 풍경 촬영',
-    subtitle: '사진 3장이 현재 위치와 함께 기록되었어요.',
-    chips: ['사진 3장', '자동 태그'],
+    title: '광안리 해변 산책',
+    subtitle: '',
+    placeName: '광안리 해수욕장',
+    eventMemo: '바람은 좀 불었지만 해 질 무렵 분위기가 정말 좋았어요.',
+    chips: ['사진 4장', '장소 자동 매칭'],
     coordinate: [126.9898, 37.5707],
-    photoSources: PHOTO_STACK,
+    photoContributors: [
+      { id: 'user-1', name: '민지', color: '#F08AA2' },
+      { id: 'user-2', name: '지훈', color: '#77B6EA' },
+      { id: 'user-3', name: '서연', color: '#88B97A' },
+    ],
+    photoItems: [
+      { id: 'photo-1', source: PHOTO_STACK[0], memo: '노을이 퍼지기 시작하던 순간', contributorId: 'user-1' },
+      { id: 'photo-2', source: PHOTO_STACK[1], memo: '파도 색이 예뻐서 바로 찍은 장면', contributorId: 'user-2' },
+      { id: 'photo-3', source: PHOTO_STACK[2], memo: '야경이 켜지기 직전의 해변', contributorId: 'user-3' },
+      { id: 'photo-4', source: PHOTO_STACK[0], memo: '같이 걷던 분위기를 남긴 사진', contributorId: 'user-1' },
+    ],
   },
   {
     id: 'ev-3',
@@ -225,6 +251,7 @@ export default function TripRecordingScreen() {
   const [mapLoadFailed, setMapLoadFailed] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [photoViewer, setPhotoViewer] = useState<{ eventId: string; photoIndex: number } | null>(null);
   const [mapPreferences, setMapPreferences] = useState({
     showPhotoPins: globalUserState.showPhotoPins,
     showPaymentPins: globalUserState.showPaymentPins,
@@ -297,10 +324,20 @@ export default function TripRecordingScreen() {
     () => ({
       totalDistanceLabel: `${filteredDays.reduce((sum, day) => sum + day.distanceKm, 0).toFixed(1)}km`,
       visitedPlaceCount: filteredEvents.filter((event) => Boolean(event.coordinate)).length,
-      photoCount: filteredEvents.reduce((sum, event) => sum + (event.photoSources?.length ?? 0), 0),
+      photoCount: filteredEvents.reduce((sum, event) => sum + (event.photoItems?.length ?? 0), 0),
       paymentCount: filteredEvents.filter((event) => event.type === 'payment').length,
     }),
     [filteredDays, filteredEvents]
+  );
+  const selectedPhotoEvent = useMemo(
+    () => filteredEvents.find((event) => event.id === photoViewer?.eventId) ?? null,
+    [filteredEvents, photoViewer]
+  );
+  const selectedPhotoItem = selectedPhotoEvent?.photoItems?.[photoViewer?.photoIndex ?? -1] ?? null;
+  const selectedPhotoContributor = useMemo(
+    () =>
+      selectedPhotoEvent?.photoContributors?.find((contributor) => contributor.id === selectedPhotoItem?.contributorId) ?? null,
+    [selectedPhotoEvent, selectedPhotoItem]
   );
   const collapseProgress = Math.min(scrollOffset / MAP_COLLAPSE_DISTANCE, 1);
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
@@ -448,6 +485,56 @@ export default function TripRecordingScreen() {
             <Text style={styles.modalBody}>
               지도 위 필터를 이용해 표시 항목을 줄이거나 동선만 깔끔하게 볼 수 있어요.
             </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={Boolean(photoViewer && selectedPhotoEvent && selectedPhotoItem)} transparent animationType="fade" onRequestClose={() => setPhotoViewer(null)}>
+        <Pressable style={styles.photoModalBackdrop} onPress={() => setPhotoViewer(null)}>
+          <Pressable style={styles.photoModalCard} onPress={() => undefined}>
+            <View style={styles.photoModalHeader}>
+              <View style={styles.photoModalHeaderCopy}>
+                <Text style={styles.photoModalTitle}>{selectedPhotoEvent?.title}</Text>
+                {selectedPhotoContributor ? (
+                  <View style={styles.photoModalMetaRow}>
+                    <View style={[styles.photoModalAvatar, { backgroundColor: selectedPhotoContributor.color }]}>
+                      <Text style={styles.photoModalAvatarText}>{selectedPhotoContributor.name.slice(0, 1)}</Text>
+                    </View>
+                    <Text style={styles.photoModalMeta}>{`photo by ${selectedPhotoContributor.name}`}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.photoModalMeta}>사진 상세</Text>
+                )}
+              </View>
+              <View style={styles.photoModalHeaderActions}>
+                <View style={styles.photoModalTextActionRow}>
+                  <TouchableOpacity activeOpacity={0.85}>
+                    <Text style={styles.photoModalTextAction}>수정</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity activeOpacity={0.85}>
+                    <Text style={[styles.photoModalTextAction, styles.photoModalDeleteAction]}>삭제</Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity onPress={() => setPhotoViewer(null)} activeOpacity={0.85}>
+                  <MaterialIcons name="close" size={22} color="#223428" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {selectedPhotoItem ? (
+              <Image source={selectedPhotoItem.source} style={styles.photoModalImage} contentFit="cover" />
+            ) : null}
+
+            {selectedPhotoEvent?.placeName ? (
+              <Text style={styles.photoModalSectionLabel}>장소</Text>
+            ) : null}
+            {selectedPhotoEvent?.placeName ? <Text style={styles.photoModalSectionBody}>{selectedPhotoEvent.placeName}</Text> : null}
+
+            <Text style={styles.photoModalSectionLabel}>이벤트 메모</Text>
+            <Text style={styles.photoModalSectionBody}>{selectedPhotoEvent?.eventMemo ?? selectedPhotoEvent?.subtitle}</Text>
+
+            <Text style={styles.photoModalSectionLabel}>사진 메모</Text>
+            <Text style={styles.photoModalSectionBody}>{selectedPhotoItem?.memo ?? '이 사진에 대한 메모가 아직 없어요.'}</Text>
           </Pressable>
         </Pressable>
       </Modal>
@@ -664,24 +751,100 @@ export default function TripRecordingScreen() {
                   <Pressable style={[styles.eventCard, isSelected && styles.eventCardSelected]} onPress={() => focusEvent(event.id)}>
                     <View style={styles.eventHeaderRow}>
                       <Text style={styles.eventTime}>{event.time}</Text>
-                      {event.amount ? <Text style={styles.eventAmount}>{event.amount}</Text> : null}
+                      {event.amount ? (
+                        <Text style={styles.eventAmount}>{event.amount}</Text>
+                      ) : event.photoContributors?.length ? (
+                        <View style={styles.photoByWrap}>
+                          <Text style={styles.photoByText}>photo by</Text>
+                          <View style={styles.avatarStack}>
+                            {event.photoContributors.map((contributor, contributorIndex) => (
+                              <View
+                                key={contributor.id}
+                                style={[
+                                  styles.avatarCircle,
+                                  {
+                                    backgroundColor: contributor.color,
+                                    marginLeft: contributorIndex === 0 ? 0 : -10,
+                                    zIndex: event.photoContributors!.length - contributorIndex,
+                                  },
+                                ]}
+                              >
+                                <Text style={styles.avatarText}>{contributor.name.slice(0, 1)}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      ) : null}
                     </View>
                     <Text style={styles.eventTitle}>{event.title}</Text>
-                    <Text style={styles.eventSubtitle}>{event.subtitle}</Text>
-                    {event.photoSources ? (
+                    {event.placeName ? <Text style={styles.eventPlaceName}>{event.placeName}</Text> : null}
+                    {event.photoItems?.length ? (
                       <View style={styles.photoRow}>
-                        {event.photoSources.map((photoSource, photoIndex) => (
-                          <Image key={`${event.id}-${photoIndex}`} source={photoSource} style={styles.photoThumb} contentFit="cover" />
-                        ))}
+                        {event.photoItems.slice(0, 3).map((photoItem, photoIndex) => {
+                          const remainingCount = event.photoItems ? event.photoItems.length - 2 : 0;
+                          const shouldShowOverlay = photoIndex === 2 && (event.photoItems?.length ?? 0) >= 3;
+
+                          return (
+                            <Pressable
+                              key={photoItem.id}
+                              style={styles.photoThumbWrap}
+                              onPress={(pressEvent) => {
+                                pressEvent.stopPropagation();
+                                if (shouldShowOverlay) {
+                                  router.push({ pathname: '/trip/photo-album', params: { eventId: event.id } } as never);
+                                  return;
+                                }
+
+                                setPhotoViewer({ eventId: event.id, photoIndex });
+                              }}
+                            >
+                              <Image source={photoItem.source} style={styles.photoThumb} contentFit="cover" />
+                              {shouldShowOverlay ? (
+                                <View style={styles.photoThumbOverlay}>
+                                  <Text style={styles.photoThumbOverlayText}>+{remainingCount}장</Text>
+                                </View>
+                              ) : null}
+                            </Pressable>
+                          );
+                        })}
                       </View>
                     ) : null}
+                    {event.photoItems?.length ? (
+                      <>
+                        {event.eventMemo ? <Text style={styles.eventMemoText}>{event.eventMemo}</Text> : null}
+                      </>
+                    ) : null}
+                    {!event.photoItems?.length && event.subtitle ? <Text style={styles.eventSubtitle}>{event.subtitle}</Text> : null}
+                    {!event.photoItems?.length && event.eventMemo ? <Text style={styles.eventMemoText}>{event.eventMemo}</Text> : null}
                     {event.chips?.length ? (
-                      <View style={styles.chipRow}>
-                        {event.chips.map((chip) => (
-                          <View key={`${event.id}-${chip}`} style={[styles.eventChip, { backgroundColor: theme.surface }]}>
-                            <Text style={[styles.eventChipText, { color: theme.accent }]}>{chip}</Text>
+                      <View style={styles.eventMetaRow}>
+                        <View style={styles.chipRow}>
+                          {event.chips.map((chip) => (
+                            <View key={`${event.id}-${chip}`} style={[styles.eventChip, { backgroundColor: theme.surface }]}>
+                              <Text style={[styles.eventChipText, { color: theme.accent }]}>{chip}</Text>
+                            </View>
+                          ))}
+                        </View>
+                        {event.photoItems?.length ? (
+                          <View style={styles.photoEventActionRow}>
+                            <TouchableOpacity
+                              activeOpacity={0.8}
+                              onPress={(pressEvent) => {
+                                pressEvent.stopPropagation();
+                              }}
+                            >
+                              <Text style={styles.photoEventActionText}>수정</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              activeOpacity={0.8}
+                              onPress={(pressEvent) => {
+                                pressEvent.stopPropagation();
+                              }}
+                            >
+                              <Text style={[styles.photoEventActionText, styles.photoEventDeleteText]}>삭제</Text>
+                            </TouchableOpacity>
                           </View>
-                        ))}
+                        ) : null}
                       </View>
                     ) : null}
                   </Pressable>
@@ -729,6 +892,28 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   modalTitle: { fontFamily: 'Pretendard-Bold', fontSize: 20, color: '#182119' },
   modalBody: { marginTop: 12, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 22, color: '#66756C' },
+  photoModalBackdrop: { flex: 1, backgroundColor: 'rgba(12, 18, 14, 0.45)', justifyContent: 'center', paddingHorizontal: 18 },
+  photoModalCard: { borderRadius: 28, backgroundColor: '#FCFEFB', paddingHorizontal: 18, paddingTop: 18, paddingBottom: 20 },
+  photoModalHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  photoModalHeaderCopy: { flex: 1 },
+  photoModalTitle: { fontFamily: 'Pretendard-Bold', fontSize: 19, color: '#182119' },
+  photoModalMeta: { marginTop: 4, fontFamily: 'Pretendard-Medium', fontSize: 13, color: '#738078' },
+  photoModalMetaRow: { marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  photoModalAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoModalAvatarText: { fontFamily: 'Pretendard-Bold', fontSize: 10, color: '#FFFFFF' },
+  photoModalHeaderActions: { alignItems: 'flex-end', gap: 6 },
+  photoModalTextActionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  photoModalTextAction: { fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#4F5F56' },
+  photoModalDeleteAction: { color: '#A45A49' },
+  photoModalImage: { width: '100%', aspectRatio: 1, borderRadius: 22, marginTop: 16, backgroundColor: '#E7ECE5' },
+  photoModalSectionLabel: { marginTop: 16, fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#7A867F' },
+  photoModalSectionBody: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 21, color: '#243028' },
   floatingMapWrap: {
     position: 'absolute',
     top: MAP_TOP_OFFSET,
@@ -798,10 +983,33 @@ const styles = StyleSheet.create({
   eventTime: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#91A19A' },
   eventAmount: { fontFamily: 'Pretendard-Bold', fontSize: 14, color: '#CF643B' },
   eventTitle: { marginTop: 6, fontFamily: 'Pretendard-Bold', fontSize: 18, color: '#182119' },
+  eventPlaceName: { marginTop: 6, fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#486356' },
   eventSubtitle: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 21, color: '#708076' },
+  eventMemoText: { marginTop: 8, fontFamily: 'Pretendard-Regular', fontSize: 13, lineHeight: 20, color: '#55635B' },
+  photoByWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  photoByText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#708076' },
+  avatarStack: { flexDirection: 'row', alignItems: 'center', paddingLeft: 10 },
+  avatarCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { fontFamily: 'Pretendard-Bold', fontSize: 10, color: '#FFFFFF' },
   photoRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  photoThumbWrap: { width: 72, height: 72, borderRadius: 16, overflow: 'hidden' },
   photoThumb: { width: 72, height: 72, borderRadius: 16, backgroundColor: '#E7ECE5' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  photoThumbOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(12, 12, 12, 0.48)', alignItems: 'center', justifyContent: 'center' },
+  photoThumbOverlayText: { fontFamily: 'Pretendard-Bold', fontSize: 14, color: '#FFFFFF' },
+  eventMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, gap: 10 },
+  photoEventActionRow: { flexDirection: 'row', gap: 12, flexShrink: 0 },
+  photoEventActionText: { fontFamily: 'Pretendard-Medium', fontSize: 12, color: '#738078' },
+  photoEventDeleteText: { color: '#A45A49' },
+  eventActionDeleteText: { color: '#A45A49' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, flex: 1 },
   eventChip: { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999 },
   eventChipText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12 },
   bottomActions: { width: '100%', flexDirection: 'row', gap: 10, marginTop: 12, marginBottom: 14 },
