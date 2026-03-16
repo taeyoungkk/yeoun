@@ -1,6 +1,6 @@
 pipeline {
   agent any
- 
+
   parameters {
     string(name: 'DOCKERHUB_NAMESPACE', defaultValue: '', description: 'Docker Hub namespace. Leave blank to use Jenkins env var.')
   }
@@ -25,41 +25,69 @@ pipeline {
     disableConcurrentBuilds()
   }
 
+  // Jenkins Declarative Pipeline 최신 버전에 맞춰 속성 블록을 삭제합니다.
+  // 에러 원인: 설치된 플러그인이 gitlab 트리거를 지원하지 않거나, 문법 버전이 맞지 않음.
+  // 해결: 푸시 및 MR 트리거는 Jenkins UI(구성 - 빌드 유발 - Generic Webhook Trigger 등)에서 직접 설정하세요.
+
   stages {
     stage('Checkout & Detect Context') {
       steps {
         checkout scm
         script {
+          // ======================          // ------------------------------------------------------------
+          // GitLab Webhook Plugin 변수 매핑 보완 (디버깅 결과 반영)
+          // ------------------------------------------------------------
           def pick = { List<String> keys ->
             for (k in keys) {
-              def v = env."${k}"
-              if (v != null && v.toString().trim()) return v.toString().trim()
+              def v = env.getProperty(k) ?: params.getProperty(k)
+              if (v != null && v.toString().trim() && !v.toString().contains('/usr/share/jenkins')) {
+                return v.toString().trim()
+              }
             }
             return ''
           }
 
-          env.EVENT_KIND = pick(['OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
-          if (env.EVENT_KIND.toLowerCase().contains('merge')) env.EVENT_KIND = 'merge_request'
-          if (env.EVENT_KIND.toLowerCase().contains('push'))  env.EVENT_KIND = 'push'
+          // 1. 이벤트 종류 매핑 (로그에 웹훅 변수 자체가 없으므로 기본적으로 Push 취급)
+          env.EVENT_KIND = pick(['gitlabActionType','OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
+          if (env.CHANGE_ID || env.EVENT_KIND.toLowerCase().contains('merge')) {
+              env.EVENT_KIND = 'merge_request'
+          } else {
+              env.EVENT_KIND = 'push'
+          }
 
+          // 2. 실행자(액터) 매핑 (Git 로그에서 가장 최근 커밋 작성자 이름 추출)
           env.ACTOR = pick([
+            'gitlabUserName','gitlabUserUsername',
+            'CHANGE_AUTHOR',
             'MR_USER_NAME','MR_USER_USERNAME',
             'PUSH_USER_NAME','PUSH_USER_USERNAME',
             'user_name','user_username',
-            'GITLAB_USER_NAME','GITLAB_USER_USERNAME',
-            'gitlabUserName','gitlabUserUsername'
+            'GITLAB_USER_NAME','GITLAB_USER_USERNAME'
           ]).trim()
-          if (!env.ACTOR) env.ACTOR = 'unknown'
+          if (!env.ACTOR) {
+             try {
+                env.ACTOR = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
+             } catch(Exception e) {
+                env.ACTOR = 'unknown' 
+             }
+          }
 
-          def refRaw = pick(['REF','ref','GIT_REF','gitRef','refChanges_0_refId'])
-          env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').trim()
-          env.MR_SOURCE = pick(['MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch','gitlabSourceBranch']).trim()
-          env.MR_TARGET = pick(['MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch','gitlabTargetBranch']).trim()
+          // 3. 브랜치명 추출 (GIT_BRANCH 가 origin/INFRA/... 형태로 잡힘)
+          def refRaw = pick(['GIT_BRANCH','gitlabBranch','gitBranch','GIT_LOCAL_BRANCH','BRANCH_NAME','CHANGE_BRANCH','refChanges_0_refId'])
+          env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').replace('origin/', '').trim()
+          
+          env.MR_SOURCE = pick(['gitlabSourceBranch','CHANGE_BRANCH','MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch']).trim()
+          env.MR_TARGET = pick(['gitlabTargetBranch','CHANGE_TARGET','MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch']).trim()
 
           env.GIT_SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
 
-          def branchName = env.BRANCH_NAME ?: env.GIT_BRANCH ?: env.PUSH_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+          def branchName = env.PUSH_BRANCH
+          if (!branchName || branchName == 'HEAD') {
+             try {
+                 branchName = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).replace('origin/', '').trim()
+             } catch(Exception e) { branchName = 'unknown' }
+          }
           env.IS_DEVELOP = (branchName == 'develop' || branchName.endsWith('/develop')).toString()
           env.DOCKERHUB_NAMESPACE_EFFECTIVE = (params.DOCKERHUB_NAMESPACE?.trim()) ? params.DOCKERHUB_NAMESPACE.trim() : (env.DOCKERHUB_NAMESPACE ?: '').trim()
 
@@ -272,9 +300,16 @@ EOT
   post {
     always {
       script {
+        def branchName = env.PUSH_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).replace('origin/', '').trim()
+        if (branchName == 'HEAD') {
+             try {
+                 branchName = sh(script: "git branch -a --contains HEAD | grep -v 'HEAD' | head -n 1 || echo 'unknown'", returnStdout: true).replace('*', '').replace('remotes/origin/', '').trim()
+             } catch(Exception e) { branchName = 'unknown' }
+        }
+        
         def success = (currentBuild.currentResult == 'SUCCESS')
-        def kind = env.EVENT_KIND ?: 'unknown'
-        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: 'unknown') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: 'unknown')
+        def kind = env.EVENT_KIND ?: 'push'
+        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: 'unknown') : (branchName ?: 'unknown')
         def target = env.MR_TARGET ?: ''
         
         def jobName = (env.JOB_NAME ?: '').trim()
@@ -295,7 +330,7 @@ EOT
         def payload = groovy.json.JsonOutput.toJson([
           username  : "Jenkins Operator",
           icon_emoji: icon,
-          text      : title + "\\n" + lines.join("\\n")
+          text      : title + "\n" + lines.join("\n")
         ])
 
         writeFile file: 'mm_payload.json', text: payload
