@@ -8,10 +8,13 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface TripMemberRepository extends JpaRepository<TripMember, UUID> {
     boolean existsByTripIdAndUserId(UUID tripId, UUID userId);
+
+    Optional<TripMember> findByTripIdAndUserId(UUID tripId, UUID userId);
 
     boolean existsByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
             UUID tripId,

@@ -1,12 +1,18 @@
 package com.yeoun.domain.trip.controller;
 
 import com.yeoun.domain.trip.dto.response.TripInviteDetailResponse;
+import com.yeoun.domain.trip.dto.response.TripInviteAcceptResponse;
 import com.yeoun.domain.trip.service.TripInviteService;
 import com.yeoun.global.response.ApiResponse;
+import com.yeoun.global.security.principal.CurrentUser;
+import com.yeoun.global.security.principal.CustomUserPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,6 +33,17 @@ public class TripInviteController {
             @PathVariable("inviteToken") String inviteToken
     ) {
         TripInviteDetailResponse response = tripInviteService.getInviteDetail(inviteToken);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/{inviteToken}/accept")
+    @Operation(summary = "초대 수락", description = "초대 링크를 수락하고 여행 참여자로 등록합니다.")
+    @SecurityRequirement(name = "bearerAuth")
+    public ApiResponse<TripInviteAcceptResponse> acceptInvite(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("inviteToken") String inviteToken
+    ) {
+        TripInviteAcceptResponse response = tripInviteService.acceptInvite(principal.userId(), inviteToken);
         return ApiResponse.ok(response);
     }
 }
