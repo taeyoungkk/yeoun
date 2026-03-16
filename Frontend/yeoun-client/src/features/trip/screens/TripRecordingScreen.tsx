@@ -26,8 +26,11 @@ import {
   deleteTripEvent,
   deleteTripPhoto,
   getTripEvents,
+  ignoreTripPaymentCandidate,
+  selectTripPaymentCandidate,
   subscribeTripEvents,
   type TimelineEvent,
+  updateTripPaymentDetails,
   updateTripEvent,
   updateTripPhoto,
 } from '@/src/features/trip/store/tripMockStore';
@@ -114,6 +117,7 @@ const MAP_FILTER_META: Array<{ key: MapFilterKey; label: string; icon: keyof typ
   { key: 'showPaymentPins', label: '결제', icon: 'credit-card' },
   { key: 'showMemoPins', label: '메모', icon: 'edit-note' },
 ];
+const TRIP_MEMBER_OPTIONS = ['민지', '지훈', '서연'];
 
 function getBounds(route: Coordinate[]) {
   const longitudes = route.map(([longitude]) => longitude);
@@ -151,6 +155,13 @@ export default function TripRecordingScreen() {
     | { kind: 'photo'; eventId: string; photoId: string; title: string; message: string }
     | null
   >(null);
+  const [paymentImportDialog, setPaymentImportDialog] = useState<{
+    mode: 'import' | 'edit';
+    eventId: string;
+    payerName: string;
+    selectedMembers: string[];
+    memo: string;
+  } | null>(null);
   const [mapPreferences, setMapPreferences] = useState({
     showPhotoPins: globalUserState.showPhotoPins,
     showPaymentPins: globalUserState.showPaymentPins,
@@ -224,7 +235,7 @@ export default function TripRecordingScreen() {
       totalDistanceLabel: `${filteredDays.reduce((sum, day) => sum + day.distanceKm, 0).toFixed(1)}km`,
       visitedPlaceCount: filteredEvents.filter((event) => Boolean(event.coordinate)).length,
       photoCount: filteredEvents.reduce((sum, event) => sum + (event.photoItems?.length ?? 0), 0),
-      paymentCount: filteredEvents.filter((event) => event.type === 'payment').length,
+      paymentCount: filteredEvents.filter((event) => event.type === 'payment' && event.paymentStatus !== 'candidate').length,
     }),
     [filteredDays, filteredEvents]
   );
@@ -425,6 +436,56 @@ export default function TripRecordingScreen() {
     setDeleteDialog(null);
   };
 
+  const openPaymentImportDialog = (event: TimelineEvent) => {
+    setPaymentImportDialog({
+      mode: event.paymentStatus === 'confirmed' ? 'edit' : 'import',
+      eventId: event.id,
+      payerName: event.paymentPayerName ?? TRIP_MEMBER_OPTIONS[0],
+      selectedMembers: event.paymentParticipantNames?.length ? event.paymentParticipantNames : TRIP_MEMBER_OPTIONS,
+      memo: event.eventMemo ?? '자동 가져온 결제를 여행 비용으로 확정해요.',
+    });
+  };
+
+  const togglePaymentMember = (memberName: string) => {
+    setPaymentImportDialog((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      const nextMembers = prev.selectedMembers.includes(memberName)
+        ? prev.selectedMembers.filter((member) => member !== memberName)
+        : [...prev.selectedMembers, memberName];
+
+      return {
+        ...prev,
+        selectedMembers: nextMembers.length > 0 ? nextMembers : [memberName],
+      };
+    });
+  };
+
+  const confirmPaymentImport = () => {
+    if (!paymentImportDialog) {
+      return;
+    }
+
+    if (paymentImportDialog.mode === 'import') {
+      selectTripPaymentCandidate(paymentImportDialog.eventId, {
+        payerName: paymentImportDialog.payerName,
+        participantNames: paymentImportDialog.selectedMembers,
+        splitType: 'equal',
+        memo: paymentImportDialog.memo,
+      });
+    } else {
+      updateTripPaymentDetails(paymentImportDialog.eventId, {
+        payerName: paymentImportDialog.payerName,
+        participantNames: paymentImportDialog.selectedMembers,
+        splitType: 'equal',
+        memo: paymentImportDialog.memo,
+      });
+    }
+    setPaymentImportDialog(null);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -577,6 +638,86 @@ export default function TripRecordingScreen() {
               </TouchableOpacity>
               <TouchableOpacity style={styles.deleteDialogPrimaryButton} onPress={handleConfirmDelete} activeOpacity={0.88}>
                 <Text style={styles.deleteDialogPrimaryButtonText}>삭제</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={Boolean(paymentImportDialog)} transparent animationType="slide" onRequestClose={() => setPaymentImportDialog(null)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setPaymentImportDialog(null)}>
+          <Pressable style={styles.importSheetCard} onPress={() => undefined}>
+            <View style={styles.importSheetHandle} />
+            <Text style={styles.importSheetEyebrow}>
+              {paymentImportDialog?.mode === 'edit' ? '여행 비용 수정' : '자동 가져온 결제 확인'}
+            </Text>
+            <Text style={styles.importSheetTitle}>
+              {paymentImportDialog?.mode === 'edit' ? '결제자와 정산 대상을 다시 조정할 수 있어요' : '누가 결제했고 누구와 나눌지 확인해 주세요'}
+            </Text>
+
+            <Text style={styles.importSheetLabel}>결제자</Text>
+            <View style={styles.importPayerRow}>
+              {TRIP_MEMBER_OPTIONS.map((member) => {
+                const isActive = paymentImportDialog?.payerName === member;
+                return (
+                  <TouchableOpacity
+                    key={member}
+                    style={[styles.importPayerChip, isActive && styles.importPayerChipActive]}
+                    activeOpacity={0.85}
+                    onPress={() => setPaymentImportDialog((prev) => (prev ? { ...prev, payerName: member } : prev))}
+                  >
+                    <Text style={[styles.importPayerChipText, isActive && styles.importPayerChipTextActive]}>{member}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.importSheetLabel}>함께 나누는 사람</Text>
+            <View style={styles.importMemberWrap}>
+              {TRIP_MEMBER_OPTIONS.map((member) => {
+                const isActive = paymentImportDialog?.selectedMembers.includes(member);
+                return (
+                  <TouchableOpacity
+                    key={member}
+                    style={[styles.importMemberChip, isActive && styles.importMemberChipActive]}
+                    activeOpacity={0.85}
+                    onPress={() => togglePaymentMember(member)}
+                  >
+                    <Text style={[styles.importMemberChipText, isActive && styles.importMemberChipTextActive]}>{member}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.importSheetLabel}>메모</Text>
+            <TextInput
+              value={paymentImportDialog?.memo ?? ''}
+              onChangeText={(memo) => setPaymentImportDialog((prev) => (prev ? { ...prev, memo } : prev))}
+              placeholder="결제 메모"
+              placeholderTextColor="#94A098"
+              style={[styles.editorInput, styles.importMemoInput]}
+              multiline
+              textAlignVertical="top"
+            />
+
+            <View style={styles.importSummaryCard}>
+              <Text style={styles.importSummaryText}>
+                {paymentImportDialog
+                  ? paymentImportDialog.mode === 'edit'
+                    ? `${paymentImportDialog.selectedMembers.length}명 기준으로 정산 정보가 다시 계산돼요.`
+                    : `${paymentImportDialog.selectedMembers.length}명 균등 분할로 비용에 반영돼요.`
+                  : ''}
+              </Text>
+            </View>
+
+            <View style={styles.importActionRow}>
+              <TouchableOpacity style={styles.deleteDialogGhostButton} onPress={() => setPaymentImportDialog(null)} activeOpacity={0.88}>
+                <Text style={styles.deleteDialogGhostButtonText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.importConfirmButton} onPress={confirmPaymentImport} activeOpacity={0.88}>
+                <Text style={styles.importConfirmButtonText}>
+                  {paymentImportDialog?.mode === 'edit' ? '정산 정보 저장' : '비용으로 가져오기'}
+                </Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -847,6 +988,8 @@ export default function TripRecordingScreen() {
             {filteredEvents.map((event, index) => {
               const theme = EVENT_THEME[event.type];
               const isSelected = selectedEventId === event.id;
+              const isPaymentCandidate = event.type === 'payment' && event.paymentStatus === 'candidate';
+              const isPaymentConfirmed = event.type === 'payment' && event.paymentStatus === 'confirmed';
 
               return (
                 <View key={event.id} style={styles.timelineRow} onLayout={(layoutEvent) => handleEventLayout(event.id, layoutEvent)}>
@@ -859,7 +1002,11 @@ export default function TripRecordingScreen() {
                   <Pressable style={[styles.eventCard, isSelected && styles.eventCardSelected]} onPress={() => focusEvent(event.id)}>
                     <View style={styles.eventHeaderRow}>
                       <Text style={styles.eventTime}>{event.time}</Text>
-                      {event.amount ? (
+                      {isPaymentCandidate ? (
+                        <View style={styles.paymentCandidateBadge}>
+                          <Text style={styles.paymentCandidateBadgeText}>결제 후보</Text>
+                        </View>
+                      ) : event.amount ? (
                         <Text style={styles.eventAmount}>{event.amount}</Text>
                       ) : event.photoContributors?.length ? (
                         <View style={styles.photoByWrap}>
@@ -886,6 +1033,19 @@ export default function TripRecordingScreen() {
                     </View>
                     <Text style={styles.eventTitle}>{event.title}</Text>
                     {event.placeName ? <Text style={styles.eventPlaceName}>{event.placeName}</Text> : null}
+                    {event.type === 'payment' ? (
+                      <View style={styles.paymentMetaBlock}>
+                        <View style={styles.paymentMetaTopRow}>
+                          {event.amount ? <Text style={styles.paymentAmountInline}>{event.amount}</Text> : null}
+                          {event.paymentCardName ? <Text style={styles.paymentCardName}>{event.paymentCardName}</Text> : null}
+                        </View>
+                        {event.paymentPayerName || event.paymentSplitLabel ? (
+                          <Text style={styles.paymentHelperText}>
+                            {[event.paymentPayerName ? `${event.paymentPayerName} 결제` : null, event.paymentSplitLabel].filter(Boolean).join(' · ')}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ) : null}
                     {event.photoItems?.length ? (
                       <View style={styles.photoRow}>
                         {event.photoItems.slice(0, 3).map((photoItem, photoIndex) => {
@@ -932,26 +1092,55 @@ export default function TripRecordingScreen() {
                           </View>
                         ))}
                       </View>
-                      <View style={styles.photoEventActionRow}>
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          onPress={(pressEvent) => {
-                            pressEvent.stopPropagation();
-                            openEventEditor(event);
-                          }}
-                        >
-                          <Text style={styles.photoEventActionText}>수정</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          onPress={(pressEvent) => {
-                            pressEvent.stopPropagation();
-                            confirmDeleteEvent(event);
-                          }}
-                        >
-                          <Text style={[styles.photoEventActionText, styles.photoEventDeleteText]}>삭제</Text>
-                        </TouchableOpacity>
-                      </View>
+                      {isPaymentCandidate ? (
+                        <View style={styles.photoEventActionRow}>
+                          <TouchableOpacity
+                            activeOpacity={0.82}
+                            onPress={(pressEvent) => {
+                              pressEvent.stopPropagation();
+                              openPaymentImportDialog(event);
+                            }}
+                          >
+                            <Text style={[styles.photoEventActionText, styles.paymentImportActionText]}>가져오기</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            activeOpacity={0.82}
+                            onPress={(pressEvent) => {
+                              pressEvent.stopPropagation();
+                              ignoreTripPaymentCandidate(event.id);
+                            }}
+                          >
+                            <Text style={[styles.photoEventActionText, styles.photoEventDeleteText]}>무시</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View style={styles.photoEventActionRow}>
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            onPress={(pressEvent) => {
+                              pressEvent.stopPropagation();
+                              if (isPaymentConfirmed) {
+                                openPaymentImportDialog(event);
+                                return;
+                              }
+                              openEventEditor(event);
+                            }}
+                          >
+                            <Text style={styles.photoEventActionText}>{isPaymentConfirmed ? '정산 수정' : '수정'}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            onPress={(pressEvent) => {
+                              pressEvent.stopPropagation();
+                              confirmDeleteEvent(event);
+                            }}
+                          >
+                            <Text style={[styles.photoEventActionText, styles.photoEventDeleteText]}>
+                              {isPaymentConfirmed ? '비용 삭제' : '삭제'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   </Pressable>
                 </View>
@@ -1084,6 +1273,98 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   deleteDialogPrimaryButtonText: { fontFamily: 'Pretendard-Bold', fontSize: 15, color: '#FFF8F6' },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(14, 20, 16, 0.32)',
+    justifyContent: 'flex-end',
+  },
+  importSheetCard: {
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    backgroundColor: '#FCFEFB',
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 26,
+    shadowColor: '#17231C',
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 12,
+  },
+  importSheetHandle: {
+    width: 52,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#D2DAD4',
+    alignSelf: 'center',
+  },
+  importSheetEyebrow: {
+    marginTop: 16,
+    fontFamily: 'Pretendard-SemiBold',
+    fontSize: 12,
+    color: '#C56A43',
+  },
+  importSheetTitle: {
+    marginTop: 6,
+    fontFamily: 'Pretendard-Bold',
+    fontSize: 22,
+    lineHeight: 30,
+    color: '#182119',
+  },
+  importSheetLabel: {
+    marginTop: 18,
+    fontFamily: 'Pretendard-SemiBold',
+    fontSize: 13,
+    color: '#607067',
+  },
+  importPayerRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  importPayerChip: {
+    paddingHorizontal: 14,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#EEF3EC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  importPayerChipActive: { backgroundColor: '#244934' },
+  importPayerChipText: { fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#4F5F56' },
+  importPayerChipTextActive: { color: '#F7FBF6' },
+  importMemberWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  importMemberChip: {
+    paddingHorizontal: 14,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F4F7F3',
+    borderWidth: 1,
+    borderColor: '#DCE4DE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  importMemberChipActive: {
+    backgroundColor: '#244934',
+    borderColor: '#244934',
+  },
+  importMemberChipText: { fontFamily: 'Pretendard-Medium', fontSize: 13, color: '#52635A' },
+  importMemberChipTextActive: { color: '#F7FBF6' },
+  importMemoInput: { minHeight: 92 },
+  importSummaryCard: {
+    marginTop: 14,
+    borderRadius: 18,
+    backgroundColor: '#F6F8F4',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  importSummaryText: { fontFamily: 'Pretendard-Medium', fontSize: 13, color: '#5E6D65' },
+  importActionRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  importConfirmButton: {
+    flex: 1.3,
+    height: 50,
+    borderRadius: 18,
+    backgroundColor: '#C56A43',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  importConfirmButtonText: { fontFamily: 'Pretendard-Bold', fontSize: 15, color: '#FFF8F5' },
   editorInput: {
     marginTop: 14,
     minHeight: 48,
@@ -1175,8 +1456,22 @@ const styles = StyleSheet.create({
   eventHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   eventTime: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#91A19A' },
   eventAmount: { fontFamily: 'Pretendard-Bold', fontSize: 14, color: '#CF643B' },
+  paymentCandidateBadge: {
+    paddingHorizontal: 10,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FFF1E7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentCandidateBadgeText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#C56A43' },
   eventTitle: { marginTop: 6, fontFamily: 'Pretendard-Bold', fontSize: 18, color: '#182119' },
   eventPlaceName: { marginTop: 6, fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#486356' },
+  paymentMetaBlock: { marginTop: 10, gap: 4 },
+  paymentMetaTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  paymentAmountInline: { fontFamily: 'Pretendard-Bold', fontSize: 18, color: '#C85E37' },
+  paymentCardName: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#7A867F' },
+  paymentHelperText: { fontFamily: 'Pretendard-Medium', fontSize: 12, color: '#6E7B74' },
   eventSubtitle: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 21, color: '#708076' },
   eventMemoText: { marginTop: 8, fontFamily: 'Pretendard-Regular', fontSize: 13, lineHeight: 20, color: '#55635B' },
   photoByWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -1200,6 +1495,7 @@ const styles = StyleSheet.create({
   eventMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, gap: 10 },
   photoEventActionRow: { flexDirection: 'row', gap: 12, flexShrink: 0 },
   photoEventActionText: { fontFamily: 'Pretendard-Medium', fontSize: 12, color: '#738078' },
+  paymentImportActionText: { color: '#C56A43' },
   photoEventDeleteText: { color: '#A45A49' },
   eventActionDeleteText: { color: '#A45A49' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, flex: 1 },

@@ -1,6 +1,8 @@
 type DayFilter = 'all' | 'day1' | 'day2' | 'day3';
 type TimelineEventType = 'location' | 'photo' | 'payment' | 'memo' | 'voice' | 'emotion';
 type Coordinate = [number, number];
+type PaymentStatus = 'candidate' | 'confirmed';
+type PaymentSplitType = 'equal' | 'selected';
 
 export type PhotoContributor = {
   id: string;
@@ -29,6 +31,13 @@ export type TimelineEvent = {
   eventMemo?: string;
   photoContributors?: PhotoContributor[];
   photoItems?: TimelinePhotoItem[];
+  paymentStatus?: PaymentStatus;
+  paymentCardName?: string;
+  paymentPayerName?: string;
+  paymentSplitLabel?: string;
+  paymentImportId?: string;
+  paymentParticipantNames?: string[];
+  paymentSplitType?: PaymentSplitType;
 };
 
 export const CURRENT_USER_ID = 'user-1';
@@ -78,11 +87,18 @@ const INITIAL_TRIP_EVENTS: TimelineEvent[] = [
     id: 'ev-3',
     day: 'day1',
     type: 'payment',
-    time: '12:40',
-    title: '점심 결제',
-    subtitle: '영수증과 위치를 연결해서 이동 경로에 함께 표시해요.',
-    amount: '₩17,000',
-    chips: ['식사', '카드 결제'],
+    time: '12:38',
+    title: '광안리횟집 결제 후보',
+    subtitle: '카드 승인 내역을 여행 비용으로 가져올 수 있어요.',
+    amount: '₩120,000',
+    chips: ['자동 가져오기', '식사'],
+    paymentStatus: 'candidate',
+    paymentImportId: 'pi_001',
+    paymentCardName: '현대카드',
+    paymentPayerName: '민지',
+    paymentSplitLabel: '3명 균등 분할 예정',
+    paymentParticipantNames: ['민지', '지훈', '서연'],
+    paymentSplitType: 'equal',
     coordinate: [127.0014, 37.5701],
   },
   {
@@ -121,9 +137,15 @@ const INITIAL_TRIP_EVENTS: TimelineEvent[] = [
     type: 'payment',
     time: '20:15',
     title: '카페 결제',
-    subtitle: '카페 영수증이 이동 경로 위에 자동 연결되었어요.',
+    subtitle: '여행 비용에 반영된 결제예요.',
     amount: '₩3,200',
     chips: ['카페', '간식'],
+    paymentStatus: 'confirmed',
+    paymentCardName: '토스카드',
+    paymentPayerName: '민지',
+    paymentSplitLabel: '2명 균등 분할',
+    paymentParticipantNames: ['민지', '서연'],
+    paymentSplitType: 'equal',
     coordinate: [127.0028, 37.5289],
   },
 ];
@@ -232,5 +254,78 @@ export const deleteTripPhoto = (eventId: string, photoId: string) => {
       });
     })
     .filter((event): event is TimelineEvent => Boolean(event));
+  emit();
+};
+
+export const selectTripPaymentCandidate = (
+  eventId: string,
+  options?: {
+    payerName?: string;
+    participantNames?: string[];
+    splitType?: PaymentSplitType;
+    memo?: string;
+  }
+) => {
+  tripEvents = tripEvents.map((event) => {
+    if (event.id !== eventId || event.type !== 'payment' || event.paymentStatus !== 'candidate') {
+      return event;
+    }
+
+    const participantNames = options?.participantNames?.length ? options.participantNames : event.paymentParticipantNames ?? [];
+    const splitLabel =
+      participantNames.length > 0
+        ? `${participantNames.length}명 ${options?.splitType === 'selected' ? '선택 분할' : '균등 분할'}`
+        : event.paymentSplitLabel;
+
+    return {
+      ...event,
+      title: '광안리횟집 비용 추가',
+      subtitle: '여행 비용에 반영된 결제예요.',
+      chips: ['식사', '자동 가져오기'],
+      paymentStatus: 'confirmed',
+      paymentPayerName: options?.payerName ?? event.paymentPayerName,
+      paymentParticipantNames: participantNames,
+      paymentSplitType: options?.splitType ?? event.paymentSplitType,
+      paymentSplitLabel: splitLabel,
+      eventMemo: options?.memo?.trim() || '자동 가져온 결제를 여행 비용으로 확정했어요.',
+    };
+  });
+  emit();
+};
+
+export const ignoreTripPaymentCandidate = (eventId: string) => {
+  tripEvents = tripEvents.filter((event) => !(event.id === eventId && event.type === 'payment' && event.paymentStatus === 'candidate'));
+  emit();
+};
+
+export const updateTripPaymentDetails = (
+  eventId: string,
+  options: {
+    payerName?: string;
+    participantNames?: string[];
+    splitType?: PaymentSplitType;
+    memo?: string;
+  }
+) => {
+  tripEvents = tripEvents.map((event) => {
+    if (event.id !== eventId || event.type !== 'payment' || event.paymentStatus !== 'confirmed') {
+      return event;
+    }
+
+    const participantNames = options.participantNames?.length ? options.participantNames : event.paymentParticipantNames ?? [];
+    const splitLabel =
+      participantNames.length > 0
+        ? `${participantNames.length}명 ${options.splitType === 'selected' ? '선택 분할' : '균등 분할'}`
+        : event.paymentSplitLabel;
+
+    return {
+      ...event,
+      paymentPayerName: options.payerName ?? event.paymentPayerName,
+      paymentParticipantNames: participantNames,
+      paymentSplitType: options.splitType ?? event.paymentSplitType,
+      paymentSplitLabel: splitLabel,
+      eventMemo: options.memo?.trim() || event.eventMemo,
+    };
+  });
   emit();
 };
