@@ -32,6 +32,7 @@ public enum ErrorCode {
     TRIP_INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "Trip start date must be before or equal to end date."),
     TRIP_NOT_FOUND(HttpStatus.NOT_FOUND, "Trip not found."),
     TRIP_FORBIDDEN(HttpStatus.FORBIDDEN, "You do not have permission for this trip."),
+    TRIP_UPDATE_NOT_ALLOWED(HttpStatus.CONFLICT, "Updates are not allowed for this trip status."),
     TRIP_INVITE_NOT_ALLOWED(HttpStatus.CONFLICT, "Invites are not allowed for this trip status."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid email or password."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found."),

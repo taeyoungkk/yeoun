@@ -2,10 +2,13 @@ package com.yeoun.domain.trip.controller;
 
 import com.yeoun.domain.trip.dto.request.TripCreateRequest;
 import com.yeoun.domain.trip.dto.request.TripInviteUsersRequest;
+import com.yeoun.domain.trip.dto.request.TripUpdateRequest;
 import com.yeoun.domain.trip.dto.response.TripCreateResponse;
+import com.yeoun.domain.trip.dto.response.TripDeleteResponse;
 import com.yeoun.domain.trip.dto.response.TripDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
 import com.yeoun.domain.trip.dto.response.TripListResponse;
+import com.yeoun.domain.trip.dto.response.TripUpdateResponse;
 import com.yeoun.domain.trip.service.TripService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -15,7 +18,9 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -71,6 +76,27 @@ public class TripController {
             @PathVariable("tripId") java.util.UUID tripId
     ) {
         TripDetailResponse response = tripService.getTripDetail(principal.userId(), tripId);
+        return ApiResponse.ok(response);
+    }
+
+    @PatchMapping("/{tripId}")
+    @Operation(summary = "여행 수정", description = "여행명, 기간, 공개 범위를 수정합니다.")
+    public ApiResponse<TripUpdateResponse> updateTrip(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") java.util.UUID tripId,
+            @Valid @RequestBody TripUpdateRequest request
+    ) {
+        TripUpdateResponse response = tripService.updateTrip(principal.userId(), tripId, request);
+        return ApiResponse.ok(response);
+    }
+
+    @DeleteMapping("/{tripId}")
+    @Operation(summary = "여행 삭제", description = "여행을 삭제 처리합니다.")
+    public ApiResponse<TripDeleteResponse> deleteTrip(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") java.util.UUID tripId
+    ) {
+        TripDeleteResponse response = tripService.deleteTrip(principal.userId(), tripId);
         return ApiResponse.ok(response);
     }
 }

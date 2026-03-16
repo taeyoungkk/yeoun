@@ -2,11 +2,14 @@ package com.yeoun.domain.trip.service;
 
 import com.yeoun.domain.trip.dto.request.TripCreateRequest;
 import com.yeoun.domain.trip.dto.request.TripInviteUsersRequest;
+import com.yeoun.domain.trip.dto.request.TripUpdateRequest;
 import com.yeoun.domain.trip.dto.response.TripCreateResponse;
+import com.yeoun.domain.trip.dto.response.TripDeleteResponse;
 import com.yeoun.domain.trip.dto.response.TripDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
 import com.yeoun.domain.trip.dto.response.TripListItemResponse;
 import com.yeoun.domain.trip.dto.response.TripListResponse;
+import com.yeoun.domain.trip.dto.response.TripUpdateResponse;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripMember;
 import com.yeoun.domain.trip.entity.TripMemberInviteStatus;
@@ -176,8 +179,7 @@ public class TripService {
     }
 
     public TripDetailResponse getTripDetail(UUID userId, UUID tripId) {
-        Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)
-                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
+        Trip trip = findNonDeletedTripOrThrow(tripId);
 
         boolean isOwner = trip.getOwnerUserId().equals(userId);
         boolean isCurrentMember = tripMemberRepository.existsByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
@@ -208,6 +210,55 @@ public class TripService {
         );
     }
 
+    @Transactional
+    public TripUpdateResponse updateTrip(UUID requesterUserId, UUID tripId, TripUpdateRequest request) {
+        Trip trip = findNonDeletedTripOrThrow(tripId);
+        validateTripOwner(requesterUserId, trip);
+
+        if (trip.getStatus() != TripStatus.DRAFT && trip.getStatus() != TripStatus.ACTIVE) {
+            throw new BaseException(ErrorCode.TRIP_UPDATE_NOT_ALLOWED);
+        }
+
+        String title = trip.getTitle();
+        if (request.title() != null) {
+            String trimmed = request.title().trim();
+            if (trimmed.isEmpty()) {
+                throw new BaseException(ErrorCode.INVALID_INPUT_VALUE);
+            }
+            title = trimmed;
+        }
+
+        java.time.LocalDate startDate = request.startDate() == null ? trip.getStartDate() : request.startDate();
+        java.time.LocalDate endDate = request.endDate() == null ? trip.getEndDate() : request.endDate();
+        TripVisibility visibility = request.visibility() == null ? trip.getVisibility() : request.visibility();
+
+        if (startDate.isAfter(endDate)) {
+            throw new BaseException(ErrorCode.TRIP_INVALID_DATE_RANGE);
+        }
+
+        Instant now = Instant.now();
+        trip.updateBasicInfo(title, startDate, endDate, visibility, now);
+
+        return new TripUpdateResponse(
+                trip.getTripId(),
+                trip.getTitle(),
+                trip.getStartDate(),
+                trip.getEndDate(),
+                trip.getVisibility(),
+                trip.getUpdatedAt()
+        );
+    }
+
+    @Transactional
+    public TripDeleteResponse deleteTrip(UUID requesterUserId, UUID tripId) {
+        Trip trip = findNonDeletedTripOrThrow(tripId);
+        validateTripOwner(requesterUserId, trip);
+
+        trip.markDeleted(Instant.now());
+
+        return new TripDeleteResponse(trip.getTripId(), true);
+    }
+
     private Map<UUID, Long> buildMemberCountMap(List<UUID> tripIds) {
         Map<UUID, Long> memberCountByTripId = new HashMap<>();
         List<TripMemberCountProjection> counts = tripMemberRepository.countCurrentMembersByTripIds(tripIds);
@@ -215,5 +266,16 @@ public class TripService {
             memberCountByTripId.put(count.getTripId(), count.getMemberCount());
         }
         return memberCountByTripId;
+    }
+
+    private Trip findNonDeletedTripOrThrow(UUID tripId) {
+        return tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
+    }
+
+    private void validateTripOwner(UUID requesterUserId, Trip trip) {
+        if (!trip.getOwnerUserId().equals(requesterUserId)) {
+            throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
+        }
     }
 }

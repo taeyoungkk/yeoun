@@ -68,4 +68,18 @@ public class Trip {
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    public void updateBasicInfo(String title, LocalDate startDate, LocalDate endDate, TripVisibility visibility, Instant now) {
+        this.title = title;
+        this.startDate = startDate;
+        this.endDate = endDate;
+        this.visibility = visibility;
+        this.updatedAt = now;
+    }
+
+    public void markDeleted(Instant now) {
+        this.status = TripStatus.DELETED;
+        this.deletedAt = now;
+        this.updatedAt = now;
+    }
 }
