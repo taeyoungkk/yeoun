@@ -4,15 +4,16 @@ import Svg, { Path, G, Text as SvgText } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const regionsData = [
-  { id: 'capital', name: '수도권', desc: '서울·경기·인천', total: 1161, visited: 435 },
-  { id: 'gangwon', name: '강원권', desc: '강원특별자치도', total: 196, visited: 55 },
-  { id: 'chungbuk', name: '충북권', desc: '충청북도', total: 153, visited: 45 },
-  { id: 'chungnam', name: '충남권', desc: '대전·세종·충남', total: 317, visited: 105 },
-  { id: 'jeolla', name: '전라권', desc: '광주·전북·전남', total: 637, visited: 180 },
-  { id: 'daegyeong', name: '대구·경북', desc: '대구·경북', total: 472, visited: 160 },
-  { id: 'buulgyeong', name: '부울경', desc: '부산·울산·경남', total: 566, visited: 210 },
-  { id: 'jeju', name: '제주권', desc: '제주특별자치도', total: 43, visited: 25 }
+  { id: 'capital',    name: '수도권',   desc: '서울·경기·인천',     total: 66,  visited: 5  },
+  { id: 'gangwon',   name: '강원권',   desc: '강원특별자치도',      total: 18,  visited: 2  },
+  { id: 'chungbuk',  name: '충북권',   desc: '충청북도',           total: 11,  visited: 1  },
+  { id: 'chungnam',  name: '충남권',   desc: '대전·세종·충남',      total: 21,  visited: 5  },
+  { id: 'jeolla',    name: '전라권',   desc: '광주·전북·전남',      total: 41,  visited: 3  },
+  { id: 'daegyeong', name: '대구·경북', desc: '대구·경북',          total: 31,  visited: 2  },
+  { id: 'buulgyeong',name: '부울경',   desc: '부산·울산·경남',      total: 39,  visited: 3  },
+  { id: 'jeju',      name: '제주권',   desc: '제주특별자치도',      total: 2,   visited: 0  },
 ];
+
 
 const CENTER = 200;
 const MAX_RADIUS = 160;
@@ -270,7 +271,7 @@ export const TreeRingsChart = () => {
         
         <View className="flex-row justify-between items-center">
           <Text className="text-sm text-[#A98467] font-medium">
-            {selectedRegionId ? `${selectedRegion?.name} 방문 지역` : '총 방문 읍·면·동'}
+            {selectedRegionId ? `${selectedRegion?.name} 방문 시·군·구` : '총 방문 시·군·구'}
           </Text>
           <Text className="text-sm text-[#A98467] font-medium">
             <Text className="text-[#6C584C] font-bold text-base">{currentVisited.toLocaleString()}</Text> / {currentTotal.toLocaleString()}
