@@ -9,6 +9,8 @@ import com.yeoun.domain.trip.dto.response.TripDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
 import com.yeoun.domain.trip.dto.response.TripListItemResponse;
 import com.yeoun.domain.trip.dto.response.TripListResponse;
+import com.yeoun.domain.trip.dto.response.TripEndResponse;
+import com.yeoun.domain.trip.dto.response.TripStartResponse;
 import com.yeoun.domain.trip.dto.response.TripUpdateResponse;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripMember;
@@ -257,6 +259,44 @@ public class TripService {
         trip.markDeleted(Instant.now());
 
         return new TripDeleteResponse(trip.getTripId(), true);
+    }
+
+    @Transactional
+    public TripStartResponse startTrip(UUID requesterUserId, UUID tripId) {
+        Trip trip = findNonDeletedTripOrThrow(tripId);
+        validateTripOwner(requesterUserId, trip);
+
+        if (trip.getStatus() != TripStatus.DRAFT) {
+            throw new BaseException(ErrorCode.TRIP_START_NOT_ALLOWED);
+        }
+
+        Instant now = Instant.now();
+        trip.markStarted(now);
+
+        return new TripStartResponse(
+                trip.getTripId(),
+                trip.getStatus(),
+                trip.getStartedAt()
+        );
+    }
+
+    @Transactional
+    public TripEndResponse endTrip(UUID requesterUserId, UUID tripId) {
+        Trip trip = findNonDeletedTripOrThrow(tripId);
+        validateTripOwner(requesterUserId, trip);
+
+        if (trip.getStatus() != TripStatus.ACTIVE) {
+            throw new BaseException(ErrorCode.TRIP_END_NOT_ALLOWED);
+        }
+
+        Instant now = Instant.now();
+        trip.markEnded(now);
+
+        return new TripEndResponse(
+                trip.getTripId(),
+                trip.getStatus(),
+                trip.getActualEndedAt()
+        );
     }
 
     private Map<UUID, Long> buildMemberCountMap(List<UUID> tripIds) {

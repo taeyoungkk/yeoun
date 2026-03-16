@@ -82,4 +82,18 @@ public class Trip {
         this.deletedAt = now;
         this.updatedAt = now;
     }
+
+    public void markStarted(Instant now) {
+        this.status = TripStatus.ACTIVE;
+        if (this.startedAt == null) {
+            this.startedAt = now;
+        }
+        this.updatedAt = now;
+    }
+
+    public void markEnded(Instant now) {
+        this.status = TripStatus.ENDED;
+        this.actualEndedAt = now;
+        this.updatedAt = now;
+    }
 }

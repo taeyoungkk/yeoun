@@ -6,8 +6,10 @@ import com.yeoun.domain.trip.dto.request.TripUpdateRequest;
 import com.yeoun.domain.trip.dto.response.TripCreateResponse;
 import com.yeoun.domain.trip.dto.response.TripDeleteResponse;
 import com.yeoun.domain.trip.dto.response.TripDetailResponse;
+import com.yeoun.domain.trip.dto.response.TripEndResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
 import com.yeoun.domain.trip.dto.response.TripListResponse;
+import com.yeoun.domain.trip.dto.response.TripStartResponse;
 import com.yeoun.domain.trip.dto.response.TripUpdateResponse;
 import com.yeoun.domain.trip.service.TripService;
 import com.yeoun.global.response.ApiResponse;
@@ -97,6 +99,26 @@ public class TripController {
             @PathVariable("tripId") java.util.UUID tripId
     ) {
         TripDeleteResponse response = tripService.deleteTrip(principal.userId(), tripId);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/{tripId}/start")
+    @Operation(summary = "여행 시작", description = "여행을 시작 상태(ACTIVE)로 전환합니다.")
+    public ApiResponse<TripStartResponse> startTrip(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") java.util.UUID tripId
+    ) {
+        TripStartResponse response = tripService.startTrip(principal.userId(), tripId);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/{tripId}/end")
+    @Operation(summary = "여행 종료", description = "여행을 종료 상태(ENDED)로 전환합니다.")
+    public ApiResponse<TripEndResponse> endTrip(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") java.util.UUID tripId
+    ) {
+        TripEndResponse response = tripService.endTrip(principal.userId(), tripId);
         return ApiResponse.ok(response);
     }
 }
