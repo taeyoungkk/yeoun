@@ -7,6 +7,7 @@ import com.yeoun.domain.trip.dto.response.TripCreateResponse;
 import com.yeoun.domain.trip.dto.response.TripDeleteResponse;
 import com.yeoun.domain.trip.dto.response.TripDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
+import com.yeoun.domain.trip.dto.response.TripInviteLinkCreateResponse;
 import com.yeoun.domain.trip.dto.response.TripListItemResponse;
 import com.yeoun.domain.trip.dto.response.TripListResponse;
 import com.yeoun.domain.trip.dto.response.TripMemberItemResponse;
@@ -17,16 +18,21 @@ import com.yeoun.domain.trip.dto.response.TripUpdateResponse;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripMember;
 import com.yeoun.domain.trip.entity.TripMemberInviteStatus;
+import com.yeoun.domain.trip.entity.TripInvite;
+import com.yeoun.domain.trip.entity.TripInviteStatus;
+import com.yeoun.domain.trip.entity.TripInviteType;
 import com.yeoun.domain.trip.entity.TripReportStatus;
 import com.yeoun.domain.trip.entity.TripStatus;
 import com.yeoun.domain.trip.entity.TripVisibility;
 import com.yeoun.domain.trip.repository.TripMemberCountProjection;
+import com.yeoun.domain.trip.repository.TripInviteRepository;
 import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.domain.trip.repository.TripMemberSummaryProjection;
 import com.yeoun.domain.user.repository.UserRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,18 +48,26 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class TripService {
 
+    private static final long LINK_INVITE_EXPIRE_DAYS = 7L;
+
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
+    private final TripInviteRepository tripInviteRepository;
     private final UserRepository userRepository;
+    private final String inviteBaseUrl;
 
     public TripService(
             TripRepository tripRepository,
             TripMemberRepository tripMemberRepository,
-            UserRepository userRepository
+            TripInviteRepository tripInviteRepository,
+            UserRepository userRepository,
+            @Value("${app.invite.base-url}") String inviteBaseUrl
     ) {
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
+        this.tripInviteRepository = tripInviteRepository;
         this.userRepository = userRepository;
+        this.inviteBaseUrl = inviteBaseUrl;
     }
 
     @Transactional
@@ -158,6 +172,49 @@ public class TripService {
         }
 
         return new TripInviteUsersResponse(invitedUserIds, skippedUserIds);
+    }
+
+    @Transactional
+    public TripInviteLinkCreateResponse createLinkInvite(UUID requesterUserId, UUID tripId) {
+        Trip trip = findNonDeletedTripOrThrow(tripId);
+        validateTripOwner(requesterUserId, trip);
+
+        if (trip.getStatus() != TripStatus.DRAFT) {
+            throw new BaseException(ErrorCode.TRIP_INVITE_NOT_ALLOWED);
+        }
+
+        Instant now = Instant.now();
+        Instant nextExpiresAt = now.plusSeconds(LINK_INVITE_EXPIRE_DAYS * 24 * 60 * 60);
+
+        TripInvite invite = tripInviteRepository
+                .findTopByTripIdAndInviteTypeOrderByCreatedAtDesc(tripId, TripInviteType.LINK)
+                .orElse(null);
+
+        if (invite != null) {
+            if (invite.getStatus() == TripInviteStatus.SENT && invite.getExpiresAt().isAfter(now)) {
+                invite.extendExpiresAt(nextExpiresAt);
+                return toLinkInviteResponse(invite);
+            }
+            if (invite.getStatus() == TripInviteStatus.SENT && !invite.getExpiresAt().isAfter(now)) {
+                invite.markExpired();
+            }
+        }
+
+        TripInvite newInvite = TripInvite.builder()
+                .tripInviteId(UUID.randomUUID())
+                .tripId(tripId)
+                .inviterUserId(requesterUserId)
+                .inviteType(TripInviteType.LINK)
+                .inviteToken(generateUniqueInviteToken())
+                .expiresAt(nextExpiresAt)
+                .status(TripInviteStatus.SENT)
+                .targetUserId(null)
+                .createdAt(now)
+                .usedAt(null)
+                .build();
+        tripInviteRepository.save(newInvite);
+
+        return toLinkInviteResponse(newInvite);
     }
 
     public TripListResponse getTrips(UUID userId) {
@@ -342,5 +399,28 @@ public class TripService {
         if (!isOwner && !isCurrentMember) {
             throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
         }
+    }
+
+    private String generateUniqueInviteToken() {
+        for (int i = 0; i < 5; i++) {
+            String token = UUID.randomUUID().toString().replace("-", "");
+            if (!tripInviteRepository.existsByInviteToken(token)) {
+                return token;
+            }
+        }
+        throw new BaseException(ErrorCode.INTERNAL_SERVER_ERROR);
+    }
+
+    private TripInviteLinkCreateResponse toLinkInviteResponse(TripInvite invite) {
+        String normalizedBaseUrl = inviteBaseUrl.endsWith("/")
+                ? inviteBaseUrl.substring(0, inviteBaseUrl.length() - 1)
+                : inviteBaseUrl;
+        return new TripInviteLinkCreateResponse(
+                invite.getTripInviteId(),
+                invite.getInviteType(),
+                invite.getInviteToken(),
+                normalizedBaseUrl + "/" + invite.getInviteToken(),
+                invite.getExpiresAt()
+        );
     }
 }

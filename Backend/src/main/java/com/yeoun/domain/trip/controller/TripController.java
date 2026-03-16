@@ -8,6 +8,7 @@ import com.yeoun.domain.trip.dto.response.TripDeleteResponse;
 import com.yeoun.domain.trip.dto.response.TripDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripEndResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
+import com.yeoun.domain.trip.dto.response.TripInviteLinkCreateResponse;
 import com.yeoun.domain.trip.dto.response.TripListResponse;
 import com.yeoun.domain.trip.dto.response.TripMemberListResponse;
 import com.yeoun.domain.trip.dto.response.TripStartResponse;
@@ -60,6 +61,16 @@ public class TripController {
             @Valid @RequestBody TripInviteUsersRequest request
     ) {
         TripInviteUsersResponse response = tripService.inviteUsers(principal.userId(), tripId, request);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/{tripId}/invites/link")
+    @Operation(summary = "링크 초대 생성", description = "여행 링크 초대를 생성하거나 기존 링크 만료 시간을 연장합니다.")
+    public ApiResponse<TripInviteLinkCreateResponse> createLinkInvite(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") java.util.UUID tripId
+    ) {
+        TripInviteLinkCreateResponse response = tripService.createLinkInvite(principal.userId(), tripId);
         return ApiResponse.ok(response);
     }
 

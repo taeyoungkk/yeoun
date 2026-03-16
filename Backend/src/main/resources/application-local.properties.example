@@ -20,6 +20,7 @@ spring.mail.properties.mail.smtp.auth=true
 spring.mail.properties.mail.smtp.starttls.enable=true
 
 app.mail.from=${MAIL_FROM}
+app.invite.base-url=${APP_INVITE_BASE_URL}
 
 oauth.google.client-id=${GOOGLE_CLIENT_ID}
 oauth.google.jwk-set-uri=${GOOGLE_JWK_SET_URI:https://www.googleapis.com/oauth2/v3/certs}

@@ -59,4 +59,9 @@ public class TripInvite {
     public void markExpired() {
         this.status = TripInviteStatus.EXPIRED;
     }
+
+    public void extendExpiresAt(Instant expiresAt) {
+        this.expiresAt = expiresAt;
+        this.status = TripInviteStatus.SENT;
+    }
 }
