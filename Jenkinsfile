@@ -97,7 +97,7 @@ pipeline {
              } catch(Exception e) { branchName = 'unknown' }
           }
           env.IS_DEVELOP = (branchName == 'develop' || branchName.endsWith('/develop')).toString()
-          env.DOCKERHUB_NAMESPACE_EFFECTIVE = (params.DOCKERHUB_NAMESPACE?.trim()) ? params.DOCKERHUB_NAMESPACE.trim() : (env.DOCKERHUB_NAMESPACE ?: '').trim()
+          env.DOCKERHUB_NAMESPACE_EFFECTIVE = ((params.DOCKERHUB_NAMESPACE?.trim()) ? params.DOCKERHUB_NAMESPACE.trim() : (env.DOCKERHUB_NAMESPACE ?: '').trim()).toLowerCase()
 
           def diffOutput = sh(
             script: '''
