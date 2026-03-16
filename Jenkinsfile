@@ -331,15 +331,26 @@ EOT
         def lines = []
         if (kind)    lines << "**이벤트:** `${kind}`"
         if (env.ACTOR) lines << "**실행자:** `${env.ACTOR}`"
-        if (branch)  lines << "**브랜치:** `${branch}`"
+        
+        // MR 이벤트여도 sourceBranch가 없으면 일단 잡히는 branchName으로 폴백
+        def finalBranch = branch
+        if (finalBranch == 'unknown' && branchName && branchName != 'unknown') {
+            finalBranch = branchName
+        }
+        if (finalBranch) lines << "**브랜치:** `${finalBranch}`"
         if (target)  lines << "**타겟:** `${target}`"
         if (buildUrl) lines << "**Jenkins:** [Build Log](${buildUrl})"
 
-        def payload = groovy.json.JsonOutput.toJson([
-          username  : "Jenkins Operator",
-          icon_emoji: icon,
-          text      : title + "\n" + lines.join("\n")
-        ])
+        def payloadText = title + "\\n" + lines.join("\\n")
+        
+        // 쌍따옴표 문자열 안에서 JSON 이스케이프가 풀리지 않도록 직접 문자열 조립
+        def payload = """
+        {
+          "username": "Jenkins Operator",
+          "icon_emoji": "${icon}",
+          "text": "${payloadText}"
+        }
+        """
 
         writeFile file: 'mm_payload.json', text: payload
 
