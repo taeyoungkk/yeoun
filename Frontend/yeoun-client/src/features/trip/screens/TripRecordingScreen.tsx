@@ -45,9 +45,9 @@ const MAP_TOP_OFFSET = 82;
 const PANEL_TOP_OFFSET = 118;
 
 type DayFilter = 'all' | 'day1' | 'day2' | 'day3';
-type TimelineEventType = 'location' | 'photo' | 'payment' | 'memo' | 'voice' | 'emotion';
+type TimelineEventType = 'location' | 'photo' | 'payment';
 type Coordinate = [number, number];
-type MapFilterKey = 'showPhotoPins' | 'showPaymentPins' | 'showMemoPins';
+type MapFilterKey = 'showPhotoPins' | 'showPaymentPins';
 
 type TripDay = {
   id: Exclude<DayFilter, 'all'>;
@@ -78,7 +78,7 @@ const TRIP_DAYS: TripDay[] = [
     label: 'Day 2',
     dateLabel: '03.12',
     distanceKm: 9.4,
-    summary: '성수 일대에서 메모와 감정 기록이 중심이 된 구간이에요.',
+    summary: '성수 일대에서 머문 장소와 이동 흐름이 또렷했던 구간이에요.',
     route: [
       [127.0437, 37.5447],
       [127.0479, 37.5466],
@@ -92,7 +92,7 @@ const TRIP_DAYS: TripDay[] = [
     label: 'Day 3',
     dateLabel: '03.13',
     distanceKm: 14.2,
-    summary: '한강 근처를 따라 이동하며 음성 메모와 결제가 쌓인 하루예요.',
+    summary: '한강 근처를 따라 이동하며 결제와 방문 기록이 쌓인 하루예요.',
     route: [
       [126.9837, 37.5392],
       [126.9873, 37.5372],
@@ -107,16 +107,20 @@ const EVENT_THEME: Record<TimelineEventType, { icon: keyof typeof MaterialIcons.
   location: { icon: 'near-me', accent: '#1F78D1', surface: '#E9F3FF' },
   photo: { icon: 'photo-library', accent: '#4C8E5E', surface: '#EDF7EE' },
   payment: { icon: 'credit-card', accent: '#D15D36', surface: '#FFF0E8' },
-  memo: { icon: 'edit-note', accent: '#7661D9', surface: '#F2EEFF' },
-  voice: { icon: 'mic', accent: '#C44A7E', surface: '#FFEAF2' },
-  emotion: { icon: 'favorite', accent: '#D67D2F', surface: '#FFF4E7' },
 };
 
 const MAP_FILTER_META: Array<{ key: MapFilterKey; label: string; icon: keyof typeof MaterialIcons.glyphMap }> = [
   { key: 'showPhotoPins', label: '사진', icon: 'photo-library' },
   { key: 'showPaymentPins', label: '결제', icon: 'credit-card' },
-  { key: 'showMemoPins', label: '메모', icon: 'edit-note' },
 ];
+const EMOTION_OPTIONS = [
+  { emoji: '😊', label: '설렘' },
+  { emoji: '😌', label: '든든함' },
+  { emoji: '😍', label: '행복' },
+  { emoji: '😮', label: '신기함' },
+  { emoji: '😴', label: '피곤함' },
+  { emoji: '🥲', label: '뭉클함' },
+] as const;
 const TRIP_MEMBER_OPTIONS = ['민지', '지훈', '서연'];
 
 function getBounds(route: Coordinate[]) {
@@ -162,10 +166,14 @@ export default function TripRecordingScreen() {
     selectedMembers: string[];
     memo: string;
   } | null>(null);
+  const [emotionPicker, setEmotionPicker] = useState<{
+    eventId: string;
+    selectedEmoji?: string;
+    selectedLabel?: string;
+  } | null>(null);
   const [mapPreferences, setMapPreferences] = useState({
     showPhotoPins: globalUserState.showPhotoPins,
     showPaymentPins: globalUserState.showPaymentPins,
-    showMemoPins: globalUserState.showMemoPins,
   });
 
   const filteredDays = useMemo(() => getFilteredDays(activeFilter), [activeFilter]);
@@ -173,7 +181,7 @@ export default function TripRecordingScreen() {
     () => tripEvents.filter((event) => activeFilter === 'all' || event.day === activeFilter),
     [activeFilter, tripEvents]
   );
-  const routeOnlyMode = !mapPreferences.showPhotoPins && !mapPreferences.showPaymentPins && !mapPreferences.showMemoPins;
+  const routeOnlyMode = !mapPreferences.showPhotoPins && !mapPreferences.showPaymentPins;
   const filteredMapEvents = useMemo(
     () =>
       filteredEvents.filter((event) => {
@@ -189,13 +197,9 @@ export default function TripRecordingScreen() {
           return mapPreferences.showPaymentPins;
         }
 
-        if (event.type === 'memo') {
-          return mapPreferences.showMemoPins;
-        }
-
         return false;
       }),
-    [filteredEvents, mapPreferences.showMemoPins, mapPreferences.showPaymentPins, mapPreferences.showPhotoPins, routeOnlyMode]
+    [filteredEvents, mapPreferences.showPaymentPins, mapPreferences.showPhotoPins, routeOnlyMode]
   );
 
   const routeCoordinates = useMemo(() => filteredDays.flatMap((day) => day.route), [filteredDays]);
@@ -250,6 +254,10 @@ export default function TripRecordingScreen() {
     [selectedPhotoEvent, selectedPhotoItem]
   );
   const selectedPhotoIsOwner = selectedPhotoContributor?.id === CURRENT_USER_ID;
+  const selectedPhotoEmotion =
+    selectedPhotoEvent?.emotionOwnerId === CURRENT_USER_ID && selectedPhotoEvent?.emotionEmoji && selectedPhotoEvent?.emotionLabel
+      ? `${selectedPhotoEvent.emotionEmoji} ${selectedPhotoEvent.emotionLabel}`
+      : null;
   const collapseProgress = Math.min(scrollOffset / MAP_COLLAPSE_DISTANCE, 1);
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
@@ -277,7 +285,6 @@ export default function TripRecordingScreen() {
       setMapPreferences({
         showPhotoPins: globalUserState.showPhotoPins,
         showPaymentPins: globalUserState.showPaymentPins,
-        showMemoPins: globalUserState.showMemoPins,
       });
     });
 
@@ -338,7 +345,6 @@ export default function TripRecordingScreen() {
       updateUser({
         showPhotoPins: true,
         showPaymentPins: true,
-        showMemoPins: true,
       });
       return;
     }
@@ -346,7 +352,6 @@ export default function TripRecordingScreen() {
     updateUser({
       showPhotoPins: false,
       showPaymentPins: false,
-      showMemoPins: false,
     });
   };
 
@@ -486,6 +491,40 @@ export default function TripRecordingScreen() {
     setPaymentImportDialog(null);
   };
 
+  const openEmotionPicker = (event: TimelineEvent) => {
+    setEmotionPicker({
+      eventId: event.id,
+      selectedEmoji: event.emotionOwnerId === CURRENT_USER_ID ? event.emotionEmoji : undefined,
+      selectedLabel: event.emotionOwnerId === CURRENT_USER_ID ? event.emotionLabel : undefined,
+    });
+  };
+
+  const selectEmotion = (emoji: string, label: string) => {
+    if (!emotionPicker) {
+      return;
+    }
+
+    updateTripEvent(emotionPicker.eventId, {
+      emotionEmoji: emoji,
+      emotionLabel: label,
+      emotionOwnerId: CURRENT_USER_ID,
+    });
+    setEmotionPicker(null);
+  };
+
+  const clearEmotion = () => {
+    if (!emotionPicker) {
+      return;
+    }
+
+    updateTripEvent(emotionPicker.eventId, {
+      emotionEmoji: undefined,
+      emotionLabel: undefined,
+      emotionOwnerId: undefined,
+    });
+    setEmotionPicker(null);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -618,6 +657,9 @@ export default function TripRecordingScreen() {
             <Text style={styles.photoModalSectionLabel}>이벤트 메모</Text>
             <Text style={styles.photoModalSectionBody}>{selectedPhotoEvent?.eventMemo ?? selectedPhotoEvent?.subtitle}</Text>
 
+            {selectedPhotoEmotion ? <Text style={styles.photoModalSectionLabel}>내 감정 기록</Text> : null}
+            {selectedPhotoEmotion ? <Text style={styles.photoModalSectionBody}>{selectedPhotoEmotion}</Text> : null}
+
             <Text style={styles.photoModalSectionLabel}>사진 메모</Text>
             <Text style={styles.photoModalSectionBody}>{selectedPhotoItem?.memo ?? '이 사진에 대한 메모가 아직 없어요.'}</Text>
           </Pressable>
@@ -718,6 +760,42 @@ export default function TripRecordingScreen() {
                 <Text style={styles.importConfirmButtonText}>
                   {paymentImportDialog?.mode === 'edit' ? '정산 정보 저장' : '비용으로 가져오기'}
                 </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={Boolean(emotionPicker)} transparent animationType="slide" onRequestClose={() => setEmotionPicker(null)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setEmotionPicker(null)}>
+          <Pressable style={styles.importSheetCard} onPress={() => undefined}>
+            <View style={styles.importSheetHandle} />
+            <Text style={styles.importSheetEyebrow}>내 감정 기록</Text>
+            <Text style={styles.importSheetTitle}>이 이벤트에 대한 내 기분을 남겨보세요.</Text>
+            <View style={styles.emotionOptionGrid}>
+              {EMOTION_OPTIONS.map((option) => {
+                const isActive =
+                  emotionPicker?.selectedEmoji === option.emoji && emotionPicker?.selectedLabel === option.label;
+
+                return (
+                  <TouchableOpacity
+                    key={`${option.emoji}-${option.label}`}
+                    style={[styles.emotionOptionCard, isActive && styles.emotionOptionCardActive]}
+                    activeOpacity={0.88}
+                    onPress={() => selectEmotion(option.emoji, option.label)}
+                  >
+                    <Text style={styles.emotionOptionEmoji}>{option.emoji}</Text>
+                    <Text style={[styles.emotionOptionLabel, isActive && styles.emotionOptionLabelActive]}>{option.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={styles.importActionRow}>
+              <TouchableOpacity style={styles.deleteDialogGhostButton} onPress={() => setEmotionPicker(null)} activeOpacity={0.88}>
+                <Text style={styles.deleteDialogGhostButtonText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.emotionClearButton} onPress={clearEmotion} activeOpacity={0.88}>
+                <Text style={styles.emotionClearButtonText}>기록 삭제</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -990,6 +1068,10 @@ export default function TripRecordingScreen() {
               const isSelected = selectedEventId === event.id;
               const isPaymentCandidate = event.type === 'payment' && event.paymentStatus === 'candidate';
               const isPaymentConfirmed = event.type === 'payment' && event.paymentStatus === 'confirmed';
+              const emotionValue =
+                event.emotionOwnerId === CURRENT_USER_ID && event.emotionEmoji && event.emotionLabel
+                  ? `${event.emotionEmoji} ${event.emotionLabel}`
+                  : null;
 
               return (
                 <View key={event.id} style={styles.timelineRow} onLayout={(layoutEvent) => handleEventLayout(event.id, layoutEvent)}>
@@ -1091,6 +1173,19 @@ export default function TripRecordingScreen() {
                             <Text style={[styles.eventChipText, { color: theme.accent }]}>{chip}</Text>
                           </View>
                         ))}
+                        <TouchableOpacity
+                          style={[styles.eventEmotionChip, emotionValue && styles.eventEmotionChipActive]}
+                          activeOpacity={0.82}
+                          onPress={(pressEvent) => {
+                            pressEvent.stopPropagation();
+                            openEmotionPicker(event);
+                          }}
+                        >
+                          <MaterialIcons name="mood" size={13} color={emotionValue ? '#8C561A' : '#7A867F'} />
+                          <Text style={[styles.eventEmotionChipText, emotionValue && styles.eventEmotionChipTextActive]}>
+                            {emotionValue ?? '감정 추가'}
+                          </Text>
+                        </TouchableOpacity>
                       </View>
                       {isPaymentCandidate ? (
                         <View style={styles.photoEventActionRow}>
@@ -1149,10 +1244,6 @@ export default function TripRecordingScreen() {
           </View>
 
           <View style={styles.bottomActions}>
-            <TouchableOpacity style={styles.ghostButton} activeOpacity={0.88}>
-              <MaterialIcons name="playlist-add" size={18} color="#54655B" />
-              <Text style={styles.ghostButtonText}>메모 추가</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={styles.endButton} onPress={() => router.replace('/(tabs)')} activeOpacity={0.88}>
               <Text style={styles.endButtonText}>여행 종료</Text>
             </TouchableOpacity>
@@ -1347,6 +1438,34 @@ const styles = StyleSheet.create({
   importMemberChipText: { fontFamily: 'Pretendard-Medium', fontSize: 13, color: '#52635A' },
   importMemberChipTextActive: { color: '#F7FBF6' },
   importMemoInput: { minHeight: 92 },
+  emotionOptionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 18 },
+  emotionOptionCard: {
+    width: '31%',
+    minWidth: 92,
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F4F7F3',
+    borderWidth: 1,
+    borderColor: '#DCE4DE',
+  },
+  emotionOptionCardActive: {
+    backgroundColor: '#FFF1E3',
+    borderColor: '#D98935',
+  },
+  emotionOptionEmoji: { fontSize: 24 },
+  emotionOptionLabel: { marginTop: 8, fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#52635A' },
+  emotionOptionLabelActive: { color: '#9A5B16' },
+  emotionClearButton: {
+    flex: 1,
+    height: 50,
+    borderRadius: 18,
+    backgroundColor: '#FFF1EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emotionClearButtonText: { fontFamily: 'Pretendard-SemiBold', fontSize: 15, color: '#B25543' },
   importSummaryCard: {
     marginTop: 14,
     borderRadius: 18,
@@ -1474,6 +1593,24 @@ const styles = StyleSheet.create({
   paymentHelperText: { fontFamily: 'Pretendard-Medium', fontSize: 12, color: '#6E7B74' },
   eventSubtitle: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 21, color: '#708076' },
   eventMemoText: { marginTop: 8, fontFamily: 'Pretendard-Regular', fontSize: 13, lineHeight: 20, color: '#55635B' },
+  eventEmotionChip: {
+    height: 30,
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    backgroundColor: '#F5F7F4',
+    borderWidth: 1,
+    borderColor: '#DEE5DF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  eventEmotionChipActive: {
+    backgroundColor: '#FFF5E8',
+    borderColor: '#E7CDA5',
+  },
+  eventEmotionChipText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#78857D' },
+  eventEmotionChipTextActive: { color: '#86531C' },
   photoByWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   photoByText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#708076' },
   avatarStack: { flexDirection: 'row', alignItems: 'center', paddingLeft: 10 },
@@ -1502,8 +1639,6 @@ const styles = StyleSheet.create({
   eventChip: { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999 },
   eventChipText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12 },
   bottomActions: { width: '100%', flexDirection: 'row', gap: 10, marginTop: 12, marginBottom: 14 },
-  ghostButton: { flex: 1, height: 54, borderRadius: 27, backgroundColor: '#E3EAE0', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  ghostButtonText: { fontFamily: 'Pretendard-SemiBold', fontSize: 15, color: '#54655B' },
   endButton: { flex: 1.2, height: 54, borderRadius: 27, backgroundColor: '#234634', alignItems: 'center', justifyContent: 'center' },
   endButtonText: { fontFamily: 'Pretendard-Bold', fontSize: 15, color: '#F5FAF4' },
 });

@@ -83,7 +83,6 @@ export default function SettingsScreen() {
       updateUser({
         showPhotoPins: false,
         showPaymentPins: false,
-        showMemoPins: false,
       });
       return;
     }
@@ -91,11 +90,10 @@ export default function SettingsScreen() {
     updateUser({
       showPhotoPins: true,
       showPaymentPins: settings.showPaymentPins,
-      showMemoPins: settings.showMemoPins,
     });
   };
 
-  const isRouteOnlyMode = !settings.showPhotoPins && !settings.showPaymentPins && !settings.showMemoPins;
+  const isRouteOnlyMode = !settings.showPhotoPins && !settings.showPaymentPins;
 
   return (
     <SafeAreaView className="flex-1 bg-[#F3F6EB]" edges={['top', 'left', 'right']}>
@@ -173,14 +171,6 @@ export default function SettingsScreen() {
             <IosSwitch
               value={settings.showPaymentPins}
               onValueChange={(val) => toggleSetting('showPaymentPins', val)}
-            />
-          </View>
-          <View className="w-full h-[1px] bg-[#F0F0F0] mb-6" />
-          <View className="flex-row justify-between items-center">
-            <Text className="text-lg font-medium text-[#1A1A1A]">메모 표시</Text>
-            <IosSwitch
-              value={settings.showMemoPins}
-              onValueChange={(val) => toggleSetting('showMemoPins', val)}
             />
           </View>
         </View>

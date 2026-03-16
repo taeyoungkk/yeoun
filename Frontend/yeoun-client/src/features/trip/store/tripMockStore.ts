@@ -1,5 +1,5 @@
 type DayFilter = 'all' | 'day1' | 'day2' | 'day3';
-type TimelineEventType = 'location' | 'photo' | 'payment' | 'memo' | 'voice' | 'emotion';
+type TimelineEventType = 'location' | 'photo' | 'payment';
 type Coordinate = [number, number];
 type PaymentStatus = 'candidate' | 'confirmed';
 type PaymentSplitType = 'equal' | 'selected';
@@ -38,6 +38,9 @@ export type TimelineEvent = {
   paymentImportId?: string;
   paymentParticipantNames?: string[];
   paymentSplitType?: PaymentSplitType;
+  emotionEmoji?: string;
+  emotionLabel?: string;
+  emotionOwnerId?: string;
 };
 
 export const CURRENT_USER_ID = 'user-1';
@@ -70,6 +73,9 @@ const INITIAL_TRIP_EVENTS: TimelineEvent[] = [
     placeName: '광안리 해수욕장',
     eventMemo: '바람은 좀 불었지만 해 질 무렵 분위기가 정말 좋았어요.',
     chips: ['사진 4장', '장소 자동 매칭'],
+    emotionEmoji: '😊',
+    emotionLabel: '설렘',
+    emotionOwnerId: CURRENT_USER_ID,
     coordinate: [126.9898, 37.5707],
     photoContributors: [
       { id: 'user-1', name: '민지', color: '#F08AA2' },
@@ -99,37 +105,10 @@ const INITIAL_TRIP_EVENTS: TimelineEvent[] = [
     paymentSplitLabel: '3명 균등 분할 예정',
     paymentParticipantNames: ['민지', '지훈', '서연'],
     paymentSplitType: 'equal',
+    emotionEmoji: '😌',
+    emotionLabel: '든든함',
+    emotionOwnerId: CURRENT_USER_ID,
     coordinate: [127.0014, 37.5701],
-  },
-  {
-    id: 'ev-4',
-    day: 'day2',
-    type: 'memo',
-    time: '14:10',
-    title: '메모 남김',
-    subtitle: '걷다가 떠오른 생각을 메모로 저장했어요.',
-    chips: ['텍스트 메모'],
-    coordinate: [127.0479, 37.5466],
-  },
-  {
-    id: 'ev-5',
-    day: 'day2',
-    type: 'emotion',
-    time: '16:20',
-    title: '감정 기록',
-    subtitle: '오늘의 기분과 순간 인상을 함께 남겼어요.',
-    chips: ['감정 체크'],
-    coordinate: [127.0534, 37.5454],
-  },
-  {
-    id: 'ev-6',
-    day: 'day3',
-    type: 'voice',
-    time: '19:30',
-    title: '음성 메모',
-    subtitle: '짧은 음성 메모가 현재 위치와 함께 저장되었어요.',
-    chips: ['00:42'],
-    coordinate: [126.9919, 37.5346],
   },
   {
     id: 'ev-7',
