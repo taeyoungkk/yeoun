@@ -87,13 +87,6 @@ pipeline {
              try {
                  branchName = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).replace('origin/', '').trim()
              } catch(Exception e) { branchName = 'unknown' }
-          }{env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
-
-          def branchName = env.PUSH_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).replace('origin/', '').trim()
-          if (branchName == 'HEAD') {
-             try {
-                 branchName = sh(script: "git branch -a --contains HEAD | grep -v 'HEAD' | head -n 1 || echo 'unknown'", returnStdout: true).replace('*', '').replace('remotes/origin/', '').trim()
-             } catch(Exception e) { branchName = 'unknown' }
           }
           env.IS_DEVELOP = (branchName == 'develop' || branchName.endsWith('/develop')).toString()
           env.DOCKERHUB_NAMESPACE_EFFECTIVE = (params.DOCKERHUB_NAMESPACE?.trim()) ? params.DOCKERHUB_NAMESPACE.trim() : (env.DOCKERHUB_NAMESPACE ?: '').trim()
