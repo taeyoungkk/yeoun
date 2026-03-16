@@ -1,3 +1,4 @@
+//test
 pipeline {
   agent any
 
@@ -148,9 +149,9 @@ pipeline {
                 -e POSTGRES_USER="${CI_POSTGRES_USER}" \
                 -e POSTGRES_PASSWORD="${CI_POSTGRES_PASSWORD}" \
                 -e TZ=Asia/Seoul \
-                -p 0:5432 "${CI_POSTGRES_IMAGE}" >/dev/null
+                "${CI_POSTGRES_IMAGE}" >/dev/null
 
-              POSTGRES_HOST_PORT="$(docker port "${CI_POSTGRES_CONTAINER}" 5432/tcp | sed -E 's/.*:([0-9]+)$/\\1/' | tail -n 1)"
+              POSTGRES_IP="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CI_POSTGRES_CONTAINER}")"
               
               # PostgreSQL 구동 대기 Health Check
               for i in $(seq 1 90); do
@@ -162,9 +163,9 @@ pipeline {
 
               # 2. 임시 Redis 컨테이너 구동
               docker pull "${CI_REDIS_IMAGE}" >/dev/null 2>&1 || true
-              docker run -d --name "${CI_REDIS_CONTAINER}" -p 0:6379 "${CI_REDIS_IMAGE}" redis-server --appendonly yes >/dev/null
+              docker run -d --name "${CI_REDIS_CONTAINER}" "${CI_REDIS_IMAGE}" redis-server --appendonly yes >/dev/null
 
-              REDIS_HOST_PORT="$(docker port "${CI_REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/\\1/' | tail -n 1)"
+              REDIS_IP="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CI_REDIS_CONTAINER}")"
               
               # Redis 구동 대기 Health Check
               for i in $(seq 1 30); do
@@ -178,11 +179,12 @@ pipeline {
               
               # 3. .env.example 기준 테스트 환경 변수(.env) 더미 생성
               cat <<EOT > .env
-DB_URL=jdbc:postgresql://127.0.0.1:${POSTGRES_HOST_PORT}/${CI_POSTGRES_DB}
+DB_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
+FLYWAY_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
 DB_USERNAME=${CI_POSTGRES_USER}
 DB_PASSWORD=${CI_POSTGRES_PASSWORD}
-REDIS_HOST=127.0.0.1
-REDIS_PORT=${REDIS_HOST_PORT}
+REDIS_HOST=${REDIS_IP}
+REDIS_PORT=6379
 JWT_SECRET=c2VjcmV0LWtleS1mb3ItdGVzdGluZy1wdXJwb3Nlcw==
 JWT_ACCESS_EXPIRE_SECONDS=1800
 JWT_REFRESH_EXPIRE_SECONDS=1209600
@@ -195,7 +197,9 @@ GOOGLE_CLIENT_ID=dummy.apps.googleusercontent.com
 GOOGLE_JWK_SET_URI=https://www.googleapis.com/oauth2/v3/certs
 EOT
 
-              # 주입받은 패스워드 변수들을 스프링부트 테스트 환경에 전달
+              # 주입받은 패스워드 변수들(.env)을 활성화하기 위해 로컬 템플릿을 ci 프로파일용으로 복사
+              cp src/main/resources/application-local.properties.example src/main/resources/application-ci.properties || true
+
               ./mvnw -q clean test \
                 -Dspring.profiles.active=ci \
                 2>&1 | tee -a "../../${CI_TEST_LOG}"
@@ -331,15 +335,26 @@ EOT
         def lines = []
         if (kind)    lines << "**이벤트:** `${kind}`"
         if (env.ACTOR) lines << "**실행자:** `${env.ACTOR}`"
-        if (branch)  lines << "**브랜치:** `${branch}`"
+        
+        // MR 이벤트여도 sourceBranch가 없으면 일단 잡히는 branchName으로 폴백
+        def finalBranch = branch
+        if (finalBranch == 'unknown' && branchName && branchName != 'unknown') {
+            finalBranch = branchName
+        }
+        if (finalBranch) lines << "**브랜치:** `${finalBranch}`"
         if (target)  lines << "**타겟:** `${target}`"
         if (buildUrl) lines << "**Jenkins:** [Build Log](${buildUrl})"
 
-        def payload = groovy.json.JsonOutput.toJson([
-          username  : "Jenkins Operator",
-          icon_emoji: icon,
-          text      : title + "\n" + lines.join("\n")
-        ])
+        def payloadText = title + "\\n" + lines.join("\\n")
+        
+        // 쌍따옴표 문자열 안에서 JSON 이스케이프가 풀리지 않도록 직접 문자열 조립
+        def payload = """
+        {
+          "username": "Jenkins Operator",
+          "icon_emoji": "${icon}",
+          "text": "${payloadText}"
+        }
+        """
 
         writeFile file: 'mm_payload.json', text: payload
 
