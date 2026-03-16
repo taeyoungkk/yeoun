@@ -293,8 +293,15 @@ export default function TripRecordingScreen() {
     }),
     [filteredMapEvents, selectedEventId]
   );
-  const totalDistanceLabel = `${filteredDays.reduce((sum, day) => sum + day.distanceKm, 0).toFixed(1)}km`;
-
+  const summaryStats = useMemo(
+    () => ({
+      totalDistanceLabel: `${filteredDays.reduce((sum, day) => sum + day.distanceKm, 0).toFixed(1)}km`,
+      visitedPlaceCount: filteredEvents.filter((event) => Boolean(event.coordinate)).length,
+      photoCount: filteredEvents.reduce((sum, event) => sum + (event.photoSources?.length ?? 0), 0),
+      paymentCount: filteredEvents.filter((event) => event.type === 'payment').length,
+    }),
+    [filteredDays, filteredEvents]
+  );
   const collapseProgress = Math.min(scrollOffset / MAP_COLLAPSE_DISTANCE, 1);
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
@@ -617,6 +624,30 @@ export default function TripRecordingScreen() {
             </View>
           ))}
 
+          <View style={styles.summarySection}>
+            <View style={styles.summaryStatRow}>
+              <View style={styles.summaryStatItem}>
+                <Text style={styles.summaryStatValue}>{summaryStats.totalDistanceLabel}</Text>
+                <Text style={styles.summaryStatLabel}>방문한 거리</Text>
+              </View>
+              <View style={styles.summaryStatDivider} />
+              <View style={styles.summaryStatItem}>
+                <Text style={styles.summaryStatValue}>{summaryStats.visitedPlaceCount}</Text>
+                <Text style={styles.summaryStatLabel}>방문한 곳</Text>
+              </View>
+              <View style={styles.summaryStatDivider} />
+              <View style={styles.summaryStatItem}>
+                <Text style={styles.summaryStatValue}>{summaryStats.photoCount}</Text>
+                <Text style={styles.summaryStatLabel}>사진</Text>
+              </View>
+              <View style={styles.summaryStatDivider} />
+              <View style={styles.summaryStatItem}>
+                <Text style={styles.summaryStatValue}>{summaryStats.paymentCount}</Text>
+                <Text style={styles.summaryStatLabel}>결제</Text>
+              </View>
+            </View>
+          </View>
+
           <View style={styles.timelineWrap}>
             {filteredEvents.map((event, index) => {
               const theme = EVENT_THEME[event.type];
@@ -744,12 +775,18 @@ const styles = StyleSheet.create({
   dayTabTextActive: { color: '#F7FBF6' },
   dayTabSubText: { marginTop: 2, fontFamily: 'Pretendard-Medium', fontSize: 11, color: '#8A978F' },
   dayTabSubTextActive: { color: '#C6D8CC' },
-  daySummaryRow: { width: '100%', marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14, paddingHorizontal: 6 },
+  daySummaryRow: { display: 'none' },
   daySummaryCopy: { flex: 1, minWidth: 0 },
   daySummaryTitle: { fontFamily: 'Pretendard-SemiBold', fontSize: 16, color: '#1A241D' },
   daySummaryText: { marginTop: 4, fontFamily: 'Pretendard-Regular', fontSize: 13, color: '#728077' },
   dayDistanceBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, backgroundColor: '#E3ECE2' },
   dayDistanceText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#5A6D61' },
+  summarySection: { marginTop: 6, paddingHorizontal: 2 },
+  summaryStatRow: { flexDirection: 'row', alignItems: 'stretch' },
+  summaryStatItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 6 },
+  summaryStatValue: { fontFamily: 'Pretendard-Bold', fontSize: 18, color: '#182119' },
+  summaryStatLabel: { marginTop: 4, fontFamily: 'Pretendard-Medium', fontSize: 12, color: '#7B8780' },
+  summaryStatDivider: { width: 1, backgroundColor: '#D9E2DB', marginVertical: 4 },
   timelineWrap: { width: '100%', marginTop: 22, paddingBottom: 8 },
   timelineRow: { width: '100%', flexDirection: 'row', alignItems: 'stretch', gap: 14 },
   timelineRail: { width: 30, alignItems: 'center' },
