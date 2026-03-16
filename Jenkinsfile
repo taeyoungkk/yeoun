@@ -34,20 +34,12 @@ pipeline {
       steps {
         checkout scm
         script {
-          // =======================================================
-          // [DEBUG] GitLab이 젠킨스로 보내는 변수 전체 출력
-          // 📌 변수 확인 후 이 블록 삭제 예정
-          // =======================================================
-          sh 'env | sort'
-          // ------------------------------------------------------------
-          // GitLab Webhook Plugin 변수 매핑 보완
-          // Generic Webhook Trigger 또는 GitLab Plugin 등을 위한 변수 직접 참조 및 Fallback
+          // ======================          // ------------------------------------------------------------
+          // GitLab Webhook Plugin 변수 매핑 보완 (디버깅 결과 반영)
           // ------------------------------------------------------------
           def pick = { List<String> keys ->
             for (k in keys) {
-              // env 맵퍼, params 맵퍼 양쪽을 모두 탐색
               def v = env.getProperty(k) ?: params.getProperty(k)
-              // /usr/share/jenkins/ref 와 같은 도커 내부 환경변수는 거르기
               if (v != null && v.toString().trim() && !v.toString().contains('/usr/share/jenkins')) {
                 return v.toString().trim()
               }
@@ -55,16 +47,15 @@ pipeline {
             return ''
           }
 
-          // 1. 이벤트 종류 매핑
+          // 1. 이벤트 종류 매핑 (로그에 웹훅 변수 자체가 없으므로 기본적으로 Push 취급)
           env.EVENT_KIND = pick(['gitlabActionType','OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
           if (env.CHANGE_ID || env.EVENT_KIND.toLowerCase().contains('merge')) {
               env.EVENT_KIND = 'merge_request'
           } else {
-              // 이외의 모든 이벤트(웹훅 변수가 아예 안 잡혔거나 수동 빌드 포함)는 일반적인 Push 로직을 타도록 간주
               env.EVENT_KIND = 'push'
           }
 
-          // 2. 실행자(액터) 매핑
+          // 2. 실행자(액터) 매핑 (Git 로그에서 가장 최근 커밋 작성자 이름 추출)
           env.ACTOR = pick([
             'gitlabUserName','gitlabUserUsername',
             'CHANGE_AUTHOR',
@@ -73,10 +64,16 @@ pipeline {
             'user_name','user_username',
             'GITLAB_USER_NAME','GITLAB_USER_USERNAME'
           ]).trim()
-          if (!env.ACTOR) env.ACTOR = 'unknown'
+          if (!env.ACTOR) {
+             try {
+                env.ACTOR = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
+             } catch(Exception e) {
+                env.ACTOR = 'unknown' 
+             }
+          }
 
-          // 3. 브랜치명 추출 (기존 REF, ref 때문에 /usr/share/jenkins/ref 에러가 발생하던 부분 완전 제거!!)
-          def refRaw = pick(['gitlabBranch','GIT_BRANCH','gitBranch','GIT_LOCAL_BRANCH','BRANCH_NAME','CHANGE_BRANCH','refChanges_0_refId'])
+          // 3. 브랜치명 추출 (GIT_BRANCH 가 origin/INFRA/... 형태로 잡힘)
+          def refRaw = pick(['GIT_BRANCH','gitlabBranch','gitBranch','GIT_LOCAL_BRANCH','BRANCH_NAME','CHANGE_BRANCH','refChanges_0_refId'])
           env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').replace('origin/', '').trim()
           
           env.MR_SOURCE = pick(['gitlabSourceBranch','CHANGE_BRANCH','MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch']).trim()
@@ -84,6 +81,13 @@ pipeline {
 
           env.GIT_SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
+
+          def branchName = env.PUSH_BRANCH
+          if (!branchName || branchName == 'HEAD') {
+             try {
+                 branchName = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).replace('origin/', '').trim()
+             } catch(Exception e) { branchName = 'unknown' }
+          }{env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
 
           def branchName = env.PUSH_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).replace('origin/', '').trim()
           if (branchName == 'HEAD') {
@@ -304,8 +308,8 @@ EOT
     always {
       script {
         def success = (currentBuild.currentResult == 'SUCCESS')
-        def kind = env.EVENT_KIND ?: 'unknown'
-        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: 'unknown') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: 'unknown')
+        def kind = env.EVENT_KIND ?: 'push'
+        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: 'unknown') : (env.PUSH_BRANCH ?: 'unknown')
         def target = env.MR_TARGET ?: ''
         
         def jobName = (env.JOB_NAME ?: '').trim()
