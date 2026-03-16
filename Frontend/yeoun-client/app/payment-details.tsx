@@ -123,6 +123,7 @@ export default function PaymentDetailsScreen() {
   const colorScheme = useColorScheme();
   const { 
     members, 
+    expenses,
     removeMember, 
     setDraggingMember, 
     draggingMemberId,
@@ -131,6 +132,16 @@ export default function PaymentDetailsScreen() {
     hoveredExpenseId,
     findDropTarget
   } = useExpenseStore();
+
+  const totalBudget = useMemo(() => {
+    const calculateTotal = (items: any[]): number => {
+      return items.reduce((acc, item) => {
+        const subTotal = item.subItems ? calculateTotal(item.subItems) : 0;
+        return acc + item.amount + subTotal;
+      }, 0);
+    };
+    return calculateTotal(expenses);
+  }, [expenses]);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
 
   // Define the JS functions to be called from the UI thread
@@ -188,7 +199,7 @@ export default function PaymentDetailsScreen() {
             </TouchableOpacity>
             <View>
               <Text className="text-black font-bold text-3xl mb-2" style={{ fontFamily: 'DM Sans' }}>현재 여행 지출</Text>
-              <Text className="text-black font-bold text-xl tracking-tight" style={{ fontFamily: 'DM Sans' }}>총 지출: 145,000</Text>
+              <Text className="text-black font-bold text-xl tracking-tight" style={{ fontFamily: 'DM Sans' }}>총 지출: {totalBudget.toLocaleString()}</Text>
             </View>
           </View>
 
