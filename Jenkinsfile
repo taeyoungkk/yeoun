@@ -39,7 +39,15 @@ pipeline {
           // ------------------------------------------------------------
           def pick = { List<String> keys ->
             for (k in keys) {
-              def v = env.getProperty(k) ?: params.getProperty(k)
+              def v = null
+              // env에서 먼저 찾기 (안전함)
+              v = env.getProperty(k)
+              
+              // 없으면 params에서 찾기 (Groovy Sandbox Map 에러 우회: 객체에 키가 존재하는지 먼저 명시적 체크 후 접근)
+              if (v == null && params != null && params.containsKey(k)) {
+                  v = params.get(k)
+              }
+
               if (v != null && v.toString().trim() && !v.toString().contains('/usr/share/jenkins')) {
                 return v.toString().trim()
               }
@@ -89,7 +97,7 @@ pipeline {
              } catch(Exception e) { branchName = 'unknown' }
           }
           env.IS_DEVELOP = (branchName == 'develop' || branchName.endsWith('/develop')).toString()
-          env.DOCKERHUB_NAMESPACE_EFFECTIVE = (params.DOCKERHUB_NAMESPACE?.trim()) ? params.DOCKERHUB_NAMESPACE.trim() : (env.DOCKERHUB_NAMESPACE ?: '').trim()
+          env.DOCKERHUB_NAMESPACE_EFFECTIVE = ((params.DOCKERHUB_NAMESPACE?.trim()) ? params.DOCKERHUB_NAMESPACE.trim() : (env.DOCKERHUB_NAMESPACE ?: '').trim()).toLowerCase()
 
           def diffOutput = sh(
             script: '''
