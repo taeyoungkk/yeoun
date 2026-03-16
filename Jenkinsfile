@@ -1,6 +1,7 @@
+//test
 pipeline {
   agent any
- 
+
   parameters {
     string(name: 'DOCKERHUB_NAMESPACE', defaultValue: '', description: 'Docker Hub namespace. Leave blank to use Jenkins env var.')
   }
@@ -25,43 +26,79 @@ pipeline {
     disableConcurrentBuilds()
   }
 
+  // Jenkins Declarative Pipeline 최신 버전에 맞춰 속성 블록을 삭제합니다.
+  // 에러 원인: 설치된 플러그인이 gitlab 트리거를 지원하지 않거나, 문법 버전이 맞지 않음.
+  // 해결: 푸시 및 MR 트리거는 Jenkins UI(구성 - 빌드 유발 - Generic Webhook Trigger 등)에서 직접 설정하세요.
+
   stages {
     stage('Checkout & Detect Context') {
       steps {
         checkout scm
         script {
+          // ======================          // ------------------------------------------------------------
+          // GitLab Webhook Plugin 변수 매핑 보완 (디버깅 결과 반영)
+          // ------------------------------------------------------------
           def pick = { List<String> keys ->
             for (k in keys) {
-              def v = env."${k}"
-              if (v != null && v.toString().trim()) return v.toString().trim()
+              def v = null
+              // env에서 먼저 찾기 (안전함)
+              v = env.getProperty(k)
+              
+              // 없으면 params에서 찾기 (Groovy Sandbox Map 에러 우회: 객체에 키가 존재하는지 먼저 명시적 체크 후 접근)
+              if (v == null && params != null && params.containsKey(k)) {
+                  v = params.get(k)
+              }
+
+              if (v != null && v.toString().trim() && !v.toString().contains('/usr/share/jenkins')) {
+                return v.toString().trim()
+              }
             }
             return ''
           }
 
-          env.EVENT_KIND = pick(['OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
-          if (env.EVENT_KIND.toLowerCase().contains('merge')) env.EVENT_KIND = 'merge_request'
-          if (env.EVENT_KIND.toLowerCase().contains('push'))  env.EVENT_KIND = 'push'
+          // 1. 이벤트 종류 매핑 (로그에 웹훅 변수 자체가 없으므로 기본적으로 Push 취급)
+          env.EVENT_KIND = pick(['gitlabActionType','OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
+          if (env.CHANGE_ID || env.EVENT_KIND.toLowerCase().contains('merge')) {
+              env.EVENT_KIND = 'merge_request'
+          } else {
+              env.EVENT_KIND = 'push'
+          }
 
+          // 2. 실행자(액터) 매핑 (Git 로그에서 가장 최근 커밋 작성자 이름 추출)
           env.ACTOR = pick([
+            'gitlabUserName','gitlabUserUsername',
+            'CHANGE_AUTHOR',
             'MR_USER_NAME','MR_USER_USERNAME',
             'PUSH_USER_NAME','PUSH_USER_USERNAME',
             'user_name','user_username',
-            'GITLAB_USER_NAME','GITLAB_USER_USERNAME',
-            'gitlabUserName','gitlabUserUsername'
+            'GITLAB_USER_NAME','GITLAB_USER_USERNAME'
           ]).trim()
-          if (!env.ACTOR) env.ACTOR = 'unknown'
+          if (!env.ACTOR) {
+             try {
+                env.ACTOR = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
+             } catch(Exception e) {
+                env.ACTOR = 'unknown' 
+             }
+          }
 
-          def refRaw = pick(['REF','ref','GIT_REF','gitRef','refChanges_0_refId'])
-          env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').trim()
-          env.MR_SOURCE = pick(['MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch','gitlabSourceBranch']).trim()
-          env.MR_TARGET = pick(['MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch','gitlabTargetBranch']).trim()
+          // 3. 브랜치명 추출 (GIT_BRANCH 가 origin/INFRA/... 형태로 잡힘)
+          def refRaw = pick(['GIT_BRANCH','gitlabBranch','gitBranch','GIT_LOCAL_BRANCH','BRANCH_NAME','CHANGE_BRANCH','refChanges_0_refId'])
+          env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').replace('origin/', '').trim()
+          
+          env.MR_SOURCE = pick(['gitlabSourceBranch','CHANGE_BRANCH','MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch']).trim()
+          env.MR_TARGET = pick(['gitlabTargetBranch','CHANGE_TARGET','MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch']).trim()
 
           env.GIT_SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
 
-          def branchName = env.BRANCH_NAME ?: env.GIT_BRANCH ?: env.PUSH_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+          def branchName = env.PUSH_BRANCH
+          if (!branchName || branchName == 'HEAD') {
+             try {
+                 branchName = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).replace('origin/', '').trim()
+             } catch(Exception e) { branchName = 'unknown' }
+          }
           env.IS_DEVELOP = (branchName == 'develop' || branchName.endsWith('/develop')).toString()
-          env.DOCKERHUB_NAMESPACE_EFFECTIVE = (params.DOCKERHUB_NAMESPACE?.trim()) ? params.DOCKERHUB_NAMESPACE.trim() : (env.DOCKERHUB_NAMESPACE ?: '').trim()
+          env.DOCKERHUB_NAMESPACE_EFFECTIVE = ((params.DOCKERHUB_NAMESPACE?.trim()) ? params.DOCKERHUB_NAMESPACE.trim() : (env.DOCKERHUB_NAMESPACE ?: '').trim()).toLowerCase()
 
           def diffOutput = sh(
             script: '''
@@ -112,9 +149,9 @@ pipeline {
                 -e POSTGRES_USER="${CI_POSTGRES_USER}" \
                 -e POSTGRES_PASSWORD="${CI_POSTGRES_PASSWORD}" \
                 -e TZ=Asia/Seoul \
-                -p 0:5432 "${CI_POSTGRES_IMAGE}" >/dev/null
+                "${CI_POSTGRES_IMAGE}" >/dev/null
 
-              POSTGRES_HOST_PORT="$(docker port "${CI_POSTGRES_CONTAINER}" 5432/tcp | sed -E 's/.*:([0-9]+)$/\\1/' | tail -n 1)"
+              POSTGRES_IP="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CI_POSTGRES_CONTAINER}")"
               
               # PostgreSQL 구동 대기 Health Check
               for i in $(seq 1 90); do
@@ -126,9 +163,9 @@ pipeline {
 
               # 2. 임시 Redis 컨테이너 구동
               docker pull "${CI_REDIS_IMAGE}" >/dev/null 2>&1 || true
-              docker run -d --name "${CI_REDIS_CONTAINER}" -p 0:6379 "${CI_REDIS_IMAGE}" redis-server --appendonly yes >/dev/null
+              docker run -d --name "${CI_REDIS_CONTAINER}" "${CI_REDIS_IMAGE}" redis-server --appendonly yes >/dev/null
 
-              REDIS_HOST_PORT="$(docker port "${CI_REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/\\1/' | tail -n 1)"
+              REDIS_IP="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CI_REDIS_CONTAINER}")"
               
               # Redis 구동 대기 Health Check
               for i in $(seq 1 30); do
@@ -142,11 +179,12 @@ pipeline {
               
               # 3. .env.example 기준 테스트 환경 변수(.env) 더미 생성
               cat <<EOT > .env
-DB_URL=jdbc:postgresql://127.0.0.1:${POSTGRES_HOST_PORT}/${CI_POSTGRES_DB}
+DB_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
+FLYWAY_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
 DB_USERNAME=${CI_POSTGRES_USER}
 DB_PASSWORD=${CI_POSTGRES_PASSWORD}
-REDIS_HOST=127.0.0.1
-REDIS_PORT=${REDIS_HOST_PORT}
+REDIS_HOST=${REDIS_IP}
+REDIS_PORT=6379
 JWT_SECRET=c2VjcmV0LWtleS1mb3ItdGVzdGluZy1wdXJwb3Nlcw==
 JWT_ACCESS_EXPIRE_SECONDS=1800
 JWT_REFRESH_EXPIRE_SECONDS=1209600
@@ -159,7 +197,9 @@ GOOGLE_CLIENT_ID=dummy.apps.googleusercontent.com
 GOOGLE_JWK_SET_URI=https://www.googleapis.com/oauth2/v3/certs
 EOT
 
-              # 주입받은 패스워드 변수들을 스프링부트 테스트 환경에 전달
+              # 주입받은 패스워드 변수들(.env)을 활성화하기 위해 로컬 템플릿을 ci 프로파일용으로 복사
+              cp src/main/resources/application-local.properties.example src/main/resources/application-ci.properties || true
+
               ./mvnw -q clean test \
                 -Dspring.profiles.active=ci \
                 2>&1 | tee -a "../../${CI_TEST_LOG}"
@@ -272,9 +312,16 @@ EOT
   post {
     always {
       script {
+        def branchName = env.PUSH_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).replace('origin/', '').trim()
+        if (branchName == 'HEAD') {
+             try {
+                 branchName = sh(script: "git branch -a --contains HEAD | grep -v 'HEAD' | head -n 1 || echo 'unknown'", returnStdout: true).replace('*', '').replace('remotes/origin/', '').trim()
+             } catch(Exception e) { branchName = 'unknown' }
+        }
+        
         def success = (currentBuild.currentResult == 'SUCCESS')
-        def kind = env.EVENT_KIND ?: 'unknown'
-        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: 'unknown') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: 'unknown')
+        def kind = env.EVENT_KIND ?: 'push'
+        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: 'unknown') : (branchName ?: 'unknown')
         def target = env.MR_TARGET ?: ''
         
         def jobName = (env.JOB_NAME ?: '').trim()
@@ -288,15 +335,26 @@ EOT
         def lines = []
         if (kind)    lines << "**이벤트:** `${kind}`"
         if (env.ACTOR) lines << "**실행자:** `${env.ACTOR}`"
-        if (branch)  lines << "**브랜치:** `${branch}`"
+        
+        // MR 이벤트여도 sourceBranch가 없으면 일단 잡히는 branchName으로 폴백
+        def finalBranch = branch
+        if (finalBranch == 'unknown' && branchName && branchName != 'unknown') {
+            finalBranch = branchName
+        }
+        if (finalBranch) lines << "**브랜치:** `${finalBranch}`"
         if (target)  lines << "**타겟:** `${target}`"
         if (buildUrl) lines << "**Jenkins:** [Build Log](${buildUrl})"
 
-        def payload = groovy.json.JsonOutput.toJson([
-          username  : "Jenkins Operator",
-          icon_emoji: icon,
-          text      : title + "\\n" + lines.join("\\n")
-        ])
+        def payloadText = title + "\\n" + lines.join("\\n")
+        
+        // 쌍따옴표 문자열 안에서 JSON 이스케이프가 풀리지 않도록 직접 문자열 조립
+        def payload = """
+        {
+          "username": "Jenkins Operator",
+          "icon_emoji": "${icon}",
+          "text": "${payloadText}"
+        }
+        """
 
         writeFile file: 'mm_payload.json', text: payload
 

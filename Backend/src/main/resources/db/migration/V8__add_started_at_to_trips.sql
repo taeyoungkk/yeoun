@@ -1,0 +1,2 @@
+ALTER TABLE trips
+    ADD COLUMN started_at TIMESTAMPTZ;
