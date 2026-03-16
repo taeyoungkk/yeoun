@@ -2,6 +2,7 @@ package com.yeoun.domain.trip.controller;
 
 import com.yeoun.domain.trip.dto.response.TripInviteDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteAcceptResponse;
+import com.yeoun.domain.trip.dto.response.TripInviteDeclineResponse;
 import com.yeoun.domain.trip.service.TripInviteService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -44,6 +45,17 @@ public class TripInviteController {
             @PathVariable("inviteToken") String inviteToken
     ) {
         TripInviteAcceptResponse response = tripInviteService.acceptInvite(principal.userId(), inviteToken);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/{inviteToken}/decline")
+    @Operation(summary = "초대 거절", description = "초대 링크를 거절합니다.")
+    @SecurityRequirement(name = "bearerAuth")
+    public ApiResponse<TripInviteDeclineResponse> declineInvite(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("inviteToken") String inviteToken
+    ) {
+        TripInviteDeclineResponse response = tripInviteService.declineInvite(principal.userId(), inviteToken);
         return ApiResponse.ok(response);
     }
 }

@@ -2,6 +2,7 @@ package com.yeoun.domain.trip.service;
 
 import com.yeoun.domain.trip.dto.response.TripInviteDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteAcceptResponse;
+import com.yeoun.domain.trip.dto.response.TripInviteDeclineResponse;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripInvite;
 import com.yeoun.domain.trip.entity.TripInviteStatus;
@@ -124,5 +125,38 @@ public class TripInviteService {
                 tripMember.getInviteStatus(),
                 tripMember.getJoinedAt()
         );
+    }
+
+    @Transactional
+    public TripInviteDeclineResponse declineInvite(UUID requesterUserId, String inviteToken) {
+        Instant now = Instant.now();
+        TripInvite invite = tripInviteRepository.findByInviteToken(inviteToken)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_INVITE_NOT_FOUND));
+
+        boolean isCurrentMember = tripMemberRepository.existsByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
+                invite.getTripId(),
+                requesterUserId,
+                TripMemberInviteStatus.ACCEPTED
+        );
+        if (isCurrentMember) {
+            throw new BaseException(ErrorCode.TRIP_ALREADY_MEMBER);
+        }
+
+        if (invite.getStatus() == TripInviteStatus.SENT && invite.getExpiresAt().isBefore(now)) {
+            invite.markExpired();
+        }
+        if (invite.getStatus() != TripInviteStatus.SENT) {
+            throw new BaseException(ErrorCode.TRIP_INVITE_ACCEPT_NOT_ALLOWED);
+        }
+
+        if (invite.getInviteType() == TripInviteType.USER) {
+            if (invite.getTargetUserId() != null && !invite.getTargetUserId().equals(requesterUserId)) {
+                throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
+            }
+            invite.markCancelled();
+            return new TripInviteDeclineResponse(invite.getTripId(), TripInviteStatus.CANCELLED.name());
+        }
+
+        return new TripInviteDeclineResponse(invite.getTripId(), "DECLINED");
     }
 }

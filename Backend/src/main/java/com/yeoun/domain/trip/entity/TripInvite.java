@@ -64,4 +64,8 @@ public class TripInvite {
         this.expiresAt = expiresAt;
         this.status = TripInviteStatus.SENT;
     }
+
+    public void markCancelled() {
+        this.status = TripInviteStatus.CANCELLED;
+    }
 }
