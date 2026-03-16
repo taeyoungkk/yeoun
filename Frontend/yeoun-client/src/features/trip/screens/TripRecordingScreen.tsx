@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   Modal,
   Pressable,
@@ -11,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   type LayoutChangeEvent,
@@ -19,6 +21,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { configureMapbox } from '@/src/lib/mapbox';
 import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
+import {
+  CURRENT_USER_ID,
+  deleteTripEvent,
+  deleteTripPhoto,
+  getTripEvents,
+  subscribeTripEvents,
+  type TimelineEvent,
+  updateTripEvent,
+  updateTripPhoto,
+} from '@/src/features/trip/store/tripMockStore';
 
 const hasMapboxToken = configureMapbox();
 const MAX_MAP_HEIGHT = 620;
@@ -33,32 +45,6 @@ type DayFilter = 'all' | 'day1' | 'day2' | 'day3';
 type TimelineEventType = 'location' | 'photo' | 'payment' | 'memo' | 'voice' | 'emotion';
 type Coordinate = [number, number];
 type MapFilterKey = 'showPhotoPins' | 'showPaymentPins' | 'showMemoPins';
-type PhotoContributor = {
-  id: string;
-  name: string;
-  color: string;
-};
-
-export type TimelineEvent = {
-  id: string;
-  day: Exclude<DayFilter, 'all'>;
-  type: TimelineEventType;
-  time: string;
-  title: string;
-  subtitle: string;
-  amount?: string;
-  chips?: string[];
-  coordinate?: Coordinate;
-  placeName?: string;
-  eventMemo?: string;
-  photoContributors?: PhotoContributor[];
-  photoItems?: {
-    id: string;
-    source: number;
-    memo?: string;
-    contributorId?: string;
-  }[];
-};
 
 type TripDay = {
   id: Exclude<DayFilter, 'all'>;
@@ -68,12 +54,6 @@ type TripDay = {
   summary: string;
   route: Coordinate[];
 };
-
-const PHOTO_STACK = [
-  require('@/assets/images/trip_placeholder_1.png'),
-  require('@/assets/images/trip_placeholder_2.png'),
-  require('@/assets/images/trip_placeholder_3.png'),
-];
 
 const TRIP_DAYS: TripDay[] = [
   {
@@ -120,95 +100,6 @@ const TRIP_DAYS: TripDay[] = [
   },
 ];
 
-export const TIMELINE_EVENTS: TimelineEvent[] = [
-  {
-    id: 'ev-1',
-    day: 'day1',
-    type: 'location',
-    time: '10:20',
-    title: '여행 시작',
-    placeName: '서울시청',
-    subtitle: '',
-    chips: ['기록 시작', '현재 위치 저장'],
-    coordinate: [126.9822, 37.5703],
-  },
-  {
-    id: 'ev-2',
-    day: 'day1',
-    type: 'photo',
-    time: '11:05',
-    title: '광안리 해변 산책',
-    subtitle: '',
-    placeName: '광안리 해수욕장',
-    eventMemo: '바람은 좀 불었지만 해 질 무렵 분위기가 정말 좋았어요.',
-    chips: ['사진 4장', '장소 자동 매칭'],
-    coordinate: [126.9898, 37.5707],
-    photoContributors: [
-      { id: 'user-1', name: '민지', color: '#F08AA2' },
-      { id: 'user-2', name: '지훈', color: '#77B6EA' },
-      { id: 'user-3', name: '서연', color: '#88B97A' },
-    ],
-    photoItems: [
-      { id: 'photo-1', source: PHOTO_STACK[0], memo: '노을이 퍼지기 시작하던 순간', contributorId: 'user-1' },
-      { id: 'photo-2', source: PHOTO_STACK[1], memo: '파도 색이 예뻐서 바로 찍은 장면', contributorId: 'user-2' },
-      { id: 'photo-3', source: PHOTO_STACK[2], memo: '야경이 켜지기 직전의 해변', contributorId: 'user-3' },
-      { id: 'photo-4', source: PHOTO_STACK[0], memo: '같이 걷던 분위기를 남긴 사진', contributorId: 'user-1' },
-    ],
-  },
-  {
-    id: 'ev-3',
-    day: 'day1',
-    type: 'payment',
-    time: '12:40',
-    title: '점심 결제',
-    subtitle: '영수증과 위치를 연결해서 이동 경로에 함께 표시해요.',
-    amount: '₩17,000',
-    chips: ['식사', '카드 결제'],
-    coordinate: [127.0014, 37.5701],
-  },
-  {
-    id: 'ev-4',
-    day: 'day2',
-    type: 'memo',
-    time: '14:10',
-    title: '메모 남김',
-    subtitle: '걷다가 떠오른 생각을 메모로 저장했어요.',
-    chips: ['텍스트 메모'],
-    coordinate: [127.0479, 37.5466],
-  },
-  {
-    id: 'ev-5',
-    day: 'day2',
-    type: 'emotion',
-    time: '16:20',
-    title: '감정 기록',
-    subtitle: '오늘의 기분과 순간 인상을 함께 남겼어요.',
-    chips: ['감정 체크'],
-    coordinate: [127.0534, 37.5454],
-  },
-  {
-    id: 'ev-6',
-    day: 'day3',
-    type: 'voice',
-    time: '19:30',
-    title: '음성 메모',
-    subtitle: '짧은 음성 메모가 현재 위치와 함께 저장되었어요.',
-    chips: ['00:42'],
-    coordinate: [126.9919, 37.5346],
-  },
-  {
-    id: 'ev-7',
-    day: 'day3',
-    type: 'payment',
-    time: '20:15',
-    title: '카페 결제',
-    subtitle: '카페 영수증이 이동 경로 위에 자동 연결되었어요.',
-    amount: '₩3,200',
-    chips: ['카페', '간식'],
-    coordinate: [127.0028, 37.5289],
-  },
-];
-
 const EVENT_THEME: Record<TimelineEventType, { icon: keyof typeof MaterialIcons.glyphMap; accent: string; surface: string }> = {
   location: { icon: 'near-me', accent: '#1F78D1', surface: '#E9F3FF' },
   photo: { icon: 'photo-library', accent: '#4C8E5E', surface: '#EDF7EE' },
@@ -244,6 +135,7 @@ export default function TripRecordingScreen() {
   const scrollRef = useRef<ScrollView | null>(null);
   const cardPositionsRef = useRef<Record<string, number>>({});
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [tripEvents, setTripEvents] = useState<TimelineEvent[]>(() => getTripEvents());
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -252,6 +144,13 @@ export default function TripRecordingScreen() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [photoViewer, setPhotoViewer] = useState<{ eventId: string; photoIndex: number } | null>(null);
+  const [eventEditor, setEventEditor] = useState<{ eventId: string; title: string; placeName: string; body: string } | null>(null);
+  const [photoEditor, setPhotoEditor] = useState<{ eventId: string; photoId: string; memo: string } | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<
+    | { kind: 'event'; eventId: string; title: string; message: string }
+    | { kind: 'photo'; eventId: string; photoId: string; title: string; message: string }
+    | null
+  >(null);
   const [mapPreferences, setMapPreferences] = useState({
     showPhotoPins: globalUserState.showPhotoPins,
     showPaymentPins: globalUserState.showPaymentPins,
@@ -260,8 +159,8 @@ export default function TripRecordingScreen() {
 
   const filteredDays = useMemo(() => getFilteredDays(activeFilter), [activeFilter]);
   const filteredEvents = useMemo(
-    () => TIMELINE_EVENTS.filter((event) => activeFilter === 'all' || event.day === activeFilter),
-    [activeFilter]
+    () => tripEvents.filter((event) => activeFilter === 'all' || event.day === activeFilter),
+    [activeFilter, tripEvents]
   );
   const routeOnlyMode = !mapPreferences.showPhotoPins && !mapPreferences.showPaymentPins && !mapPreferences.showMemoPins;
   const filteredMapEvents = useMemo(
@@ -339,6 +238,7 @@ export default function TripRecordingScreen() {
       selectedPhotoEvent?.photoContributors?.find((contributor) => contributor.id === selectedPhotoItem?.contributorId) ?? null,
     [selectedPhotoEvent, selectedPhotoItem]
   );
+  const selectedPhotoIsOwner = selectedPhotoContributor?.id === CURRENT_USER_ID;
   const collapseProgress = Math.min(scrollOffset / MAP_COLLAPSE_DISTANCE, 1);
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
@@ -352,6 +252,14 @@ export default function TripRecordingScreen() {
     const { northEast, southWest } = getBounds(routeCoordinates);
     cameraRef.current?.fitBounds(northEast, southWest, 56, 900);
   }, [routeCoordinates]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeTripEvents(() => {
+      setTripEvents(getTripEvents());
+    });
+
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const unsubscribe = subscribeUser(() => {
@@ -370,6 +278,12 @@ export default function TripRecordingScreen() {
       setSelectedEventId(null);
     }
   }, [filteredEvents, selectedEventId]);
+
+  useEffect(() => {
+    if (photoViewer && (!selectedPhotoEvent || !selectedPhotoItem)) {
+      setPhotoViewer(null);
+    }
+  }, [photoViewer, selectedPhotoEvent, selectedPhotoItem]);
 
   const handleMapReady = () => {
     setIsMapReady(true);
@@ -423,6 +337,92 @@ export default function TripRecordingScreen() {
       showPaymentPins: false,
       showMemoPins: false,
     });
+  };
+
+  const openEventEditor = (event: TimelineEvent) => {
+    setEventEditor({
+      eventId: event.id,
+      title: event.title,
+      placeName: event.placeName ?? '',
+      body: event.eventMemo ?? event.subtitle ?? '',
+    });
+  };
+
+  const saveEventEditor = () => {
+    if (!eventEditor) {
+      return;
+    }
+
+    const originalEvent = tripEvents.find((event) => event.id === eventEditor.eventId);
+    if (!originalEvent) {
+      setEventEditor(null);
+      return;
+    }
+
+    const nextBody = eventEditor.body.trim();
+    updateTripEvent(eventEditor.eventId, {
+      title: eventEditor.title.trim() || originalEvent.title,
+      placeName: eventEditor.placeName.trim() || undefined,
+      subtitle: originalEvent.type === 'photo' ? originalEvent.subtitle : nextBody,
+      eventMemo: originalEvent.type === 'photo' ? nextBody : originalEvent.eventMemo,
+    });
+    setEventEditor(null);
+  };
+
+  const confirmDeleteEvent = (event: TimelineEvent) => {
+    setDeleteDialog({
+      kind: 'event',
+      eventId: event.id,
+      title: '이 이벤트를 삭제할까요?',
+      message: '삭제하면 타임라인과 지도에서 바로 사라져요. 목업 화면에서도 즉시 반영됩니다.',
+    });
+  };
+
+  const openPhotoEditor = (eventId: string, photoId: string, memo?: string) => {
+    setPhotoEditor({ eventId, photoId, memo: memo ?? '' });
+  };
+
+  const savePhotoEditor = () => {
+    if (!photoEditor) {
+      return;
+    }
+
+    updateTripPhoto(photoEditor.eventId, photoEditor.photoId, { memo: photoEditor.memo.trim() });
+    setPhotoEditor(null);
+  };
+
+  const confirmDeletePhoto = (eventId: string, photoId: string, isOwner: boolean) => {
+    if (!isOwner) {
+      Alert.alert('삭제할 수 없어요', '내가 올린 사진만 삭제할 수 있어요.');
+      return;
+    }
+
+    setDeleteDialog({
+      kind: 'photo',
+      eventId,
+      photoId,
+      title: '이 사진을 삭제할까요?',
+      message: '사진 메모와 함께 목록에서 사라져요. 삭제 후에는 이 목업 화면에서 되돌릴 수 없습니다.',
+    });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteDialog) {
+      return;
+    }
+
+    if (deleteDialog.kind === 'event') {
+      deleteTripEvent(deleteDialog.eventId);
+      if (photoViewer?.eventId === deleteDialog.eventId) {
+        setPhotoViewer(null);
+      }
+      setDeleteDialog(null);
+      return;
+    }
+
+    deleteTripPhoto(deleteDialog.eventId, deleteDialog.photoId);
+    setPhotoViewer(null);
+    setDeleteDialog(null);
   };
 
   return (
@@ -508,11 +508,35 @@ export default function TripRecordingScreen() {
               </View>
               <View style={styles.photoModalHeaderActions}>
                 <View style={styles.photoModalTextActionRow}>
-                  <TouchableOpacity activeOpacity={0.85}>
-                    <Text style={styles.photoModalTextAction}>수정</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (!selectedPhotoItem) {
+                        return;
+                      }
+                      openPhotoEditor(selectedPhotoEvent!.id, selectedPhotoItem.id, selectedPhotoItem.memo);
+                    }}
+                  >
+                    <Text style={[styles.photoModalTextAction, !selectedPhotoIsOwner && styles.photoModalDisabledAction]}>수정</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity activeOpacity={0.85}>
-                    <Text style={[styles.photoModalTextAction, styles.photoModalDeleteAction]}>삭제</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (!selectedPhotoItem) {
+                        return;
+                      }
+                      confirmDeletePhoto(selectedPhotoEvent!.id, selectedPhotoItem.id, Boolean(selectedPhotoIsOwner));
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.photoModalTextAction,
+                        styles.photoModalDeleteAction,
+                        !selectedPhotoIsOwner && styles.photoModalDisabledAction,
+                      ]}
+                    >
+                      삭제
+                    </Text>
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity onPress={() => setPhotoViewer(null)} activeOpacity={0.85}>
@@ -535,6 +559,90 @@ export default function TripRecordingScreen() {
 
             <Text style={styles.photoModalSectionLabel}>사진 메모</Text>
             <Text style={styles.photoModalSectionBody}>{selectedPhotoItem?.memo ?? '이 사진에 대한 메모가 아직 없어요.'}</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={Boolean(deleteDialog)} transparent animationType="fade" onRequestClose={() => setDeleteDialog(null)}>
+        <Pressable style={styles.deleteDialogBackdrop} onPress={() => setDeleteDialog(null)}>
+          <Pressable style={styles.deleteDialogCard} onPress={() => undefined}>
+            <View style={styles.deleteDialogIconWrap}>
+              <MaterialIcons name="delete-outline" size={24} color="#B25543" />
+            </View>
+            <Text style={styles.deleteDialogTitle}>{deleteDialog?.title}</Text>
+            <Text style={styles.deleteDialogBody}>{deleteDialog?.message}</Text>
+            <View style={styles.deleteDialogButtonRow}>
+              <TouchableOpacity style={styles.deleteDialogGhostButton} onPress={() => setDeleteDialog(null)} activeOpacity={0.88}>
+                <Text style={styles.deleteDialogGhostButtonText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteDialogPrimaryButton} onPress={handleConfirmDelete} activeOpacity={0.88}>
+                <Text style={styles.deleteDialogPrimaryButtonText}>삭제</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={Boolean(eventEditor)} transparent animationType="fade" onRequestClose={() => setEventEditor(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setEventEditor(null)}>
+          <Pressable style={styles.modalCard} onPress={() => undefined}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>이벤트 수정</Text>
+              <TouchableOpacity onPress={() => setEventEditor(null)} activeOpacity={0.85}>
+                <MaterialIcons name="close" size={22} color="#223428" />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              value={eventEditor?.title ?? ''}
+              onChangeText={(title) => setEventEditor((prev) => (prev ? { ...prev, title } : prev))}
+              placeholder="제목"
+              placeholderTextColor="#94A098"
+              style={styles.editorInput}
+            />
+            <TextInput
+              value={eventEditor?.placeName ?? ''}
+              onChangeText={(placeName) => setEventEditor((prev) => (prev ? { ...prev, placeName } : prev))}
+              placeholder="장소"
+              placeholderTextColor="#94A098"
+              style={styles.editorInput}
+            />
+            <TextInput
+              value={eventEditor?.body ?? ''}
+              onChangeText={(body) => setEventEditor((prev) => (prev ? { ...prev, body } : prev))}
+              placeholder="메모 또는 설명"
+              placeholderTextColor="#94A098"
+              style={[styles.editorInput, styles.editorTextArea]}
+              multiline
+              textAlignVertical="top"
+            />
+            <TouchableOpacity style={styles.editorSaveButton} onPress={saveEventEditor} activeOpacity={0.88}>
+              <Text style={styles.editorSaveButtonText}>저장</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={Boolean(photoEditor)} transparent animationType="fade" onRequestClose={() => setPhotoEditor(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPhotoEditor(null)}>
+          <Pressable style={styles.modalCard} onPress={() => undefined}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>사진 메모 수정</Text>
+              <TouchableOpacity onPress={() => setPhotoEditor(null)} activeOpacity={0.85}>
+                <MaterialIcons name="close" size={22} color="#223428" />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              value={photoEditor?.memo ?? ''}
+              onChangeText={(memo) => setPhotoEditor((prev) => (prev ? { ...prev, memo } : prev))}
+              placeholder="사진 메모"
+              placeholderTextColor="#94A098"
+              style={[styles.editorInput, styles.editorTextArea]}
+              multiline
+              textAlignVertical="top"
+            />
+            <TouchableOpacity style={styles.editorSaveButton} onPress={savePhotoEditor} activeOpacity={0.88}>
+              <Text style={styles.editorSaveButtonText}>저장</Text>
+            </TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
@@ -816,37 +924,35 @@ export default function TripRecordingScreen() {
                     ) : null}
                     {!event.photoItems?.length && event.subtitle ? <Text style={styles.eventSubtitle}>{event.subtitle}</Text> : null}
                     {!event.photoItems?.length && event.eventMemo ? <Text style={styles.eventMemoText}>{event.eventMemo}</Text> : null}
-                    {event.chips?.length ? (
-                      <View style={styles.eventMetaRow}>
-                        <View style={styles.chipRow}>
-                          {event.chips.map((chip) => (
-                            <View key={`${event.id}-${chip}`} style={[styles.eventChip, { backgroundColor: theme.surface }]}>
-                              <Text style={[styles.eventChipText, { color: theme.accent }]}>{chip}</Text>
-                            </View>
-                          ))}
-                        </View>
-                        {event.photoItems?.length ? (
-                          <View style={styles.photoEventActionRow}>
-                            <TouchableOpacity
-                              activeOpacity={0.8}
-                              onPress={(pressEvent) => {
-                                pressEvent.stopPropagation();
-                              }}
-                            >
-                              <Text style={styles.photoEventActionText}>수정</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              activeOpacity={0.8}
-                              onPress={(pressEvent) => {
-                                pressEvent.stopPropagation();
-                              }}
-                            >
-                              <Text style={[styles.photoEventActionText, styles.photoEventDeleteText]}>삭제</Text>
-                            </TouchableOpacity>
+                    <View style={styles.eventMetaRow}>
+                      <View style={styles.chipRow}>
+                        {event.chips?.map((chip) => (
+                          <View key={`${event.id}-${chip}`} style={[styles.eventChip, { backgroundColor: theme.surface }]}>
+                            <Text style={[styles.eventChipText, { color: theme.accent }]}>{chip}</Text>
                           </View>
-                        ) : null}
+                        ))}
                       </View>
-                    ) : null}
+                      <View style={styles.photoEventActionRow}>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={(pressEvent) => {
+                            pressEvent.stopPropagation();
+                            openEventEditor(event);
+                          }}
+                        >
+                          <Text style={styles.photoEventActionText}>수정</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={(pressEvent) => {
+                            pressEvent.stopPropagation();
+                            confirmDeleteEvent(event);
+                          }}
+                        >
+                          <Text style={[styles.photoEventActionText, styles.photoEventDeleteText]}>삭제</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                   </Pressable>
                 </View>
               );
@@ -911,9 +1017,96 @@ const styles = StyleSheet.create({
   photoModalTextActionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   photoModalTextAction: { fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#4F5F56' },
   photoModalDeleteAction: { color: '#A45A49' },
+  photoModalDisabledAction: { color: '#A3B0A8' },
   photoModalImage: { width: '100%', aspectRatio: 1, borderRadius: 22, marginTop: 16, backgroundColor: '#E7ECE5' },
   photoModalSectionLabel: { marginTop: 16, fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#7A867F' },
   photoModalSectionBody: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 21, color: '#243028' },
+  deleteDialogBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(14, 20, 16, 0.38)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+  },
+  deleteDialogCard: {
+    width: '100%',
+    borderRadius: 30,
+    backgroundColor: '#FCFEFB',
+    paddingHorizontal: 22,
+    paddingTop: 24,
+    paddingBottom: 20,
+    alignItems: 'center',
+    shadowColor: '#17231C',
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
+  },
+  deleteDialogIconWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#FFF0EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteDialogTitle: {
+    marginTop: 16,
+    fontFamily: 'Pretendard-Bold',
+    fontSize: 22,
+    color: '#182119',
+    textAlign: 'center',
+  },
+  deleteDialogBody: {
+    marginTop: 10,
+    fontFamily: 'Pretendard-Regular',
+    fontSize: 14,
+    lineHeight: 22,
+    color: '#66756C',
+    textAlign: 'center',
+  },
+  deleteDialogButtonRow: { width: '100%', flexDirection: 'row', gap: 10, marginTop: 22 },
+  deleteDialogGhostButton: {
+    flex: 1,
+    height: 50,
+    borderRadius: 18,
+    backgroundColor: '#EFF3EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteDialogGhostButtonText: { fontFamily: 'Pretendard-SemiBold', fontSize: 15, color: '#536258' },
+  deleteDialogPrimaryButton: {
+    flex: 1,
+    height: 50,
+    borderRadius: 18,
+    backgroundColor: '#B25543',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteDialogPrimaryButtonText: { fontFamily: 'Pretendard-Bold', fontSize: 15, color: '#FFF8F6' },
+  editorInput: {
+    marginTop: 14,
+    minHeight: 48,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#D7E1DA',
+    backgroundColor: '#F8FBF7',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: 'Pretendard-Regular',
+    fontSize: 14,
+    color: '#223428',
+  },
+  editorTextArea: { minHeight: 116 },
+  editorSaveButton: {
+    marginTop: 16,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: '#244934',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editorSaveButtonText: { fontFamily: 'Pretendard-Bold', fontSize: 15, color: '#F7FBF6' },
   floatingMapWrap: {
     position: 'absolute',
     top: MAP_TOP_OFFSET,

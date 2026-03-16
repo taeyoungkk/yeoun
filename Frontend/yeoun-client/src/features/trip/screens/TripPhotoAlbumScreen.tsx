@@ -1,30 +1,45 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { TIMELINE_EVENTS } from '@/src/features/trip/screens/TripRecordingScreen';
-
-const CURRENT_USER_ID = 'user-1';
+import {
+  CURRENT_USER_ID,
+  deleteTripPhoto,
+  getTripEvents,
+  subscribeTripEvents,
+  updateTripPhoto,
+} from '@/src/features/trip/store/tripMockStore';
 
 type SelectionMode = 'download' | 'delete' | null;
 
 export default function TripPhotoAlbumScreen() {
   const router = useRouter();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
+  const [tripEvents, setTripEvents] = useState(() => getTripEvents());
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState<SelectionMode>(null);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
+  const [photoEditor, setPhotoEditor] = useState<{ eventId: string; photoId: string; memo: string } | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeTripEvents(() => {
+      setTripEvents(getTripEvents());
+    });
+
+    return unsubscribe;
+  }, []);
 
   const event = useMemo(
-    () => TIMELINE_EVENTS.find((item) => item.id === eventId && item.type === 'photo') ?? null,
-    [eventId]
+    () => tripEvents.find((item) => item.id === eventId && item.type === 'photo') ?? null,
+    [eventId, tripEvents]
   );
   const selectedPhoto = event?.photoItems?.find((photo) => photo.id === selectedPhotoId) ?? null;
   const selectedContributor =
     event?.photoContributors?.find((contributor) => contributor.id === selectedPhoto?.contributorId) ?? null;
+  const selectedPhotoIsOwner = selectedContributor?.id === CURRENT_USER_ID;
   const selectedCount = selectedPhotoIds.length;
   const allSelectableIds = useMemo(() => {
     if (!event?.photoItems) {
@@ -68,6 +83,44 @@ export default function TripPhotoAlbumScreen() {
 
     setSelectedPhotoIds((prev) => (prev.includes(photoId) ? prev.filter((id) => id !== photoId) : [...prev, photoId]));
   };
+
+  const savePhotoEditor = () => {
+    if (!photoEditor) {
+      return;
+    }
+
+    updateTripPhoto(photoEditor.eventId, photoEditor.photoId, { memo: photoEditor.memo.trim() });
+    setPhotoEditor(null);
+  };
+
+  const confirmDeletePhoto = (photoId: string, isOwner: boolean) => {
+    if (!event) {
+      return;
+    }
+
+    if (!isOwner) {
+      Alert.alert('삭제할 수 없어요', '내가 올린 사진만 삭제할 수 있어요.');
+      return;
+    }
+
+    Alert.alert('이 사진을 삭제할까요?', '목업 화면에서 바로 사라집니다.', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          deleteTripPhoto(event.id, photoId);
+          setSelectedPhotoId(null);
+        },
+      },
+    ]);
+  };
+
+  useEffect(() => {
+    if (selectedPhotoId && !selectedPhoto) {
+      setSelectedPhotoId(null);
+    }
+  }, [selectedPhotoId, selectedPhoto]);
 
   if (!event) {
     return (
@@ -229,11 +282,19 @@ export default function TripPhotoAlbumScreen() {
               </View>
               <View style={styles.modalHeaderActions}>
                 <View style={styles.modalTextActionRow}>
-                  <TouchableOpacity activeOpacity={0.85}>
-                    <Text style={styles.modalTextAction}>수정</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (!selectedPhoto) {
+                        return;
+                      }
+                      setPhotoEditor({ eventId: event.id, photoId: selectedPhoto.id, memo: selectedPhoto.memo ?? '' });
+                    }}
+                  >
+                    <Text style={[styles.modalTextAction, !selectedPhotoIsOwner && styles.modalDisabledText]}>수정</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity activeOpacity={0.85}>
-                    <Text style={[styles.modalTextAction, styles.deleteText]}>삭제</Text>
+                  <TouchableOpacity activeOpacity={0.85} onPress={() => selectedPhoto && confirmDeletePhoto(selectedPhoto.id, Boolean(selectedPhotoIsOwner))}>
+                    <Text style={[styles.modalTextAction, styles.deleteText, !selectedPhotoIsOwner && styles.modalDisabledText]}>삭제</Text>
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity onPress={() => setSelectedPhotoId(null)} activeOpacity={0.85}>
@@ -247,6 +308,31 @@ export default function TripPhotoAlbumScreen() {
             {event.placeName ? <Text style={styles.modalBody}>{event.placeName}</Text> : null}
             {selectedPhoto?.memo ? <Text style={styles.modalLabel}>사진 메모</Text> : null}
             {selectedPhoto?.memo ? <Text style={styles.modalBody}>{selectedPhoto.memo}</Text> : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={Boolean(photoEditor)} transparent animationType="fade" onRequestClose={() => setPhotoEditor(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPhotoEditor(null)}>
+          <Pressable style={styles.modalCard} onPress={() => undefined}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>사진 메모 수정</Text>
+              <TouchableOpacity onPress={() => setPhotoEditor(null)} activeOpacity={0.85}>
+                <MaterialIcons name="close" size={22} color="#223428" />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              value={photoEditor?.memo ?? ''}
+              onChangeText={(memo) => setPhotoEditor((prev) => (prev ? { ...prev, memo } : prev))}
+              placeholder="사진 메모"
+              placeholderTextColor="#94A098"
+              style={styles.modalEditorInput}
+              multiline
+              textAlignVertical="top"
+            />
+            <TouchableOpacity style={styles.modalSaveButton} onPress={savePhotoEditor} activeOpacity={0.88}>
+              <Text style={styles.modalSaveButtonText}>저장</Text>
+            </TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
@@ -380,9 +466,32 @@ const styles = StyleSheet.create({
   modalHeaderActions: { alignItems: 'flex-end', gap: 6 },
   modalTextActionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   modalTextAction: { fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#4F5F56' },
+  modalDisabledText: { color: '#A3B0A8' },
   modalImage: { width: '100%', aspectRatio: 1, borderRadius: 22, marginTop: 16, backgroundColor: '#E7ECE5' },
   modalLabel: { marginTop: 16, fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#7A867F' },
   modalBody: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 21, color: '#243028' },
+  modalEditorInput: {
+    marginTop: 16,
+    minHeight: 120,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#D7E1DA',
+    backgroundColor: '#F8FBF7',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: 'Pretendard-Regular',
+    fontSize: 14,
+    color: '#223428',
+  },
+  modalSaveButton: {
+    marginTop: 16,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: '#244934',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSaveButtonText: { fontFamily: 'Pretendard-Bold', fontSize: 15, color: '#F7FBF6' },
   deleteText: { color: '#A45A49' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   emptyTitle: { fontFamily: 'Pretendard-Bold', fontSize: 20, color: '#182119' },
