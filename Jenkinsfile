@@ -300,9 +300,15 @@ EOT
   post {
     always {
       script {
+        if (branchName == 'HEAD') {
+             try {
+                 branchName = sh(script: "git branch -a --contains HEAD | grep -v 'HEAD' | head -n 1 || echo 'unknown'", returnStdout: true).replace('*', '').replace('remotes/origin/', '').trim()
+             } catch(Exception e) { branchName = 'unknown' }
+        }
+        
         def success = (currentBuild.currentResult == 'SUCCESS')
         def kind = env.EVENT_KIND ?: 'push'
-        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: 'unknown') : (env.PUSH_BRANCH ?: 'unknown')
+        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: 'unknown') : (branchName ?: 'unknown')
         def target = env.MR_TARGET ?: ''
         
         def jobName = (env.JOB_NAME ?: '').trim()
