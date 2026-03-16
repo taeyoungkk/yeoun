@@ -30,4 +30,28 @@ public interface TripMemberRepository extends JpaRepository<TripMember, UUID> {
             GROUP BY tm.tripId
             """)
     List<TripMemberCountProjection> countCurrentMembersByTripIds(@Param("tripIds") Collection<UUID> tripIds);
+
+    @Query("""
+            SELECT tm.tripMemberId AS tripMemberId,
+                   tm.userId AS userId,
+                   u.nickname AS nickname,
+                   u.profileImageUrl AS profileImageUrl,
+                   tm.inviteStatus AS inviteStatus,
+                   tm.joinedAt AS joinedAt
+            FROM TripMember tm
+            JOIN User u ON u.userId = tm.userId
+            WHERE tm.tripId = :tripId
+              AND tm.leftAt IS NULL
+              AND tm.inviteStatus IN (
+                  com.yeoun.domain.trip.entity.TripMemberInviteStatus.ACCEPTED,
+                  com.yeoun.domain.trip.entity.TripMemberInviteStatus.INVITED
+              )
+            ORDER BY
+              CASE
+                  WHEN tm.inviteStatus = com.yeoun.domain.trip.entity.TripMemberInviteStatus.ACCEPTED THEN 0
+                  ELSE 1
+              END,
+              u.nickname ASC
+            """)
+    List<TripMemberSummaryProjection> findVisibleMembersByTripId(@Param("tripId") UUID tripId);
 }

@@ -31,6 +31,7 @@ public enum ErrorCode {
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "Nickname is already in use."),
     TRIP_INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "Trip start date must be before or equal to end date."),
     TRIP_NOT_FOUND(HttpStatus.NOT_FOUND, "Trip not found."),
+    TRIP_INVITE_NOT_FOUND(HttpStatus.NOT_FOUND, "Trip invite not found."),
     TRIP_FORBIDDEN(HttpStatus.FORBIDDEN, "You do not have permission for this trip."),
     TRIP_UPDATE_NOT_ALLOWED(HttpStatus.CONFLICT, "Updates are not allowed for this trip status."),
     TRIP_START_NOT_ALLOWED(HttpStatus.CONFLICT, "Trip start is not allowed for this status."),

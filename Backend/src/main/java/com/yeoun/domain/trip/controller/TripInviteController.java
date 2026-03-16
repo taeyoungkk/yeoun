@@ -1,0 +1,32 @@
+package com.yeoun.domain.trip.controller;
+
+import com.yeoun.domain.trip.dto.response.TripInviteDetailResponse;
+import com.yeoun.domain.trip.service.TripInviteService;
+import com.yeoun.global.response.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v1/trip-invites")
+@Tag(name = "Trip Invite", description = "여행 초대 API")
+public class TripInviteController {
+
+    private final TripInviteService tripInviteService;
+
+    public TripInviteController(TripInviteService tripInviteService) {
+        this.tripInviteService = tripInviteService;
+    }
+
+    @GetMapping("/{inviteToken}")
+    @Operation(summary = "초대 상세 조회", description = "초대 링크 토큰으로 여행 초대 정보를 조회합니다.")
+    public ApiResponse<TripInviteDetailResponse> getTripInviteDetail(
+            @PathVariable("inviteToken") String inviteToken
+    ) {
+        TripInviteDetailResponse response = tripInviteService.getInviteDetail(inviteToken);
+        return ApiResponse.ok(response);
+    }
+}

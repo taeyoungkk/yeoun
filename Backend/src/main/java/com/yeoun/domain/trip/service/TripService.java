@@ -9,6 +9,8 @@ import com.yeoun.domain.trip.dto.response.TripDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
 import com.yeoun.domain.trip.dto.response.TripListItemResponse;
 import com.yeoun.domain.trip.dto.response.TripListResponse;
+import com.yeoun.domain.trip.dto.response.TripMemberItemResponse;
+import com.yeoun.domain.trip.dto.response.TripMemberListResponse;
 import com.yeoun.domain.trip.dto.response.TripEndResponse;
 import com.yeoun.domain.trip.dto.response.TripStartResponse;
 import com.yeoun.domain.trip.dto.response.TripUpdateResponse;
@@ -21,6 +23,7 @@ import com.yeoun.domain.trip.entity.TripVisibility;
 import com.yeoun.domain.trip.repository.TripMemberCountProjection;
 import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
+import com.yeoun.domain.trip.repository.TripMemberSummaryProjection;
 import com.yeoun.domain.user.repository.UserRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
@@ -183,15 +186,7 @@ public class TripService {
     public TripDetailResponse getTripDetail(UUID userId, UUID tripId) {
         Trip trip = findNonDeletedTripOrThrow(tripId);
 
-        boolean isOwner = trip.getOwnerUserId().equals(userId);
-        boolean isCurrentMember = tripMemberRepository.existsByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
-                tripId,
-                userId,
-                TripMemberInviteStatus.ACCEPTED
-        );
-        if (!isOwner && !isCurrentMember) {
-            throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
-        }
+        validateTripAccessible(userId, trip);
 
         long memberCount = tripMemberRepository.countByTripIdAndInviteStatusAndLeftAtIsNull(
                 tripId,
@@ -210,6 +205,24 @@ public class TripService {
                 memberCount,
                 trip.getCreatedAt()
         );
+    }
+
+    public TripMemberListResponse getTripMembers(UUID requesterUserId, UUID tripId) {
+        Trip trip = findNonDeletedTripOrThrow(tripId);
+        validateTripAccessible(requesterUserId, trip);
+
+        List<TripMemberItemResponse> items = tripMemberRepository.findVisibleMembersByTripId(tripId).stream()
+                .map(member -> new TripMemberItemResponse(
+                        member.getTripMemberId(),
+                        member.getUserId(),
+                        member.getNickname(),
+                        member.getProfileImageUrl(),
+                        member.getInviteStatus(),
+                        member.getJoinedAt()
+                ))
+                .toList();
+
+        return new TripMemberListResponse(items);
     }
 
     @Transactional
@@ -315,6 +328,18 @@ public class TripService {
 
     private void validateTripOwner(UUID requesterUserId, Trip trip) {
         if (!trip.getOwnerUserId().equals(requesterUserId)) {
+            throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
+        }
+    }
+
+    private void validateTripAccessible(UUID requesterUserId, Trip trip) {
+        boolean isOwner = trip.getOwnerUserId().equals(requesterUserId);
+        boolean isCurrentMember = tripMemberRepository.existsByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
+                trip.getTripId(),
+                requesterUserId,
+                TripMemberInviteStatus.ACCEPTED
+        );
+        if (!isOwner && !isCurrentMember) {
             throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
         }
     }

@@ -9,6 +9,7 @@ import com.yeoun.domain.trip.dto.response.TripDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripEndResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
 import com.yeoun.domain.trip.dto.response.TripListResponse;
+import com.yeoun.domain.trip.dto.response.TripMemberListResponse;
 import com.yeoun.domain.trip.dto.response.TripStartResponse;
 import com.yeoun.domain.trip.dto.response.TripUpdateResponse;
 import com.yeoun.domain.trip.service.TripService;
@@ -78,6 +79,16 @@ public class TripController {
             @PathVariable("tripId") java.util.UUID tripId
     ) {
         TripDetailResponse response = tripService.getTripDetail(principal.userId(), tripId);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/{tripId}/members")
+    @Operation(summary = "여행 멤버 및 초대 현황 조회", description = "이 여행의 멤버 및 초대 현황을 조회합니다.")
+    public ApiResponse<TripMemberListResponse> getTripMembers(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") java.util.UUID tripId
+    ) {
+        TripMemberListResponse response = tripService.getTripMembers(principal.userId(), tripId);
         return ApiResponse.ok(response);
     }
 
