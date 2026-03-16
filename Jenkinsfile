@@ -196,7 +196,9 @@ GOOGLE_CLIENT_ID=dummy.apps.googleusercontent.com
 GOOGLE_JWK_SET_URI=https://www.googleapis.com/oauth2/v3/certs
 EOT
 
-              # 주입받은 패스워드 변수들을 스프링부트 테스트 환경에 전달
+              # 주입받은 패스워드 변수들(.env)을 활성화하기 위해 로컬 템플릿을 ci 프로파일용으로 복사
+              cp src/main/resources/application-local.properties.example src/main/resources/application-ci.properties || true
+
               ./mvnw -q clean test \
                 -Dspring.profiles.active=ci \
                 2>&1 | tee -a "../../${CI_TEST_LOG}"
