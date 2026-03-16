@@ -179,6 +179,7 @@ pipeline {
               # 3. .env.example 기준 테스트 환경 변수(.env) 더미 생성
               cat <<EOT > .env
 DB_URL=jdbc:postgresql://127.0.0.1:${POSTGRES_HOST_PORT}/${CI_POSTGRES_DB}
+FLYWAY_URL=jdbc:postgresql://127.0.0.1:${POSTGRES_HOST_PORT}/${CI_POSTGRES_DB}
 DB_USERNAME=${CI_POSTGRES_USER}
 DB_PASSWORD=${CI_POSTGRES_PASSWORD}
 REDIS_HOST=127.0.0.1
