@@ -11,6 +11,7 @@ import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteLinkCreateResponse;
 import com.yeoun.domain.trip.dto.response.TripListResponse;
 import com.yeoun.domain.trip.dto.response.TripMemberListResponse;
+import com.yeoun.domain.trip.dto.response.TripLeaveResponse;
 import com.yeoun.domain.trip.dto.response.TripStartResponse;
 import com.yeoun.domain.trip.dto.response.TripUpdateResponse;
 import com.yeoun.domain.trip.service.TripService;
@@ -141,6 +142,16 @@ public class TripController {
             @PathVariable("tripId") java.util.UUID tripId
     ) {
         TripEndResponse response = tripService.endTrip(principal.userId(), tripId);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/{tripId}/leave")
+    @Operation(summary = "여행 나가기", description = "현재 사용자가 여행에서 나갑니다.")
+    public ApiResponse<TripLeaveResponse> leaveTrip(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") java.util.UUID tripId
+    ) {
+        TripLeaveResponse response = tripService.leaveTrip(principal.userId(), tripId);
         return ApiResponse.ok(response);
     }
 }

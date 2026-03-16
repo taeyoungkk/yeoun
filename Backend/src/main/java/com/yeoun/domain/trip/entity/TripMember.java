@@ -72,4 +72,8 @@ public class TripMember {
         this.joinedAt = now;
         this.leftAt = null;
     }
+
+    public void leave(Instant now) {
+        this.leftAt = now;
+    }
 }

@@ -10,6 +10,7 @@ import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteLinkCreateResponse;
 import com.yeoun.domain.trip.dto.response.TripListItemResponse;
 import com.yeoun.domain.trip.dto.response.TripListResponse;
+import com.yeoun.domain.trip.dto.response.TripLeaveResponse;
 import com.yeoun.domain.trip.dto.response.TripMemberItemResponse;
 import com.yeoun.domain.trip.dto.response.TripMemberListResponse;
 import com.yeoun.domain.trip.dto.response.TripEndResponse;
@@ -367,6 +368,29 @@ public class TripService {
                 trip.getStatus(),
                 trip.getActualEndedAt()
         );
+    }
+
+    @Transactional
+    public TripLeaveResponse leaveTrip(UUID requesterUserId, UUID tripId) {
+        Trip trip = findNonDeletedTripOrThrow(tripId);
+        if (trip.getStatus() != TripStatus.DRAFT) {
+            throw new BaseException(ErrorCode.TRIP_LEAVE_NOT_ALLOWED);
+        }
+        if (trip.getOwnerUserId().equals(requesterUserId)) {
+            throw new BaseException(ErrorCode.TRIP_LEAVE_NOT_ALLOWED);
+        }
+
+        TripMember tripMember = tripMemberRepository.findByTripIdAndUserId(tripId, requesterUserId)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_FORBIDDEN));
+
+        if (tripMember.getInviteStatus() != TripMemberInviteStatus.ACCEPTED || tripMember.getLeftAt() != null) {
+            throw new BaseException(ErrorCode.TRIP_LEAVE_NOT_ALLOWED);
+        }
+
+        Instant now = Instant.now();
+        tripMember.leave(now);
+
+        return new TripLeaveResponse(tripId, true, tripMember.getLeftAt());
     }
 
     private Map<UUID, Long> buildMemberCountMap(List<UUID> tripIds) {
