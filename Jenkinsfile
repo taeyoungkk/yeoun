@@ -148,9 +148,9 @@ pipeline {
                 -e POSTGRES_USER="${CI_POSTGRES_USER}" \
                 -e POSTGRES_PASSWORD="${CI_POSTGRES_PASSWORD}" \
                 -e TZ=Asia/Seoul \
-                -p 0:5432 "${CI_POSTGRES_IMAGE}" >/dev/null
+                "${CI_POSTGRES_IMAGE}" >/dev/null
 
-              POSTGRES_HOST_PORT="$(docker port "${CI_POSTGRES_CONTAINER}" 5432/tcp | sed -E 's/.*:([0-9]+)$/\\1/' | tail -n 1)"
+              POSTGRES_IP="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CI_POSTGRES_CONTAINER}")"
               
               # PostgreSQL 구동 대기 Health Check
               for i in $(seq 1 90); do
@@ -162,9 +162,9 @@ pipeline {
 
               # 2. 임시 Redis 컨테이너 구동
               docker pull "${CI_REDIS_IMAGE}" >/dev/null 2>&1 || true
-              docker run -d --name "${CI_REDIS_CONTAINER}" -p 0:6379 "${CI_REDIS_IMAGE}" redis-server --appendonly yes >/dev/null
+              docker run -d --name "${CI_REDIS_CONTAINER}" "${CI_REDIS_IMAGE}" redis-server --appendonly yes >/dev/null
 
-              REDIS_HOST_PORT="$(docker port "${CI_REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/\\1/' | tail -n 1)"
+              REDIS_IP="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CI_REDIS_CONTAINER}")"
               
               # Redis 구동 대기 Health Check
               for i in $(seq 1 30); do
@@ -178,12 +178,12 @@ pipeline {
               
               # 3. .env.example 기준 테스트 환경 변수(.env) 더미 생성
               cat <<EOT > .env
-DB_URL=jdbc:postgresql://127.0.0.1:${POSTGRES_HOST_PORT}/${CI_POSTGRES_DB}
-FLYWAY_URL=jdbc:postgresql://127.0.0.1:${POSTGRES_HOST_PORT}/${CI_POSTGRES_DB}
+DB_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
+FLYWAY_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
 DB_USERNAME=${CI_POSTGRES_USER}
 DB_PASSWORD=${CI_POSTGRES_PASSWORD}
-REDIS_HOST=127.0.0.1
-REDIS_PORT=${REDIS_HOST_PORT}
+REDIS_HOST=${REDIS_IP}
+REDIS_PORT=6379
 JWT_SECRET=c2VjcmV0LWtleS1mb3ItdGVzdGluZy1wdXJwb3Nlcw==
 JWT_ACCESS_EXPIRE_SECONDS=1800
 JWT_REFRESH_EXPIRE_SECONDS=1209600
