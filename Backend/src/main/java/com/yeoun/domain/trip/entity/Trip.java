@@ -37,6 +37,9 @@ public class Trip {
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
+    @Column(name = "started_at")
+    private Instant startedAt;
+
     @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
 

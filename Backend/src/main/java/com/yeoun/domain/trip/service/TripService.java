@@ -3,13 +3,17 @@ package com.yeoun.domain.trip.service;
 import com.yeoun.domain.trip.dto.request.TripCreateRequest;
 import com.yeoun.domain.trip.dto.request.TripInviteUsersRequest;
 import com.yeoun.domain.trip.dto.response.TripCreateResponse;
+import com.yeoun.domain.trip.dto.response.TripDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
+import com.yeoun.domain.trip.dto.response.TripListItemResponse;
+import com.yeoun.domain.trip.dto.response.TripListResponse;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripMember;
 import com.yeoun.domain.trip.entity.TripMemberInviteStatus;
 import com.yeoun.domain.trip.entity.TripReportStatus;
 import com.yeoun.domain.trip.entity.TripStatus;
 import com.yeoun.domain.trip.entity.TripVisibility;
+import com.yeoun.domain.trip.repository.TripMemberCountProjection;
 import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.domain.user.repository.UserRepository;
@@ -20,8 +24,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -144,5 +150,70 @@ public class TripService {
         }
 
         return new TripInviteUsersResponse(invitedUserIds, skippedUserIds);
+    }
+
+    public TripListResponse getTrips(UUID userId) {
+        List<Trip> trips = tripRepository.findAccessibleTripsByUserId(userId, TripStatus.DELETED);
+        if (trips.isEmpty()) {
+            return new TripListResponse(List.of());
+        }
+
+        List<UUID> tripIds = trips.stream().map(Trip::getTripId).toList();
+        Map<UUID, Long> memberCountByTripId = buildMemberCountMap(tripIds);
+
+        List<TripListItemResponse> items = trips.stream()
+                .map(trip -> new TripListItemResponse(
+                        trip.getTripId(),
+                        trip.getTitle(),
+                        trip.getStartDate(),
+                        trip.getEndDate(),
+                        trip.getStatus(),
+                        memberCountByTripId.getOrDefault(trip.getTripId(), 0L)
+                ))
+                .toList();
+
+        return new TripListResponse(items);
+    }
+
+    public TripDetailResponse getTripDetail(UUID userId, UUID tripId) {
+        Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
+
+        boolean isOwner = trip.getOwnerUserId().equals(userId);
+        boolean isCurrentMember = tripMemberRepository.existsByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
+                tripId,
+                userId,
+                TripMemberInviteStatus.ACCEPTED
+        );
+        if (!isOwner && !isCurrentMember) {
+            throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
+        }
+
+        long memberCount = tripMemberRepository.countByTripIdAndInviteStatusAndLeftAtIsNull(
+                tripId,
+                TripMemberInviteStatus.ACCEPTED
+        );
+
+        return new TripDetailResponse(
+                trip.getTripId(),
+                trip.getTitle(),
+                trip.getStartDate(),
+                trip.getEndDate(),
+                trip.getStatus(),
+                trip.getVisibility(),
+                trip.getOwnerUserId(),
+                trip.getReportStatus(),
+                memberCount,
+                trip.getCreatedAt()
+        );
+    }
+
+    private Map<UUID, Long> buildMemberCountMap(List<UUID> tripIds) {
+        Map<UUID, Long> memberCountByTripId = new HashMap<>();
+        List<TripMemberCountProjection> counts = tripMemberRepository.countCurrentMembersByTripIds(tripIds);
+        for (TripMemberCountProjection count : counts) {
+            memberCountByTripId.put(count.getTripId(), count.getMemberCount());
+        }
+        return memberCountByTripId;
     }
 }

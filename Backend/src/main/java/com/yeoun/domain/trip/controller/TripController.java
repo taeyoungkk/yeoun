@@ -3,7 +3,9 @@ package com.yeoun.domain.trip.controller;
 import com.yeoun.domain.trip.dto.request.TripCreateRequest;
 import com.yeoun.domain.trip.dto.request.TripInviteUsersRequest;
 import com.yeoun.domain.trip.dto.response.TripCreateResponse;
+import com.yeoun.domain.trip.dto.response.TripDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
+import com.yeoun.domain.trip.dto.response.TripListResponse;
 import com.yeoun.domain.trip.service.TripService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -13,6 +15,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -49,6 +52,25 @@ public class TripController {
             @Valid @RequestBody TripInviteUsersRequest request
     ) {
         TripInviteUsersResponse response = tripService.inviteUsers(principal.userId(), tripId, request);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping
+    @Operation(summary = "여행 목록 조회", description = "내가 생성했거나 현재 참여 중인 여행 목록을 조회합니다.")
+    public ApiResponse<TripListResponse> getTrips(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal
+    ) {
+        TripListResponse response = tripService.getTrips(principal.userId());
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/{tripId}")
+    @Operation(summary = "여행 상세 조회", description = "여행 상세 정보를 조회합니다.")
+    public ApiResponse<TripDetailResponse> getTripDetail(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") java.util.UUID tripId
+    ) {
+        TripDetailResponse response = tripService.getTripDetail(principal.userId(), tripId);
         return ApiResponse.ok(response);
     }
 }
