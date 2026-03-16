@@ -3,9 +3,11 @@ import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import baseImage from '../../../../assets/images/base.png';
+
 import { HomeSearchBar } from '../components/HomeSearchBar';
 import { PastTravelSection } from '../components/PastTravelSection';
+
+const baseImage = require('@/assets/images/base.png');
 
 const HomeScreen = () => {
     return (

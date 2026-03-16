@@ -13,6 +13,8 @@ public interface UserAuthAccountRepository extends JpaRepository<UserAuthAccount
 
     Optional<UserAuthAccount> findByProviderAndLoginEmail(AuthProvider provider, String loginEmail);
 
+    Optional<UserAuthAccount> findByUserUserIdAndProvider(UUID userId, AuthProvider provider);
+
     boolean existsByProviderAndProviderUserId(AuthProvider provider, String providerUserId);
 
     boolean existsByProviderAndLoginEmail(AuthProvider provider, String loginEmail);
