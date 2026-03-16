@@ -37,6 +37,9 @@ public class Trip {
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
+    @Column(name = "started_at")
+    private Instant startedAt;
+
     @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
 
@@ -65,4 +68,32 @@ public class Trip {
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    public void updateBasicInfo(String title, LocalDate startDate, LocalDate endDate, TripVisibility visibility, Instant now) {
+        this.title = title;
+        this.startDate = startDate;
+        this.endDate = endDate;
+        this.visibility = visibility;
+        this.updatedAt = now;
+    }
+
+    public void markDeleted(Instant now) {
+        this.status = TripStatus.DELETED;
+        this.deletedAt = now;
+        this.updatedAt = now;
+    }
+
+    public void markStarted(Instant now) {
+        this.status = TripStatus.ACTIVE;
+        if (this.startedAt == null) {
+            this.startedAt = now;
+        }
+        this.updatedAt = now;
+    }
+
+    public void markEnded(Instant now) {
+        this.status = TripStatus.ENDED;
+        this.actualEndedAt = now;
+        this.updatedAt = now;
+    }
 }
