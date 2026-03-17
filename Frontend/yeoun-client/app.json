@@ -53,6 +53,12 @@
         "projectId": "5b7c3663-50fc-480d-b5ae-6ea8093c9893"
       }
     },
-    "owner": "hoimook"
+    "owner": "hoimook",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5b7c3663-50fc-480d-b5ae-6ea8093c9893"
+    }
   }
 }
