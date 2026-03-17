@@ -38,6 +38,7 @@ public enum ErrorCode {
     TRIP_UPDATE_NOT_ALLOWED(HttpStatus.CONFLICT, "Updates are not allowed for this trip status."),
     TRIP_START_NOT_ALLOWED(HttpStatus.CONFLICT, "Trip start is not allowed for this status."),
     TRIP_END_NOT_ALLOWED(HttpStatus.CONFLICT, "Trip end is not allowed for this status."),
+    TRIP_LOCATION_LOG_UPLOAD_NOT_ALLOWED(HttpStatus.CONFLICT, "Location log upload is not allowed for this trip status."),
     TRIP_INVITE_NOT_ALLOWED(HttpStatus.CONFLICT, "Invites are not allowed for this trip status."),
     TRIP_INVITE_ACCEPT_NOT_ALLOWED(HttpStatus.CONFLICT, "This invite cannot be accepted."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid email or password."),
