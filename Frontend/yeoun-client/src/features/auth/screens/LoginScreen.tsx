@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +17,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FormField } from "@/src/components/ui/form-field";
 import { PasswordToggle } from "@/src/components/ui/password-toggle";
+import { loginApi, LoginRequest } from "@/src/api/auth";
+import { useAuthStore } from "@/src/store/auth.store";
 
 interface LoginForm {
   email: string;
@@ -25,6 +28,9 @@ interface LoginForm {
 export const LoginScreen = () => {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const setTokens = useAuthStore((state) => state.setTokens);
 
   const {
     control,
@@ -34,10 +40,24 @@ export const LoginScreen = () => {
     defaultValues: { email: "", password: "" },
   });
 
-  const onSubmit = (data: LoginForm) => {
-    // TODO: connect to auth API
-    console.log("Login:", data);
-    router.replace("/(tabs)");
+  const onSubmit = async (data: LoginForm) => {
+    setIsLoading(true);
+    setLoginError("");
+    try {
+      const response = await loginApi(data);
+      if (response.success && response.data) {
+        const { tokens } = response.data;
+        setTokens(tokens.accessToken, tokens.refreshToken);
+        router.replace("/(tabs)");
+      } else {
+        setLoginError(response.message || "로그인에 실패했습니다.");
+      }
+    } catch (error: any) {
+      setLoginError("이메일 또는 비밀번호가 올바르지 않습니다.");
+      console.error("Login Error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -106,18 +126,31 @@ export const LoginScreen = () => {
           {/* Forgot password */}
           <TouchableOpacity
             style={styles.forgotWrapper}
+            onPress={() => router.push("/(auth)/forgot-password" as never)}
             accessibilityLabel="비밀번호 찾기"
           >
             <Text style={styles.forgotText}>비밀번호 찾기</Text>
           </TouchableOpacity>
 
+          {/* Login Error message */}
+          {loginError ? (
+            <Text style={{ color: "#FF5252", fontSize: 13, textAlign: "center", marginBottom: 16 }}>
+              {loginError}
+            </Text>
+          ) : null}
+
           {/* Sign in button */}
           <TouchableOpacity
-            style={styles.signInButton}
+            style={[styles.signInButton, isLoading && { backgroundColor: "#8FA3B8" }]}
             onPress={handleSubmit(onSubmit)}
+            disabled={isLoading}
             accessibilityLabel="로그인 버튼"
           >
-            <Text style={styles.signInText}>로그인</Text>
+            {isLoading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.signInText}>로그인</Text>
+            )}
           </TouchableOpacity>
 
           {/* Or with divider */}
