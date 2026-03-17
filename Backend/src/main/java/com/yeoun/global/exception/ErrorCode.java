@@ -40,6 +40,8 @@ public enum ErrorCode {
     TRIP_END_NOT_ALLOWED(HttpStatus.CONFLICT, "Trip end is not allowed for this status."),
     TRIP_INVITE_NOT_ALLOWED(HttpStatus.CONFLICT, "Invites are not allowed for this trip status."),
     TRIP_INVITE_ACCEPT_NOT_ALLOWED(HttpStatus.CONFLICT, "This invite cannot be accepted."),
+    PHOTO_NOT_FOUND(HttpStatus.NOT_FOUND, "Photo not found."),
+    PHOTO_FORBIDDEN(HttpStatus.FORBIDDEN, "You do not have permission for this photo."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid email or password."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found."),
     USER_INACTIVE(HttpStatus.FORBIDDEN, "Inactive user cannot log in."),
