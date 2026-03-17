@@ -41,3 +41,26 @@ export const getMyInfo = async (): Promise<CommonResponse<UserProfileData>> => {
     throw error;
   }
 };
+
+/**
+ * Deletes the currently logged-in user's account.
+ * DELETE /api/v1/users/me
+ */
+export const withdrawAccount = async (): Promise<CommonResponse<string>> => {
+  try {
+    const response = await apiClient.delete<CommonResponse<string>>('/api/v1/users/me');
+    return response.data;
+  } catch (error) {
+    if (__DEV__) {
+      console.log('withdrawAccount failed, mocking success in dev');
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Account withdrawn (MOCK)',
+        data: 'OK',
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
