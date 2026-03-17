@@ -35,7 +35,7 @@ const hasSpecial = (pw: string) =>
   /[!@#$%^&*(),.?":{}|<>_\-+=~`[\]\\;'/]/.test(pw);
 
 // Nickname requirement checkers
-const hasNicknameLength = (n: string) => n.length >= 2 && n.length <= 10;
+const hasNicknameLength = (n: string) => n.length >= 2 && n.length <= 20;
 const hasNicknameChars = (n: string) =>
   n.length > 0 && /^[가-힣a-zA-Z0-9]+$/.test(n);
 
@@ -373,7 +373,7 @@ export const RegisterScreen = () => {
                 <Text className="font-pretendard-semibold text-[14px] text-[#333333]">닉네임</Text>
                 <Text className="font-pretendard text-[10px] text-[#ABABAB] ml-1">
                   {" "}
-                  * 한글, 영문, 숫자만 가능 (특수문자 금지), 2~10자
+                  * 한글, 영문, 숫자만 가능 (특수문자 금지), 2~20자
                 </Text>
               </View>
               <Controller
@@ -382,8 +382,8 @@ export const RegisterScreen = () => {
                 rules={{
                   required: "닉네임을 입력해주세요",
                   pattern: {
-                    value: /^[가-힣a-zA-Z0-9]{2,10}$/,
-                    message: "2~10자, 한글/영문/숫자만 가능합니다",
+                    value: /^[가-힣a-zA-Z0-9]{2,20}$/,
+                    message: "2~20자, 한글/영문/숫자만 가능합니다 (특수문자 금지)",
                   },
                 }}
                 render={({ field: { onChange, onBlur, value } }) => (
@@ -420,7 +420,7 @@ export const RegisterScreen = () => {
                     <View className="flex-row flex-wrap -mt-2 mb-4 px-1">
                       <Requirement
                         met={hasNicknameLength(value)}
-                        label="2~10자 사용"
+                        label="2~20자 사용"
                       />
                       <Requirement
                         met={hasNicknameChars(value)}
@@ -442,29 +442,6 @@ export const RegisterScreen = () => {
                 )}
               />
 
-              {/* Phone */}
-              <Text className="font-pretendard-semibold text-[14px] text-[#333333] mb-1.5">휴대폰 번호</Text>
-              <Controller
-                control={control}
-                name="phone"
-                rules={{
-                  required: "휴대폰 번호를 입력해주세요",
-                  pattern: {
-                    value: /^010-?\d{3,4}-?\d{4}$/,
-                    message: "올바른 휴대폰 번호 형식이 아닙니다",
-                  },
-                }}
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <FormField
-                    placeholder="휴대폰 번호 (예: 010-0000-0000)"
-                    keyboardType="phone-pad"
-                    onBlur={onBlur}
-                    onChangeText={onChange}
-                    value={value}
-                    error={errors.phone?.message}
-                  />
-                )}
-              />
 
               {/* Password */}
               <Text className="font-pretendard-semibold text-[14px] text-[#333333] mb-1.5 mt-4">비밀번호</Text>

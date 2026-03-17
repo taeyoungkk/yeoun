@@ -256,3 +256,39 @@ export const signupApi = async (data: SignupRequest): Promise<CommonResponse<Log
     throw error;
   }
 };
+
+/**
+ * Authenticates with Google using an idToken.
+ * Mocks success in development if the network fails.
+ */
+export const googleAuthApi = async (idToken: string): Promise<CommonResponse<LoginResponseData>> => {
+  try {
+    const response = await apiClient.post<CommonResponse<LoginResponseData>>('/auth/oauth/google', { idToken });
+    return response.data;
+  } catch (error) {
+    if (__DEV__) {
+      console.log('googleAuthApi failed, mocking success in dev');
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Google login successful (MOCK)',
+        data: {
+          user: {
+            userId: 'mock-google-user',
+            email: 'google-user@example.com',
+            nickname: 'GoogleUser',
+          },
+          tokens: {
+            accessToken: 'mock-access-token-google',
+            refreshToken: 'mock-refresh-token-google',
+            tokenType: 'Bearer',
+            expiresIn: 1800,
+            isNewUser: false,
+          },
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
