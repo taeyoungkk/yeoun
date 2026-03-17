@@ -60,4 +60,20 @@ public class TripMember {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    public void accept(Instant now, UUID invitedByUserId) {
+        this.inviteStatus = TripMemberInviteStatus.ACCEPTED;
+        if (this.invitedByUserId == null) {
+            this.invitedByUserId = invitedByUserId;
+        }
+        if (this.invitedAt == null) {
+            this.invitedAt = now;
+        }
+        this.joinedAt = now;
+        this.leftAt = null;
+    }
+
+    public void leave(Instant now) {
+        this.leftAt = now;
+    }
 }

@@ -15,6 +15,7 @@ interface ExpenseRowProps {
   registerDropZone: (id: string, layout: { x: number; y: number; width: number; height: number }) => void;
   unregisterDropZone: (id: string) => void;
   onOpenAddMember: (expenseId: string) => void;
+  onOpenCategorySelector: (expenseId: string) => void;
   selectedAvatarId: string | null;
   setSelectedAvatarId: (id: string | null) => void;
 }
@@ -31,6 +32,7 @@ const ExpenseRow = ({
   registerDropZone,
   unregisterDropZone,
   onOpenAddMember,
+  onOpenCategorySelector,
   selectedAvatarId,
   setSelectedAvatarId
 }: ExpenseRowProps) => {
@@ -103,6 +105,18 @@ const ExpenseRow = ({
           {item.name}
         </Text>
       </TouchableOpacity>
+      
+      <TouchableOpacity 
+        className="w-20 justify-center items-center border-r border-gray-200 px-1"
+        onPress={() => onOpenCategorySelector(item.id)}
+      >
+        <View className="flex-row items-center bg-gray-100 px-2 py-1 rounded-md">
+          <Text className="text-gray-600 text-[11px] font-bold mr-1" style={{ fontFamily: 'DM Sans' }}>
+            {item.category}
+          </Text>
+          <Ionicons name="chevron-down" size={10} color="#666" />
+        </View>
+      </TouchableOpacity>
 
       <View className="w-16 justify-center items-center border-r border-gray-200 px-1">
         <Text className="text-gray-500 text-xs" style={{ fontFamily: 'DM Sans' }}>{item.time}</Text>
@@ -121,16 +135,28 @@ const ExpenseRow = ({
       </View>
 
       <View className="w-32 justify-center py-1">
-        <View className="flex-row items-center justify-center gap-1 flex-wrap px-1">
-          {activeMembers.map(member => (
+        <View className="flex-row items-center justify-center px-1">
+          {activeMembers.map((member, index) => (
             <TouchableOpacity
               key={member.id}
               onPress={() => setSelectedAvatarId(selectedAvatarId === `${item.id}-${member.id}` ? null : `${item.id}-${member.id}`)}
               className="relative"
-              style={{ width: 18, height: 18 }}
+              style={{ 
+                width: 18, 
+                height: 18,
+                marginLeft: index === 0 ? 0 : -6,
+                zIndex: activeMembers.length - index,
+              }}
             >
               <View
-                style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: member.color }}
+                style={{ 
+                  width: 18, 
+                  height: 18, 
+                  borderRadius: 9, 
+                  backgroundColor: member.color,
+                  borderWidth: 1.5,
+                  borderColor: 'white'
+                }}
               />
               {selectedAvatarId === `${item.id}-${member.id}` && (
                 <TouchableOpacity
@@ -149,6 +175,7 @@ const ExpenseRow = ({
           <TouchableOpacity 
             onPress={() => onOpenAddMember(item.id)}
             className="w-5 h-5 rounded-full bg-gray-200 items-center justify-center border border-gray-300 ml-1"
+            style={{ zIndex: 0 }}
           >
             <Ionicons name="add" size={14} color="#555" />
           </TouchableOpacity>
@@ -168,10 +195,12 @@ export function ExpenseTable() {
     hoveredExpenseId,
     setHoveredExpense,
     registerDropZone,
-    unregisterDropZone
+    unregisterDropZone,
+    updateExpenseCategory
   } = useExpenseStore();
   
   const [modalVisible, setModalVisible] = useState(false);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
 
@@ -189,6 +218,7 @@ export function ExpenseTable() {
   };
 
   const activeExpense = getExpenseById(expenses, selectedExpenseId);
+  const activeCategoryExpense = getExpenseById(expenses, selectedExpenseId);
 
   // Calculate totals locally and memoize 
   const memberTotals = useMemo(() => {
@@ -219,6 +249,11 @@ export function ExpenseTable() {
     setModalVisible(true);
   };
 
+  const handleOpenCategorySelector = (expenseId: string) => {
+    setSelectedExpenseId(expenseId);
+    setCategoryModalVisible(true);
+  };
+
   return (
     <View className="mt-6 flex-1">
       <View className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
@@ -229,9 +264,12 @@ export function ExpenseTable() {
           scrollEnabled={!draggingMemberId}
         >
           <View>
-            <View className="flex-row border-b border-gray-300 py-3 bg-gray-100" style={{ minWidth: 500 }}>
+            <View className="flex-row border-b border-gray-300 py-3 bg-gray-100" style={{ minWidth: 580 }}>
               <View className="w-32 justify-center items-center border-r border-gray-300">
                 <Text className="font-bold text-xs" style={{ fontFamily: 'DM Sans' }}>지점/아이템</Text>
+              </View>
+              <View className="w-20 justify-center items-center border-r border-gray-300">
+                <Text className="font-bold text-xs" style={{ fontFamily: 'DM Sans' }}>카테고리</Text>
               </View>
               <View className="w-16 justify-center items-center border-r border-gray-300">
                 <Text className="font-bold text-xs" style={{ fontFamily: 'DM Sans' }}>시간</Text>
@@ -261,6 +299,7 @@ export function ExpenseTable() {
                     registerDropZone={registerDropZone}
                     unregisterDropZone={unregisterDropZone}
                     onOpenAddMember={handleOpenAddMember}
+                    onOpenCategorySelector={handleOpenCategorySelector}
                     selectedAvatarId={selectedAvatarId}
                     setSelectedAvatarId={setSelectedAvatarId}
                   />
@@ -279,6 +318,7 @@ export function ExpenseTable() {
                         registerDropZone={registerDropZone}
                         unregisterDropZone={unregisterDropZone}
                         onOpenAddMember={handleOpenAddMember}
+                        onOpenCategorySelector={handleOpenCategorySelector}
                         selectedAvatarId={selectedAvatarId}
                         setSelectedAvatarId={setSelectedAvatarId}
                       />
@@ -353,6 +393,43 @@ export function ExpenseTable() {
             >
               <Text className="text-white font-bold text-lg" style={{ fontFamily: 'DM Sans' }}>완료</Text>
             </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={categoryModalVisible} transparent animationType="fade">
+        <Pressable 
+          className="flex-1 bg-black/50 justify-center items-center"
+          onPress={() => setCategoryModalVisible(false)}
+        >
+          <Pressable className="bg-white w-8/12 rounded-2xl p-6 shadow-xl" onPress={(e) => e.stopPropagation()}>
+            <View className="flex-row justify-between items-center mb-6">
+              <Text className="font-bold text-xl text-black" style={{ fontFamily: 'DM Sans' }}>카테고리 선택</Text>
+              <TouchableOpacity onPress={() => setCategoryModalVisible(false)}>
+                <Ionicons name="close-circle" size={28} color="#d1d5db" />
+              </TouchableOpacity>
+            </View>
+            
+            {['식비', '숙소비', '교통비', '기타'].map(cat => {
+               const isSelected = activeCategoryExpense?.category === cat;
+               return (
+                 <TouchableOpacity 
+                   key={cat} 
+                   onPress={() => {
+                     if (selectedExpenseId) {
+                       updateExpenseCategory(selectedExpenseId, cat as any);
+                       setCategoryModalVisible(false);
+                     }
+                   }}
+                   className={`p-4 mb-2 rounded-xl border ${isSelected ? 'border-black bg-gray-50' : 'border-gray-200'}`}
+                 >
+                   <View className="flex-row justify-between items-center">
+                     <Text className={`font-medium text-base ${isSelected ? 'text-black' : 'text-gray-600'}`} style={{ fontFamily: 'DM Sans' }}>{cat}</Text>
+                     {isSelected && <Ionicons name="checkmark-circle" size={20} color="black" />}
+                   </View>
+                 </TouchableOpacity>
+               )
+            })}
           </Pressable>
         </Pressable>
       </Modal>
