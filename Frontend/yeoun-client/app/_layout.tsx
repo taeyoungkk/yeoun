@@ -50,8 +50,6 @@ export default function RootLayout() {
         <Stack.Screen name="trip/recording" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
-      {/* Redirect to login if not authenticated */}
-      {!accessToken && <Redirect href={'/(auth)/login' as never} />}
       <StatusBar style="auto" />
     </ThemeProvider>
   );

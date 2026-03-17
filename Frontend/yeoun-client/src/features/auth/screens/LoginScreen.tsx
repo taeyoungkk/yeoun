@@ -1,7 +1,9 @@
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import * as WebBrowser from "expo-web-browser";
+import * as Google from "expo-auth-session/providers/google";
 import {
   ActivityIndicator,
   Image,
@@ -17,8 +19,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FormField } from "@/src/components/ui/form-field";
 import { PasswordToggle } from "@/src/components/ui/password-toggle";
-import { loginApi, LoginRequest } from "@/src/api/auth";
+import { loginApi, googleAuthApi, LoginRequest } from "@/src/api/auth";
 import { useAuthStore } from "@/src/store/auth.store";
+
+WebBrowser.maybeCompleteAuthSession();
 
 interface LoginForm {
   email: string;
@@ -39,6 +43,40 @@ export const LoginScreen = () => {
   } = useForm<LoginForm>({
     defaultValues: { email: "", password: "" },
   });
+
+  // Google OAuth Hook
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "YOUR_ANDROID_CLIENT_ID",
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "YOUR_IOS_CLIENT_ID",
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "YOUR_WEB_CLIENT_ID",
+  });
+
+  useEffect(() => {
+    if (response?.type === "success") {
+      const { id_token } = response.params;
+      handleGoogleLogin(id_token);
+    }
+  }, [response]);
+
+  const handleGoogleLogin = async (idToken: string) => {
+    setIsLoading(true);
+    setLoginError("");
+    try {
+      const apiResponse = await googleAuthApi(idToken);
+      if (apiResponse.success && apiResponse.data) {
+        const { tokens } = apiResponse.data;
+        setTokens(tokens.accessToken, tokens.refreshToken);
+        router.replace("/(tabs)");
+      } else {
+        setLoginError(apiResponse.message || "구글 로그인에 실패했습니다.");
+      }
+    } catch (error) {
+      setLoginError("구글 로그인 중 오류가 발생했습니다.");
+      console.error("Google Login Error:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
@@ -162,7 +200,9 @@ export const LoginScreen = () => {
 
           {/* Google button */}
           <TouchableOpacity
-            style={styles.googleButton}
+            style={[styles.googleButton, (!request || isLoading) && { opacity: 0.5 }]}
+            onPress={() => promptAsync()}
+            disabled={!request || isLoading}
             accessibilityLabel="구글 로그인"
           >
             <View style={styles.googleInner}>
@@ -172,6 +212,7 @@ export const LoginScreen = () => {
                 resizeMode="contain"
               />
               <Text style={styles.googleText}>Google</Text>
+              {isLoading && <ActivityIndicator size="small" color="#344966" style={{ marginLeft: 8 }} />}
             </View>
           </TouchableOpacity>
 
