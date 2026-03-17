@@ -10,7 +10,9 @@ export interface ExpenseItem {
   id: string;
   name: string;
   time: string;
+  date: string; // YYYY-MM-DD or MM/DD
   amount: number;
+  category: '식비' | '숙소비' | '교통비' | '기타';
   memberIds: string[]; // IDs of members participating in this expense
   subItems?: ExpenseItem[]; // For nested items like drinks under a cafe
   isExpanded?: boolean; // UI state for nested items
@@ -33,6 +35,7 @@ interface ExpenseStore {
   registerDropZone: (id: string, layout: { x: number; y: number; width: number; height: number }) => void;
   unregisterDropZone: (id: string) => void;
   findDropTarget: (x: number, y: number) => string | null;
+  updateExpenseCategory: (expenseId: string, category: '식비' | '숙소비' | '교통비' | '기타') => void;
 }
 
 // Initial mock data based on the provided UI design
@@ -48,46 +51,64 @@ const initialExpenses: ExpenseItem[] = [
     id: 'e1',
     name: '식당 1',
     time: '13:51',
+    date: '3/11',
     amount: 35000,
-    memberIds: ['3', '4'], // Blue, Yellow
+    category: '식비',
+    memberIds: ['3', '4'],
   },
   {
     id: 'e2',
     name: '기념품샵',
     time: '14:24',
+    date: '3/11',
     amount: 67500,
-    memberIds: ['3', '4', '1'], // Blue, Yellow, Red
+    category: '기타',
+    memberIds: ['3', '4', '1'],
   },
   {
     id: 'e3',
-    name: '카페 1',
-    time: '14:31',
-    amount: 12400,
-    memberIds: [], // To be calculated or set
-    isExpanded: true,
-    subItems: [
-      {
-        id: 'e3-1',
-        name: '아이스 아메리카노',
-        time: '',
-        amount: 4500,
-        memberIds: ['1'],
-      },
-      {
-        id: 'e3-2',
-        name: '카페라떼',
-        time: '',
-        amount: 5000,
-        memberIds: ['2'],
-      },
-       {
-        id: 'e3-3',
-        name: '디저트',
-        time: '',
-        amount: 2900,
-        memberIds: ['1', '2', '3', '4'],
-      }
-    ]
+    name: '숙소 예약',
+    time: '14:28',
+    date: '3/09',
+    amount: 120000,
+    category: '숙소비',
+    memberIds: ['1', '2', '3', '4'],
+  },
+  {
+    id: 'e4',
+    name: '택시비',
+    time: '14:30',
+    date: '3/07',
+    amount: 15000,
+    category: '교통비',
+    memberIds: ['1', '2'],
+  },
+  {
+    id: 'e5',
+    name: '식당 2',
+    time: '18:30',
+    date: '3/07',
+    amount: 45000,
+    category: '식비',
+    memberIds: ['1', '2', '3'],
+  },
+  {
+    id: 'e6',
+    name: '쇼핑',
+    time: '11:00',
+    date: '3/08',
+    amount: 25000,
+    category: '기타',
+    memberIds: ['1'],
+  },
+  {
+    id: 'e7',
+    name: '점심 식사',
+    time: '12:30',
+    date: '3/10',
+    amount: 42000,
+    category: '식비',
+    memberIds: ['1', '2', '3', '4'],
   }
 ];
 
@@ -213,5 +234,20 @@ export const useExpenseStore = create<ExpenseStore>((set, get) => ({
       }
     }
     return null;
-  }
+  },
+  updateExpenseCategory: (expenseId, category) =>
+    set((state) => {
+      const updateExpenses = (items: ExpenseItem[]): ExpenseItem[] => {
+        return items.map(item => {
+          if (item.id === expenseId) {
+            return { ...item, category };
+          }
+          if (item.subItems) {
+            return { ...item, subItems: updateExpenses(item.subItems) };
+          }
+          return item;
+        });
+      };
+      return { expenses: updateExpenses(state.expenses) };
+    }),
 }));
