@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 
 import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
+import { useAuthStore, useUserStore } from '@/src/store';
+import { logoutApi } from '@/src/api/auth';
 
 const IosSwitch = ({
   value,
@@ -97,6 +99,22 @@ export default function SettingsScreen() {
 
   const isRouteOnlyMode = !settings.showPhotoPins && !settings.showPaymentPins && !settings.showMemoPins;
 
+  const handleLogout = async () => {
+    try {
+      // 1. Call the logout API
+      await logoutApi();
+    } catch (error) {
+      console.log('Logout API info:', error);
+      // Even if the API fails, we often want to clear local state
+    } finally {
+      // 2. Clear authentication tokens
+      useAuthStore.getState().clearTokens();
+      // 3. Clear user profile
+      useUserStore.getState().clearProfile();
+      // Navigation back to login is handled by the Redirect in _layout.tsx
+    }
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-[#F3F6EB]" edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -108,7 +126,11 @@ export default function SettingsScreen() {
         <Text className="text-3xl font-bold text-[#1A1A1A]">설정</Text>
       </View>
 
-      <View className="px-5 mt-2 pb-10">
+      <ScrollView 
+        className="flex-1" 
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
+      >
         <Text className="text-xl font-bold text-[#1A1A1A] mb-4">알림</Text>
         <View className="bg-white rounded-3xl p-5 mb-8">
           <View className="flex-row justify-between items-center mb-6">
@@ -184,7 +206,15 @@ export default function SettingsScreen() {
             />
           </View>
         </View>
-      </View>
+
+        <TouchableOpacity 
+          onPress={handleLogout}
+          className="mt-4 mb-2 flex-row items-center justify-center bg-white rounded-3xl p-5"
+        >
+          <Ionicons name="log-out-outline" size={24} color="#FF4B4B" />
+          <Text className="text-lg font-bold text-[#FF4B4B] ml-2">로그아웃</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 }
