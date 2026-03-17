@@ -24,3 +24,8 @@ app.invite.base-url=${APP_INVITE_BASE_URL}
 
 oauth.google.client-id=${GOOGLE_CLIENT_ID}
 oauth.google.jwk-set-uri=${GOOGLE_JWK_SET_URI:https://www.googleapis.com/oauth2/v3/certs}
+
+aws.access-key-id=${AWS_ACCESS_KEY_ID}
+aws.secret-access-key=${AWS_SECRET_ACCESS_KEY}
+aws.region=${AWS_REGION}
+aws.s3.bucket=${AWS_S3_BUCKET}
