@@ -4,10 +4,14 @@ import com.yeoun.domain.locationlog.dto.request.LocationLogBatchUploadRequest;
 import com.yeoun.domain.locationlog.dto.request.LocationLogUploadItemRequest;
 import com.yeoun.domain.locationlog.dto.response.LocationLogBatchUploadResponse;
 import com.yeoun.domain.locationlog.entity.LocationLogRaw;
+import com.yeoun.domain.locationlog.event.LocationLogBatchStoredEvent;
+import com.yeoun.domain.locationlog.event.LocationLogBatchStoredEventPublisher;
 import com.yeoun.domain.locationlog.repository.LocationLogRawRepository;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripStatus;
 import com.yeoun.domain.trip.repository.TripRepository;
+import com.yeoun.domain.tripprocessing.service.TripProcessingStatusService;
+import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -26,13 +30,19 @@ public class LocationLogService {
 
     private final TripRepository tripRepository;
     private final LocationLogRawRepository locationLogRawRepository;
+    private final TripProcessingStatusService tripProcessingStatusService;
+    private final LocationLogBatchStoredEventPublisher locationLogBatchStoredEventPublisher;
 
     public LocationLogService(
             TripRepository tripRepository,
-            LocationLogRawRepository locationLogRawRepository
+            LocationLogRawRepository locationLogRawRepository,
+            TripProcessingStatusService tripProcessingStatusService,
+            LocationLogBatchStoredEventPublisher locationLogBatchStoredEventPublisher
     ) {
         this.tripRepository = tripRepository;
         this.locationLogRawRepository = locationLogRawRepository;
+        this.tripProcessingStatusService = tripProcessingStatusService;
+        this.locationLogBatchStoredEventPublisher = locationLogBatchStoredEventPublisher;
     }
 
     @Transactional
@@ -103,6 +113,21 @@ public class LocationLogService {
         if (!newLogs.isEmpty()) {
             // 새 로그만 한 번에 저장한다.
             locationLogRawRepository.saveAll(newLogs);
+            // 새 raw 로그가 생기면 후처리 대상이므로 처리 상태를 다시 대기 상태로 맞춘다.
+            tripProcessingStatusService.markPending(tripId, now);
+            try {
+                // Kafka에 적재 이벤트를 발행해 워커가 후처리를 시작할 수 있게 한다.
+                locationLogBatchStoredEventPublisher.publish(new LocationLogBatchStoredEvent(
+                        tripId,
+                        requesterUserId,
+                        newLogs.size(),
+                        now
+                ));
+                tripProcessingStatusService.markQueued(tripId, now);
+            } catch (BaseException exception) {
+                tripProcessingStatusService.markFailed(tripId, now, exception.getMessage());
+                throw exception;
+            }
         }
 
         return new LocationLogBatchUploadResponse(

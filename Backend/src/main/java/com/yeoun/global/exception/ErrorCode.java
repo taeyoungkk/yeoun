@@ -58,6 +58,7 @@ public enum ErrorCode {
     FORBIDDEN(HttpStatus.FORBIDDEN, "Access denied."),
     INVALID_JWT_TOKEN(HttpStatus.UNAUTHORIZED, "Invalid JWT token."),
     EXPIRED_JWT_TOKEN(HttpStatus.UNAUTHORIZED, "Expired JWT token."),
+    KAFKA_EVENT_PUBLISH_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to publish Kafka event."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error.");
 
     private final HttpStatus status;
