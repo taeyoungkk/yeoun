@@ -5,18 +5,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
-import { globalUserState, updateUser } from '@/src/store/userStore';
+import { useUserStore } from '@/src/store';
+import { updateMyInfo } from '@/src/api/user';
 import { stringToColor } from '@/src/utils/colors';
 
 export default function EditProfileScreen() {
-  const [nickname, setNickname] = useState(globalUserState.nickname);
-  const [email, setEmail] = useState(globalUserState.email);
-  const [phone, setPhone] = useState(globalUserState.phone);
+  const { profile, updateProfile } = useUserStore();
+  
+  const [nickname, setNickname] = useState(profile?.nickname || '');
+  const [email, setEmail] = useState(profile?.email || '');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.profileImageUrl || null);
+  
+  // Note: Backend PATCH only supports nickname and profileImageUrl currently
   const [password, setPassword] = useState('*********');
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(globalUserState.avatarUrl);
 
   const pickImage = async () => {
-    // 사진 라이브러리 접근 권한 요청
     let permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (permissionResult.granted === false) {
@@ -36,9 +39,24 @@ export default function EditProfileScreen() {
     }
   };
 
-  const handleSave = () => {
-    updateUser({ nickname, email, phone, avatarUrl });
-    router.back();
+  const handleSave = async () => {
+    try {
+      const response = await updateMyInfo({
+        nickname,
+        profileImageUrl: avatarUrl || undefined,
+      });
+
+      if (response.success) {
+        updateProfile({
+          nickname: response.data.nickname,
+          profileImageUrl: response.data.profileImageUrl,
+        });
+        router.back();
+      }
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      alert('프로필 수정에 실패했습니다.');
+    }
   };
 
   const initial = nickname.charAt(0).toUpperCase() || '?';
@@ -100,17 +118,6 @@ export default function EditProfileScreen() {
                   onChangeText={setNickname}
                   className="text-base text-[#A0A0A0] py-0"
                   placeholder="닉네임을 입력하세요"
-                />
-              </View>
-
-              <View className="mb-6">
-                <Text className="text-base font-bold text-[#1A1A1A] mb-2">휴대폰 번호</Text>
-                <TextInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  className="text-base text-[#A0A0A0] py-0"
-                  placeholder="휴대폰 번호를 입력하세요"
-                  keyboardType="phone-pad"
                 />
               </View>
 
