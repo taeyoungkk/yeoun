@@ -1,8 +1,8 @@
 package com.yeoun.domain.trip.controller;
 
-import com.yeoun.domain.trip.dto.response.TripInviteDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteAcceptResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteDeclineResponse;
+import com.yeoun.domain.trip.dto.response.TripInviteDetailResponse;
 import com.yeoun.domain.trip.service.TripInviteService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -29,7 +29,7 @@ public class TripInviteController {
     }
 
     @GetMapping("/{inviteToken}")
-    @Operation(summary = "초대 상세 조회", description = "초대 링크 토큰으로 여행 초대 정보를 조회합니다.")
+    @Operation(summary = "초대 상세 조회", description = "링크 초대 또는 직접 초대 토큰으로 여행 초대 정보를 조회합니다.")
     public ApiResponse<TripInviteDetailResponse> getTripInviteDetail(
             @PathVariable("inviteToken") String inviteToken
     ) {
@@ -38,7 +38,7 @@ public class TripInviteController {
     }
 
     @PostMapping("/{inviteToken}/accept")
-    @Operation(summary = "초대 수락", description = "초대 링크를 수락하고 여행 참여자로 등록합니다.")
+    @Operation(summary = "초대 수락", description = "링크 초대 또는 직접 초대를 수락하고 여행 참여자로 등록합니다. 직접 초대는 초대 대상 사용자만 수락할 수 있습니다.")
     @SecurityRequirement(name = "bearerAuth")
     public ApiResponse<TripInviteAcceptResponse> acceptInvite(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
@@ -49,7 +49,7 @@ public class TripInviteController {
     }
 
     @PostMapping("/{inviteToken}/decline")
-    @Operation(summary = "초대 거절", description = "초대 링크를 거절합니다.")
+    @Operation(summary = "초대 거절", description = "링크 초대 또는 직접 초대를 거절합니다. 직접 초대는 초대 대상 사용자만 거절할 수 있습니다.")
     @SecurityRequirement(name = "bearerAuth")
     public ApiResponse<TripInviteDeclineResponse> declineInvite(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,

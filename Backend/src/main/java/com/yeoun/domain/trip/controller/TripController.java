@@ -7,11 +7,11 @@ import com.yeoun.domain.trip.dto.response.TripCreateResponse;
 import com.yeoun.domain.trip.dto.response.TripDeleteResponse;
 import com.yeoun.domain.trip.dto.response.TripDetailResponse;
 import com.yeoun.domain.trip.dto.response.TripEndResponse;
-import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteLinkCreateResponse;
+import com.yeoun.domain.trip.dto.response.TripInviteUsersResponse;
+import com.yeoun.domain.trip.dto.response.TripLeaveResponse;
 import com.yeoun.domain.trip.dto.response.TripListResponse;
 import com.yeoun.domain.trip.dto.response.TripMemberListResponse;
-import com.yeoun.domain.trip.dto.response.TripLeaveResponse;
 import com.yeoun.domain.trip.dto.response.TripStartResponse;
 import com.yeoun.domain.trip.dto.response.TripUpdateResponse;
 import com.yeoun.domain.trip.service.TripService;
@@ -26,11 +26,13 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.PathVariable;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/trips")
@@ -55,10 +57,10 @@ public class TripController {
     }
 
     @PostMapping("/{tripId}/invites/users")
-    @Operation(summary = "사용자 직접 초대", description = "여행 소유자가 특정 사용자를 여행에 초대합니다.")
+    @Operation(summary = "사용자 직접 초대", description = "여행 소유자가 특정 사용자에게 직접 초대를 생성합니다. 생성된 직접 초대는 초대 수락/거절 API에서 공통 토큰으로 처리됩니다.")
     public ApiResponse<TripInviteUsersResponse> inviteUsers(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
-            @PathVariable("tripId") java.util.UUID tripId,
+            @PathVariable("tripId") UUID tripId,
             @Valid @RequestBody TripInviteUsersRequest request
     ) {
         TripInviteUsersResponse response = tripService.inviteUsers(principal.userId(), tripId, request);
@@ -66,10 +68,10 @@ public class TripController {
     }
 
     @PostMapping("/{tripId}/invites/link")
-    @Operation(summary = "링크 초대 생성", description = "여행 링크 초대를 생성하거나 기존 링크 만료 시간을 연장합니다.")
+    @Operation(summary = "링크 초대 생성", description = "여행 링크 초대를 생성하거나 기존 활성 링크의 만료 시간을 연장합니다.")
     public ApiResponse<TripInviteLinkCreateResponse> createLinkInvite(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
-            @PathVariable("tripId") java.util.UUID tripId
+            @PathVariable("tripId") UUID tripId
     ) {
         TripInviteLinkCreateResponse response = tripService.createLinkInvite(principal.userId(), tripId);
         return ApiResponse.ok(response);
@@ -88,17 +90,17 @@ public class TripController {
     @Operation(summary = "여행 상세 조회", description = "여행 상세 정보를 조회합니다.")
     public ApiResponse<TripDetailResponse> getTripDetail(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
-            @PathVariable("tripId") java.util.UUID tripId
+            @PathVariable("tripId") UUID tripId
     ) {
         TripDetailResponse response = tripService.getTripDetail(principal.userId(), tripId);
         return ApiResponse.ok(response);
     }
 
     @GetMapping("/{tripId}/members")
-    @Operation(summary = "여행 멤버 및 초대 현황 조회", description = "이 여행의 멤버 및 초대 현황을 조회합니다.")
+    @Operation(summary = "여행 멤버 및 초대 현황 조회", description = "현재 참여 중인 멤버와 유효한 직접 초대 대기 현황을 함께 조회합니다.")
     public ApiResponse<TripMemberListResponse> getTripMembers(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
-            @PathVariable("tripId") java.util.UUID tripId
+            @PathVariable("tripId") UUID tripId
     ) {
         TripMemberListResponse response = tripService.getTripMembers(principal.userId(), tripId);
         return ApiResponse.ok(response);
@@ -108,7 +110,7 @@ public class TripController {
     @Operation(summary = "여행 수정", description = "여행명, 기간, 공개 범위를 수정합니다.")
     public ApiResponse<TripUpdateResponse> updateTrip(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
-            @PathVariable("tripId") java.util.UUID tripId,
+            @PathVariable("tripId") UUID tripId,
             @Valid @RequestBody TripUpdateRequest request
     ) {
         TripUpdateResponse response = tripService.updateTrip(principal.userId(), tripId, request);
@@ -119,7 +121,7 @@ public class TripController {
     @Operation(summary = "여행 삭제", description = "여행을 삭제 처리합니다.")
     public ApiResponse<TripDeleteResponse> deleteTrip(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
-            @PathVariable("tripId") java.util.UUID tripId
+            @PathVariable("tripId") UUID tripId
     ) {
         TripDeleteResponse response = tripService.deleteTrip(principal.userId(), tripId);
         return ApiResponse.ok(response);
@@ -129,7 +131,7 @@ public class TripController {
     @Operation(summary = "여행 시작", description = "여행을 시작 상태(ACTIVE)로 전환합니다.")
     public ApiResponse<TripStartResponse> startTrip(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
-            @PathVariable("tripId") java.util.UUID tripId
+            @PathVariable("tripId") UUID tripId
     ) {
         TripStartResponse response = tripService.startTrip(principal.userId(), tripId);
         return ApiResponse.ok(response);
@@ -139,7 +141,7 @@ public class TripController {
     @Operation(summary = "여행 종료", description = "여행을 종료 상태(ENDED)로 전환합니다.")
     public ApiResponse<TripEndResponse> endTrip(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
-            @PathVariable("tripId") java.util.UUID tripId
+            @PathVariable("tripId") UUID tripId
     ) {
         TripEndResponse response = tripService.endTrip(principal.userId(), tripId);
         return ApiResponse.ok(response);
@@ -149,7 +151,7 @@ public class TripController {
     @Operation(summary = "여행 나가기", description = "현재 사용자가 여행에서 나갑니다.")
     public ApiResponse<TripLeaveResponse> leaveTrip(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
-            @PathVariable("tripId") java.util.UUID tripId
+            @PathVariable("tripId") UUID tripId
     ) {
         TripLeaveResponse response = tripService.leaveTrip(principal.userId(), tripId);
         return ApiResponse.ok(response);

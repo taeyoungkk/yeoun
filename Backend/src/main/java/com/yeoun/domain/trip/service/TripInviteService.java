@@ -119,6 +119,10 @@ public class TripInviteService {
             tripMemberRepository.save(tripMember);
         }
 
+        if (invite.getInviteType() == TripInviteType.USER) {
+            invite.markUsed(now);
+        }
+
         return new TripInviteAcceptResponse(
                 trip.getTripId(),
                 tripMember.getTripMemberId(),

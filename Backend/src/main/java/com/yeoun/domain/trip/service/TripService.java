@@ -30,6 +30,7 @@ import com.yeoun.domain.trip.repository.TripInviteRepository;
 import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.domain.trip.repository.TripMemberSummaryProjection;
+import com.yeoun.domain.trip.repository.TripInviteUserSummaryProjection;
 import com.yeoun.domain.user.repository.UserRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
@@ -124,18 +125,18 @@ public class TripService {
 
     @Transactional
     public TripInviteUsersResponse inviteUsers(UUID requesterUserId, UUID tripId, TripInviteUsersRequest request) {
-        Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
+        Trip trip = findNonDeletedTripOrThrow(tripId);
 
         if (!trip.getOwnerUserId().equals(requesterUserId)) {
             throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
         }
 
-        if (trip.getStatus() != TripStatus.DRAFT && trip.getStatus() != TripStatus.ACTIVE) {
+        if (trip.getStatus() != TripStatus.DRAFT) {
             throw new BaseException(ErrorCode.TRIP_INVITE_NOT_ALLOWED);
         }
 
         Instant now = Instant.now();
+        Instant expiresAt = now.plusSeconds(LINK_INVITE_EXPIRE_DAYS * 24 * 60 * 60);
         List<UUID> invitedUserIds = new ArrayList<>();
         List<UUID> skippedUserIds = new ArrayList<>();
 
@@ -152,23 +153,43 @@ public class TripService {
                 skippedUserIds.add(inviteeUserId);
                 continue;
             }
-            if (tripMemberRepository.existsByTripIdAndUserId(tripId, inviteeUserId)) {
+            TripMember existingMember = tripMemberRepository.findByTripIdAndUserId(tripId, inviteeUserId).orElse(null);
+            if (existingMember != null
+                    && existingMember.getInviteStatus() == TripMemberInviteStatus.ACCEPTED
+                    && existingMember.getLeftAt() == null) {
                 skippedUserIds.add(inviteeUserId);
                 continue;
             }
 
-            TripMember tripMember = TripMember.builder()
-                    .tripMemberId(UUID.randomUUID())
+            TripInvite existingInvite = tripInviteRepository
+                    .findTopByTripIdAndInviteTypeAndTargetUserIdAndStatusOrderByCreatedAtDesc(
+                            tripId,
+                            TripInviteType.USER,
+                            inviteeUserId,
+                            TripInviteStatus.SENT
+                    )
+                    .orElse(null);
+            if (existingInvite != null) {
+                if (existingInvite.getExpiresAt().isAfter(now)) {
+                    skippedUserIds.add(inviteeUserId);
+                    continue;
+                }
+                existingInvite.markExpired();
+            }
+
+            TripInvite tripInvite = TripInvite.builder()
+                    .tripInviteId(UUID.randomUUID())
                     .tripId(tripId)
-                    .userId(inviteeUserId)
-                    .inviteStatus(TripMemberInviteStatus.INVITED)
-                    .invitedByUserId(requesterUserId)
-                    .invitedAt(now)
-                    .joinedAt(null)
-                    .leftAt(null)
+                    .inviterUserId(requesterUserId)
+                    .inviteType(TripInviteType.USER)
+                    .inviteToken(generateUniqueInviteToken())
+                    .expiresAt(expiresAt)
+                    .status(TripInviteStatus.SENT)
+                    .targetUserId(inviteeUserId)
                     .createdAt(now)
+                    .usedAt(null)
                     .build();
-            tripMemberRepository.save(tripMember);
+            tripInviteRepository.save(tripInvite);
             invitedUserIds.add(inviteeUserId);
         }
 
@@ -269,8 +290,11 @@ public class TripService {
         Trip trip = findNonDeletedTripOrThrow(tripId);
         validateTripAccessible(requesterUserId, trip);
 
-        List<TripMemberItemResponse> items = tripMemberRepository.findVisibleMembersByTripId(tripId).stream()
+        List<TripMemberItemResponse> items = new ArrayList<>();
+
+        items.addAll(tripMemberRepository.findVisibleMembersByTripId(tripId).stream()
                 .map(member -> new TripMemberItemResponse(
+                        null,
                         member.getTripMemberId(),
                         member.getUserId(),
                         member.getNickname(),
@@ -278,7 +302,19 @@ public class TripService {
                         member.getInviteStatus(),
                         member.getJoinedAt()
                 ))
-                .toList();
+                .toList());
+
+        items.addAll(tripInviteRepository.findVisibleUserInvitesByTripId(tripId, Instant.now()).stream()
+                .map(invite -> new TripMemberItemResponse(
+                        invite.getTripInviteId(),
+                        null,
+                        invite.getUserId(),
+                        invite.getNickname(),
+                        invite.getProfileImageUrl(),
+                        TripMemberInviteStatus.INVITED,
+                        null
+                ))
+                .toList());
 
         return new TripMemberListResponse(items);
     }

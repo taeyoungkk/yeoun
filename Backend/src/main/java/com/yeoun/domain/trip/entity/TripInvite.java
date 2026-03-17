@@ -65,6 +65,11 @@ public class TripInvite {
         this.status = TripInviteStatus.SENT;
     }
 
+    public void markUsed(Instant usedAt) {
+        this.status = TripInviteStatus.USED;
+        this.usedAt = usedAt;
+    }
+
     public void markCancelled() {
         this.status = TripInviteStatus.CANCELLED;
     }
