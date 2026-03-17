@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
-import Svg, { Path, G, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, G, Text as SvgText, Defs, TextPath } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const regionsData = [
@@ -140,7 +140,7 @@ export const TreeRingsChart = () => {
   };
 
   return (
-    <View className="w-full px-5 mt-0 mb-10 items-center">
+    <View className="w-full px-5 mt-8 mb-10 items-center">
       {/* SVG 나이테 차트 */}
       <View className="w-full max-w-[400px] aspect-square mb-6 justify-center items-center">
         {/* 터치를 안정적으로 캡처하기 위해 onStartShouldSetResponder가 있는 View 사용 */}
@@ -181,33 +181,58 @@ export const TreeRingsChart = () => {
             </G>
 
             <G id="labels">
-              {regionsData.map((region, i) => {
-                const centerAngle = i * ANGLE_STEP + (ANGLE_STEP / 2);
-                let percent = region.visited / region.total;
-                let r_max = INNER_RADIUS + (percent * RINGS_COUNT) * STEP;
-                let packed_offset = (10 - percent * 10) * 2.5; 
-                let labelRadius = Math.max(r_max + packed_offset + 18, INNER_RADIUS + 35);
-                
-                let labelPos = getPoint(centerAngle, labelRadius);
-                let anchor = "middle";
-                if (centerAngle > 10 && centerAngle < 170) anchor = "start";
-                else if (centerAngle > 190 && centerAngle < 350) anchor = "end";
+              <Defs>
+                {regionsData.map((region, i) => {
+                  const startAngle = i * ANGLE_STEP;
+                  const endAngle = (i + 1) * ANGLE_STEP;
+                  const labelRadius = MAX_RADIUS + 25;
+                  
+                  // Bottom half (roughly 90 to 270 degrees) needs reversed path for readability
+                  const isBottom = (i * ANGLE_STEP >= 90 && i * ANGLE_STEP < 270);
+                  
+                  let p1, p2;
+                  if (isBottom) {
+                    // Reverse arc: end to start
+                    p1 = getPoint(endAngle, labelRadius);
+                    p2 = getPoint(startAngle, labelRadius);
+                  } else {
+                    // Normal arc: start to end
+                    p1 = getPoint(startAngle, labelRadius);
+                    p2 = getPoint(endAngle, labelRadius);
+                  }
 
-                return (
-                  <SvgText
-                    key={`label-${region.id}`}
-                    x={labelPos.x}
-                    y={labelPos.y}
-                    textAnchor={anchor as any}
-                    alignmentBaseline="middle"
-                    fill="#6C584C"
-                    fontSize="12"
-                    fontWeight="900"
+                  const largeArcFlag = 0; // Each slice is < 180 deg
+                  const sweepFlag = isBottom ? 0 : 1;
+
+                  const d = `M ${p1.x} ${p1.y} A ${labelRadius} ${labelRadius} 0 ${largeArcFlag} ${sweepFlag} ${p2.x} ${p2.y}`;
+                  
+                  return (
+                    <Path
+                      key={`path-${region.id}`}
+                      id={`labelPath-${region.id}`}
+                      d={d}
+                      fill="none"
+                    />
+                  );
+                })}
+              </Defs>
+
+              {regionsData.map((region) => (
+                <SvgText
+                  key={`label-${region.id}`}
+                  fill="#6C584C"
+                  fontSize="12"
+                  fontWeight="900"
+                >
+                  <TextPath
+                    href={`#labelPath-${region.id}`}
+                    startOffset="50%"
+                    textAnchor="middle"
                   >
                     {region.name}
-                  </SvgText>
-                );
-              })}
+                  </TextPath>
+                </SvgText>
+              ))}
             </G>
             <G id="interaction">
               {regionsData.map((region, i) => {
