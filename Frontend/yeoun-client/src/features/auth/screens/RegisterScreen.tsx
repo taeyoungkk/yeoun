@@ -19,6 +19,7 @@ import { FormField } from "@/src/components/ui/form-field";
 import { PasswordToggle } from "@/src/components/ui/password-toggle";
 import { sendEmailCode, verifyEmailCode, signupApi } from "@/src/api/auth";
 import { useAuthStore } from "@/src/store/auth.store";
+import { useUserStore } from "@/src/store";
 
 interface RegisterForm {
   email: string;
@@ -156,6 +157,7 @@ export const RegisterScreen = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [registerError, setRegisterError] = useState("");
   const setTokens = useAuthStore((state) => state.setTokens);
+  const setProfile = useUserStore((state) => state.setProfile);
 
   const onSubmit = async (data: RegisterForm) => {
     if (nicknameStatus !== "available") return;
@@ -169,8 +171,20 @@ export const RegisterScreen = () => {
       });
 
       if (response.success && response.data) {
-        const { tokens } = response.data;
+        const { tokens, user } = response.data;
         setTokens(tokens.accessToken, tokens.refreshToken);
+        
+        // Populate user store with basic info
+        setProfile({
+          userId: user.userId,
+          email: user.email,
+          nickname: user.nickname,
+          profileImageUrl: null,
+          timezone: 'Asia/Seoul',
+          role: 'USER',
+          status: 'ACTIVE',
+        });
+
         router.replace("/(tabs)");
       } else {
         setRegisterError(response.message || "회원가입에 실패했습니다.");

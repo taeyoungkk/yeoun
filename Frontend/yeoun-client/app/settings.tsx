@@ -7,6 +7,7 @@ import { router, Stack } from 'expo-router';
 import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 import { useAuthStore, useUserStore } from '@/src/store';
 import { logoutApi } from '@/src/api/auth';
+import { withdrawAccount } from '@/src/api/user';
 
 const IosSwitch = ({
   value,
@@ -99,17 +100,30 @@ export default function SettingsScreen() {
 
   const handleLogout = async () => {
     try {
-      // 1. Call the logout API
+      // 1. 로그아웃 API 호출
       await logoutApi();
     } catch (error) {
-      console.log('Logout API info:', error);
-      // Even if the API fails, we often want to clear local state
+      console.log('Logout error:', error);
     } finally {
-      // 2. Clear authentication tokens
+      // 2. 인증 토큰 제거
       useAuthStore.getState().clearTokens();
-      // 3. Clear user profile
+      // 3. 사용자 프로필 정보 제거
       useUserStore.getState().clearProfile();
-      // Navigation back to login is handled by the Redirect in _layout.tsx
+    }
+  };
+
+  const handleWithdraw = async () => {
+    try {
+      // 1. 회원 탈퇴 API 호출
+      const response = await withdrawAccount();
+      if (response.success) {
+        // 2. 상태 및 토큰 초기화
+        useAuthStore.getState().clearTokens();
+        useUserStore.getState().clearProfile();
+        // 네비게이션은 루트 레이아웃의 Redirect에 의해 처리됨
+      }
+    } catch (error) {
+      console.log('Withdrawal error:', error);
     }
   };
 
@@ -126,7 +140,7 @@ export default function SettingsScreen() {
 
       <ScrollView 
         className="flex-1" 
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
         <Text className="text-xl font-bold text-[#1A1A1A] mb-4">알림</Text>
@@ -168,7 +182,7 @@ export default function SettingsScreen() {
         </View>
 
         <Text className="text-xl font-bold text-[#1A1A1A] mb-4">지도 표시 항목</Text>
-        <View className="bg-white rounded-[32px] p-5">
+        <View className="bg-white rounded-[32px] p-5 mb-8">
           <View className="mb-5">
             <Text className="text-lg font-medium text-[#1A1A1A]">동선만 보기</Text>
             <Text className="text-sm text-[#7B867E] mt-1">
@@ -197,12 +211,21 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* 로그아웃 버튼 (더 차분한 스타일) */}
         <TouchableOpacity 
           onPress={handleLogout}
-          className="mt-4 mb-2 flex-row items-center justify-center bg-white rounded-3xl p-5"
+          className="mt-4 flex-row items-center justify-center p-4"
         >
-          <Ionicons name="log-out-outline" size={24} color="#FF4B4B" />
-          <Text className="text-lg font-bold text-[#FF4B4B] ml-2">로그아웃</Text>
+          <Text className="text-[16px] font-medium text-[#8E8E8E] underline">로그아웃</Text>
+        </TouchableOpacity>
+
+        {/* 회원 탈퇴 버튼 (밝은 빨간색, 강조된 스타일) */}
+        <TouchableOpacity 
+          onPress={handleWithdraw}
+          className="mt-2 flex-row items-center justify-center bg-[#FF5252] rounded-3xl p-5"
+        >
+          <Ionicons name="trash-outline" size={24} color="#FFFFFF" />
+          <Text className="text-lg font-bold text-white ml-2">회원 탈퇴</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
