@@ -17,7 +17,8 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { FormField } from "@/src/components/ui/form-field";
 import { PasswordToggle } from "@/src/components/ui/password-toggle";
-import { sendEmailCode, verifyEmailCode } from "@/src/api/auth";
+import { sendEmailCode, verifyEmailCode, signupApi } from "@/src/api/auth";
+import { useAuthStore } from "@/src/store/auth.store";
 
 interface RegisterForm {
   email: string;
@@ -152,11 +153,33 @@ export const RegisterScreen = () => {
     );
   };
 
-  const onSubmit = (data: RegisterForm) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [registerError, setRegisterError] = useState("");
+  const setTokens = useAuthStore((state) => state.setTokens);
+
+  const onSubmit = async (data: RegisterForm) => {
     if (nicknameStatus !== "available") return;
-    // TODO: connect to register API
-    console.log("Register:", data);
-    router.replace("/(auth)/login");
+    setIsSubmitting(true);
+    setRegisterError("");
+    try {
+      const response = await signupApi({
+        email: data.email,
+        password: data.password,
+        nickname: data.nickname,
+      });
+
+      if (response.success && response.data) {
+        const { tokens } = response.data;
+        setTokens(tokens.accessToken, tokens.refreshToken);
+        router.replace("/(tabs)");
+      } else {
+        setRegisterError(response.message || "회원가입에 실패했습니다.");
+      }
+    } catch (error) {
+      setRegisterError("회원가입 중 오류가 발생했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -513,15 +536,27 @@ export const RegisterScreen = () => {
                 )}
               />
 
+              {/* Register Error message */}
+              {registerError ? (
+                <Text className="text-[#FF5252] text-[13px] text-center mt-4 mb-2">
+                  {registerError}
+                </Text>
+              ) : null}
+
               {/* Submit */}
               <TouchableOpacity
                 className={`bg-primary rounded-[15px] py-[18px] items-center mt-4 ${
-                  nicknameStatus !== "available" ? "bg-[#8FA3B8]" : ""
+                  nicknameStatus !== "available" || isSubmitting ? "bg-[#8FA3B8]" : ""
                 }`}
                 onPress={handleSubmit(onSubmit)}
+                disabled={isSubmitting || nicknameStatus !== "available"}
                 accessibilityLabel="회원가입 완료"
               >
-                <Text className="font-pretendard-semibold text-[16px] text-white">완료</Text>
+                {isSubmitting ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text className="font-pretendard-semibold text-[16px] text-white">완료</Text>
+                )}
               </TouchableOpacity>
             </>
           )}

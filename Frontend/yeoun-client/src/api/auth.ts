@@ -30,6 +30,12 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface SignupRequest {
+  email: string;
+  password: string;
+  nickname: string;
+}
+
 /**
  * Logs the user out by calling the backend API.
  * Currently mocks success in development if the network fails.
@@ -208,6 +214,42 @@ export const confirmPasswordReset = async (data: ResetConfirmRequest): Promise<C
         code: 'SUCCESS',
         message: 'Password reset successful (MOCK)',
         data: 'OK',
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
+
+/**
+ * Signs up a new user with email, password, and nickname.
+ * Mocks success in development if the network fails.
+ */
+export const signupApi = async (data: SignupRequest): Promise<CommonResponse<LoginResponseData>> => {
+  try {
+    const response = await apiClient.post<CommonResponse<LoginResponseData>>('/auth/signup', data);
+    return response.data;
+  } catch (error) {
+    if (__DEV__) {
+      console.log('signupApi failed, mocking success in dev');
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Signed up successfully (MOCK)',
+        data: {
+          user: {
+            userId: 'mock-uuid-9999',
+            email: data.email,
+            nickname: data.nickname,
+          },
+          tokens: {
+            accessToken: 'mock-access-token-signup',
+            refreshToken: 'mock-refresh-token-signup',
+            tokenType: 'Bearer',
+            expiresIn: 1800,
+            isNewUser: true,
+          },
+        },
         timestamp: new Date().toISOString(),
       };
     }
