@@ -26,4 +26,49 @@ apiClient.interceptors.request.use(
   }
 );
 
+// Response interceptor to handle token refresh on 401
+apiClient.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  async (error) => {
+    const originalRequest = error.config;
+
+    // If error is 401 and not already retrying
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        const { refreshToken, setTokens, clearTokens } = useAuthStore.getState();
+        
+        if (!refreshToken) {
+          clearTokens();
+          return Promise.reject(error);
+        }
+
+        // Import refreshApi here to avoid circular dependency
+        const { refreshApi } = require('./auth');
+        const refreshResponse = await refreshApi(refreshToken);
+
+        if (refreshResponse.success) {
+          const { accessToken: newAccess, refreshToken: newRefresh } = refreshResponse.data;
+          setTokens(newAccess, newRefresh);
+          
+          // Update original request header and retry
+          originalRequest.headers.Authorization = `Bearer ${newAccess}`;
+          return apiClient(originalRequest);
+        } else {
+          clearTokens();
+          return Promise.reject(error);
+        }
+      } catch (refreshError) {
+        useAuthStore.getState().clearTokens();
+        return Promise.reject(refreshError);
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 export default apiClient;
