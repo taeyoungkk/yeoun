@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 
 export interface UserInfoData {
   email: string;
-  phone: string;
   joinDate: string;
   friendsCount: number;
 }
@@ -23,7 +22,6 @@ export function UserInfoCard({ data }: Props) {
       </View>
 
       <InfoItem label="이메일" value={data.email} />
-      <InfoItem label="휴대폰" value={data.phone} />
       <InfoItem label="가입일" value={data.joinDate} />
       <InfoItem label="친구" value={data.friendsCount.toString()} isLast />
     </View>

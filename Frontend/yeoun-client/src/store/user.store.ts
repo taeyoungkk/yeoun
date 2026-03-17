@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 
 export interface UserProfile {
-  id: number;
+  userId: string;
   email: string;
   nickname: string;
   profileImageUrl: string | null;
+  timezone: string;
+  role: string;
+  status: string;
 }
 
 interface UserState {

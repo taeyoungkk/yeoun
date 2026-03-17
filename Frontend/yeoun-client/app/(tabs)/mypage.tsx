@@ -1,8 +1,9 @@
 import { StyleSheet, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import React, { useState, useEffect } from 'react';
-import { router } from 'expo-router';
-import { globalUserState, subscribeUser } from '@/src/store/userStore';
+import React, { useState, useCallback } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useUserStore } from '@/src/store';
+import { getMyInfo } from '@/src/api/user';
 
 import { ProfileHeader } from "@/src/components/profile/ProfileHeader";
 import { UserInfoCard } from "@/src/components/profile/UserInfoCard";
@@ -10,7 +11,6 @@ import { TripList } from "@/src/components/profile/TripList";
 import { TripData } from "@/src/components/profile/TripCard";
 import { TravelMap } from "@/src/components/profile/TravelMap";
 import { TreeRingsChart } from "@/src/components/profile/TreeRingsChart";
-
 
 const MOCK_FAVORITE_TRIPS: TripData[] = [
   {
@@ -49,18 +49,33 @@ const MOCK_PAST_TRIPS: TripData[] = [
 ];
 
 export default function MyPageScreen() {
+  const { profile, setProfile } = useUserStore();
   const [favoriteTrips, setFavoriteTrips] = useState<TripData[]>(MOCK_FAVORITE_TRIPS);
   const [pastTrips, setPastTrips] = useState<TripData[]>(MOCK_PAST_TRIPS);
   
-  const [userData, setUserData] = useState({ ...globalUserState });
-  
-  useEffect(() => {
-    // Subscribe to changes from edit profile
-    const unsubscribe = subscribeUser(() => {
-      setUserData({ ...globalUserState });
-    });
-    return unsubscribe;
-  }, []);
+  // Fetch profile when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      
+      const fetchProfile = async () => {
+        try {
+          const response = await getMyInfo();
+          if (response.success && isMounted) {
+            setProfile(response.data);
+          }
+        } catch (error) {
+          console.error('Failed to fetch profile:', error);
+        }
+      };
+
+      fetchProfile();
+      
+      return () => {
+        isMounted = false;
+      };
+    }, [setProfile])
+  );
 
   const handleToggleFavorite = (id: string, isFavList: boolean) => {
     if (isFavList) {
@@ -74,13 +89,17 @@ export default function MyPageScreen() {
     <SafeAreaView className="flex-1 bg-[#F3F6EB]" edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         <ProfileHeader 
-          nickname={userData.nickname} 
+          nickname={profile?.nickname || 'Guest'} 
           location="대한민국, 대전광역시" 
-          avatarUrl={userData.avatarUrl || undefined}
+          avatarUrl={profile?.profileImageUrl || undefined}
           onSettingsPress={() => router.push('/settings')}
         />
         
-        <UserInfoCard data={userData} />
+        <UserInfoCard data={{
+          email: profile?.email || 'N/A',
+          joinDate: '2024.03.17', 
+          friendsCount: 42,        
+        }} />
         
         <TripList 
           title="좋아한 여행" 
