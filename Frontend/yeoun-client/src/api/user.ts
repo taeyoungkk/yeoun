@@ -1,5 +1,5 @@
 import apiClient from './client';
-import { CommonResponse } from './auth';
+import { CommonResponse, AuthTokens } from './auth';
 
 export interface UserProfileData {
   userId: string;
@@ -75,6 +75,13 @@ export interface UpdateProfileRequest {
   profileImageUrl?: string;
 }
 
+export interface PasswordChangeRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export type PasswordChangeResponse = AuthTokens;
+
 /**
  * Updates the currently logged-in user's profile information.
  * PATCH /api/v1/users/me
@@ -97,6 +104,35 @@ export const updateMyInfo = async (data: UpdateProfileRequest): Promise<CommonRe
         code: 'SUCCESS',
         message: 'Info updated (MOCK)',
         data: { ...mockProfile },
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
+
+/**
+ * Updates the currently logged-in user's password.
+ * PATCH /api/v1/users/me/password
+ */
+export const updatePassword = async (data: PasswordChangeRequest): Promise<CommonResponse<PasswordChangeResponse>> => {
+  try {
+    const response = await apiClient.patch<CommonResponse<PasswordChangeResponse>>('/api/v1/users/me/password', data);
+    return response.data;
+  } catch (error) {
+    if (__DEV__) {
+      console.log('updatePassword failed, mocking success in dev');
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Password updated (MOCK)',
+        data: {
+          accessToken: 'mock-access-token-new-pw',
+          refreshToken: 'mock-refresh-token-new-pw',
+          tokenType: 'Bearer',
+          expiresIn: 1800,
+          isNewUser: false,
+        },
         timestamp: new Date().toISOString(),
       };
     }
