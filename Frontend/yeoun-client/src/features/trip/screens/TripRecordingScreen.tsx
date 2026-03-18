@@ -525,6 +525,11 @@ export default function TripRecordingScreen() {
     setEmotionPicker(null);
   };
 
+  const handleFinishTrip = () => {
+    setIsMenuOpen(false);
+    router.push('/trip/report');
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -554,7 +559,7 @@ export default function TripRecordingScreen() {
       {isMenuOpen ? (
         <Pressable style={styles.menuBackdrop} onPress={() => setIsMenuOpen(false)}>
           <View style={styles.menuCard}>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); router.replace('/(tabs)'); }} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.menuItem} onPress={handleFinishTrip} activeOpacity={0.85}>
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
@@ -1244,7 +1249,7 @@ export default function TripRecordingScreen() {
           </View>
 
           <View style={styles.bottomActions}>
-            <TouchableOpacity style={styles.endButton} onPress={() => router.replace('/(tabs)')} activeOpacity={0.88}>
+            <TouchableOpacity style={styles.endButton} onPress={handleFinishTrip} activeOpacity={0.88}>
               <Text style={styles.endButtonText}>여행 종료</Text>
             </TouchableOpacity>
           </View>
