@@ -32,11 +32,10 @@ eas_update_preview:
   script:
     - |
       git diff --name-only "$CI_COMMIT_BEFORE_SHA" "$CI_COMMIT_SHA" > changed_files.txt
-      $nativeChanged = Select-String -Path changed_files.txt -Pattern '^(Frontend/yeoun-client/(app\.json|eas\.json|package\.json|package-lock\.json))$' -Quiet
-      if ($nativeChanged) {
-        Write-Host 'Skipping EAS update because native-impacting files changed.'
+      if grep -Eq '^Frontend/yeoun-client/(app\.json|eas\.json|package\.json|package-lock\.json)$' changed_files.txt; then
+        echo 'Skipping EAS update because native-impacting files changed.'
         exit 0
-      }
+      fi
       npx eas update --branch preview --message "auto update from develop: $CI_COMMIT_SHORT_SHA" --non-interactive
 
 eas_build_preview:
