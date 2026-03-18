@@ -21,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.HexFormat;
@@ -67,6 +68,7 @@ public class PhotoSyncService {
     ) {
         Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
+        validatePhotoSyncAllowed(trip);
 
         TripMember member = tripMemberRepository.findByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
                         trip.getTripId(),
@@ -90,7 +92,7 @@ public class PhotoSyncService {
             if (!isAfterLastSynced(item.takenAt(), member.getLastPhotoSyncedAt())) {
                 continue;
             }
-            if (!isWithinTripDate(item.takenAt(), trip)) {
+            if (!isWithinTripTimeRange(item.takenAt(), trip)) {
                 continue;
             }
 
@@ -183,13 +185,41 @@ public class PhotoSyncService {
         return takenAt.isAfter(lastPhotoSyncedAt);
     }
 
-    private boolean isWithinTripDate(Instant takenAt, Trip trip) {
+    private void validatePhotoSyncAllowed(Trip trip) {
+        if (trip.getStatus() == TripStatus.DRAFT) {
+            throw new BaseException(ErrorCode.PHOTO_SYNC_NOT_ALLOWED);
+        }
+        if (trip.getStatus() == TripStatus.ACTIVE && trip.getStartedAt() == null) {
+            throw new BaseException(ErrorCode.PHOTO_SYNC_NOT_ALLOWED, "Trip startedAt is required for photo sync.");
+        }
+        if (trip.getStatus() == TripStatus.ENDED) {
+            if (trip.getStartedAt() == null) {
+                throw new BaseException(ErrorCode.PHOTO_SYNC_NOT_ALLOWED, "Trip startedAt is required for ended trip photo sync.");
+            }
+            if (trip.getActualEndedAt() == null) {
+                throw new BaseException(ErrorCode.PHOTO_SYNC_NOT_ALLOWED, "Trip actualEndedAt is required for ended trip photo sync.");
+            }
+        }
+    }
+
+    private boolean isWithinTripTimeRange(Instant takenAt, Trip trip) {
         if (takenAt == null) {
             return true;
         }
         ZoneId zoneId = ZoneId.of("Asia/Seoul");
-        var takenDate = takenAt.atZone(zoneId).toLocalDate();
-        return !(takenDate.isBefore(trip.getStartDate()) || takenDate.isAfter(trip.getEndDate()));
+        Instant tripStart = trip.getStartedAt() != null
+                ? trip.getStartedAt()
+                : trip.getStartDate().atStartOfDay(zoneId).toInstant();
+
+        if (takenAt.isBefore(tripStart)) {
+            return false;
+        }
+
+        Instant tripEnd = trip.getActualEndedAt() != null
+                ? trip.getActualEndedAt()
+                : trip.getEndDate().atTime(LocalTime.MAX).atZone(zoneId).toInstant();
+
+        return !takenAt.isAfter(tripEnd);
     }
 
     private String hashFile(MultipartFile file) {

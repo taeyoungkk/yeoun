@@ -55,4 +55,6 @@ public interface TripMemberRepository extends JpaRepository<TripMember, UUID> {
             ORDER BY u.nickname ASC
             """)
     List<TripMemberSummaryProjection> findVisibleMembersByTripId(@Param("tripId") UUID tripId);
+
+    List<TripMember> findByTripIdAndInviteStatusAndLeftAtIsNull(UUID tripId, TripMemberInviteStatus inviteStatus);
 }

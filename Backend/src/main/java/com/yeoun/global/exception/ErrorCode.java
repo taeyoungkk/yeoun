@@ -43,6 +43,7 @@ public enum ErrorCode {
     PHOTO_NOT_FOUND(HttpStatus.NOT_FOUND, "Photo not found."),
     PHOTO_FORBIDDEN(HttpStatus.FORBIDDEN, "You do not have permission for this photo."),
     PHOTO_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to upload photo."),
+    PHOTO_SYNC_NOT_ALLOWED(HttpStatus.CONFLICT, "Photo sync is not allowed for this trip status."),
     PHOTO_SYNC_FILE_COUNT_MISMATCH(HttpStatus.BAD_REQUEST, "Metadata item count and file count do not match."),
     PHOTO_SYNC_FILE_NAME_MISMATCH(HttpStatus.BAD_REQUEST, "Metadata fileName does not match uploaded file name."),
     PHOTO_SYNC_FILE_TOO_LARGE(HttpStatus.BAD_REQUEST, "Uploaded photo file is too large."),

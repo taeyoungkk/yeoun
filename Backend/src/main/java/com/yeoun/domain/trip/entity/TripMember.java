@@ -83,4 +83,8 @@ public class TripMember {
     public void markPhotoSynced(Instant now) {
         this.lastPhotoSyncedAt = now;
     }
+
+    public void initializePhotoSyncCursor(Instant startedAt) {
+        this.lastPhotoSyncedAt = startedAt;
+    }
 }
