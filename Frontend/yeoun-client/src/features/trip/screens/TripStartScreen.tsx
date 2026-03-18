@@ -27,6 +27,7 @@ import {
 import { TripStartHeader } from '../components/TripStartHeader';
 import { startTripApi } from '@/src/api/trip';
 import { locationService } from '@/src/services/locationService';
+import { useTripStore } from '@/src/store/trip.store';
 import { Alert } from 'react-native';
 
 type ScreenMode = 'form' | 'invite';
@@ -198,6 +199,8 @@ function FieldNoticeModal({
 
 export default function TripStartScreen() {
   const router = useRouter();
+  const startTrip = useTripStore((state) => state.startTrip);
+  
   const [tripName, setTripName] = useState('');
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date(2025, 8, 1));
@@ -298,7 +301,8 @@ export default function TripStartScreen() {
         );
       }
       
-      // 3. 기록 화면으로 이동
+      // 3. 전역 상태 활성화 및 기록 화면으로 이동
+      startTrip('trip-demo-uuid');
       router.push('/trip/recording');
     } else {
       Alert.alert('오류', response.message);

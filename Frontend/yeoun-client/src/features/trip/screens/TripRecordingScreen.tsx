@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Mapbox from '@rnmapbox/maps';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -36,6 +36,7 @@ import {
   updateTripPhoto,
 } from '@/src/features/trip/store/tripMockStore';
 import { locationService } from '@/src/services/locationService';
+import { useTripStore } from '@/src/store/trip.store';
 
 const hasMapboxToken = configureMapbox();
 const MAX_MAP_HEIGHT = 620;
@@ -146,6 +147,8 @@ export default function TripRecordingScreen() {
   const cardPositionsRef = useRef<Record<string, number>>({});
   const [scrollOffset, setScrollOffset] = useState(0);
   const [tripEvents, setTripEvents] = useState<TimelineEvent[]>(() => getTripEvents());
+  const params = useLocalSearchParams();
+  const endTrip = useTripStore((state) => state.endTrip);
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -359,7 +362,11 @@ export default function TripRecordingScreen() {
             // 3. 트래킹 중지
             await locationService.stopTracking();
             setIsSyncing(false);
-            
+      
+            // 4. 전역 여행 상태 종료
+            endTrip();
+
+            // 5. 홈 또는 마이페이지 트립 리스트로 이동
             router.replace('/(tabs)');
           },
         },
