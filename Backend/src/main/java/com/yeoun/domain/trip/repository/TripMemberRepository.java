@@ -16,6 +16,12 @@ public interface TripMemberRepository extends JpaRepository<TripMember, UUID> {
 
     Optional<TripMember> findByTripIdAndUserId(UUID tripId, UUID userId);
 
+    Optional<TripMember> findByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
+            UUID tripId,
+            UUID userId,
+            TripMemberInviteStatus inviteStatus
+    );
+
     boolean existsByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
             UUID tripId,
             UUID userId,
@@ -49,4 +55,6 @@ public interface TripMemberRepository extends JpaRepository<TripMember, UUID> {
             ORDER BY u.nickname ASC
             """)
     List<TripMemberSummaryProjection> findVisibleMembersByTripId(@Param("tripId") UUID tripId);
+
+    List<TripMember> findByTripIdAndInviteStatusAndLeftAtIsNull(UUID tripId, TripMemberInviteStatus inviteStatus);
 }

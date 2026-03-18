@@ -254,6 +254,8 @@ public class TripService {
                         trip.getTitle(),
                         trip.getStartDate(),
                         trip.getEndDate(),
+                        trip.getStartedAt(),
+                        trip.getActualEndedAt(),
                         trip.getStatus(),
                         memberCountByTripId.getOrDefault(trip.getTripId(), 0L)
                 ))
@@ -277,6 +279,8 @@ public class TripService {
                 trip.getTitle(),
                 trip.getStartDate(),
                 trip.getEndDate(),
+                trip.getStartedAt(),
+                trip.getActualEndedAt(),
                 trip.getStatus(),
                 trip.getVisibility(),
                 trip.getOwnerUserId(),
@@ -379,6 +383,11 @@ public class TripService {
 
         Instant now = Instant.now();
         trip.markStarted(now);
+        tripMemberRepository.findByTripIdAndInviteStatusAndLeftAtIsNull(
+                        tripId,
+                        TripMemberInviteStatus.ACCEPTED
+                )
+                .forEach(member -> member.initializePhotoSyncCursor(now));
 
         return new TripStartResponse(
                 trip.getTripId(),

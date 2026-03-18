@@ -61,6 +61,9 @@ public class TripMember {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "last_photo_synced_at")
+    private Instant lastPhotoSyncedAt;
+
     public void accept(Instant now, UUID invitedByUserId) {
         this.inviteStatus = TripMemberInviteStatus.ACCEPTED;
         if (this.invitedByUserId == null) {
@@ -75,5 +78,13 @@ public class TripMember {
 
     public void leave(Instant now) {
         this.leftAt = now;
+    }
+
+    public void markPhotoSynced(Instant now) {
+        this.lastPhotoSyncedAt = now;
+    }
+
+    public void initializePhotoSyncCursor(Instant startedAt) {
+        this.lastPhotoSyncedAt = startedAt;
     }
 }
