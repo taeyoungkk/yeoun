@@ -1,0 +1,69 @@
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_TAG'
+    - when: never
+
+stages:
+  - update
+  - build_preview
+  - build_production
+
+default:
+  image: node:20
+  cache:
+    key: frontend-node-modules
+    paths:
+      - Frontend/yeoun-client/node_modules/
+
+eas_update_preview:
+  stage: update
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      changes:
+        - Frontend/yeoun-client/**/*
+      exists:
+        - Frontend/yeoun-client/package.json
+    - when: never
+  before_script:
+    - cd Frontend/yeoun-client
+    - npm ci
+    - npm install -g eas-cli
+  script:
+    - |
+      git diff --name-only "$CI_COMMIT_BEFORE_SHA" "$CI_COMMIT_SHA" > changed_files.txt
+      if grep -Eq '^Frontend/yeoun-client/(app\.json|eas\.json|package\.json|package-lock\.json)$' changed_files.txt; then
+        echo 'Skipping EAS update because native-impacting files changed.'
+        exit 0
+      fi
+      npx eas update --branch preview --message "auto update from develop: $CI_COMMIT_SHORT_SHA" --non-interactive
+
+eas_build_preview:
+  stage: build_preview
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      changes:
+        - Frontend/yeoun-client/app.json
+        - Frontend/yeoun-client/eas.json
+        - Frontend/yeoun-client/package.json
+        - Frontend/yeoun-client/package-lock.json
+      when: on_success
+  before_script:
+    - cd Frontend/yeoun-client
+    - npm ci
+    - npm install -g eas-cli
+  script:
+    - npx eas build --platform android --profile preview --non-interactive
+
+eas_build_production:
+  stage: build_production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: manual
+      allow_failure: false
+  before_script:
+    - cd Frontend/yeoun-client
+    - npm ci
+    - npm install -g eas-cli
+  script:
+    - npx eas build --platform android --profile production --non-interactive

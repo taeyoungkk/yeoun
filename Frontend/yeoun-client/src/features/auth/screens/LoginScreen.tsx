@@ -1,7 +1,9 @@
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import * as WebBrowser from "expo-web-browser";
+import * as Google from "expo-auth-session/providers/google";
 import {
   ActivityIndicator,
   Image,
@@ -17,8 +19,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FormField } from "@/src/components/ui/form-field";
 import { PasswordToggle } from "@/src/components/ui/password-toggle";
-import { loginApi, LoginRequest } from "@/src/api/auth";
+import { loginApi, googleAuthApi, LoginRequest } from "@/src/api/auth";
 import { useAuthStore } from "@/src/store/auth.store";
+import { useUserStore } from "@/src/store";
+
+WebBrowser.maybeCompleteAuthSession();
 
 interface LoginForm {
   email: string;
@@ -30,7 +35,9 @@ export const LoginScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const isForceMockLogin = process.env.EXPO_PUBLIC_FORCE_MOCK_LOGIN === "true";
   const setTokens = useAuthStore((state) => state.setTokens);
+  const setProfile = useUserStore((state) => state.setProfile);
 
   const {
     control,
@@ -40,14 +47,72 @@ export const LoginScreen = () => {
     defaultValues: { email: "", password: "" },
   });
 
+  // Google OAuth Hook
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "YOUR_ANDROID_CLIENT_ID",
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "YOUR_IOS_CLIENT_ID",
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "YOUR_WEB_CLIENT_ID",
+  });
+
+  useEffect(() => {
+    if (response?.type === "success") {
+      const { id_token } = response.params;
+      handleGoogleLogin(id_token);
+    }
+  }, [response]);
+
+  const handleGoogleLogin = async (idToken: string) => {
+    setIsLoading(true);
+    setLoginError("");
+    try {
+      const apiResponse = await googleAuthApi(idToken);
+      if (apiResponse.success && apiResponse.data) {
+        const { tokens, user } = apiResponse.data;
+        setTokens(tokens.accessToken, tokens.refreshToken);
+        
+        // Populate user store with basic info
+        setProfile({
+          userId: user.userId,
+          email: user.email,
+          nickname: user.nickname,
+          profileImageUrl: null,
+          timezone: 'Asia/Seoul',
+          role: 'USER',
+          status: 'ACTIVE',
+        });
+
+        router.replace("/(tabs)");
+      } else {
+        setLoginError(apiResponse.message || "구글 로그인에 실패했습니다.");
+      }
+    } catch (error) {
+      setLoginError("구글 로그인 중 오류가 발생했습니다.");
+      console.error("Google Login Error:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     setLoginError("");
     try {
       const response = await loginApi(data);
       if (response.success && response.data) {
-        const { tokens } = response.data;
+        const { tokens, user } = response.data;
         setTokens(tokens.accessToken, tokens.refreshToken);
+        
+        // Populate user store with basic info
+        setProfile({
+          userId: user.userId,
+          email: user.email,
+          nickname: user.nickname,
+          profileImageUrl: null,
+          timezone: 'Asia/Seoul',
+          role: 'USER',
+          status: 'ACTIVE',
+        });
+
         router.replace("/(tabs)");
       } else {
         setLoginError(response.message || "로그인에 실패했습니다.");
@@ -74,6 +139,12 @@ export const LoginScreen = () => {
         >
           {/* Title */}
           <Text style={styles.title}>로그인</Text>
+
+          {__DEV__ && isForceMockLogin ? (
+            <View style={styles.devBadge}>
+              <Text style={styles.devBadgeText}>DEV MOCK LOGIN ON</Text>
+            </View>
+          ) : null}
 
           {/* Email field */}
           <Controller
@@ -162,7 +233,9 @@ export const LoginScreen = () => {
 
           {/* Google button */}
           <TouchableOpacity
-            style={styles.googleButton}
+            style={[styles.googleButton, (!request || isLoading) && { opacity: 0.5 }]}
+            onPress={() => promptAsync()}
+            disabled={!request || isLoading}
             accessibilityLabel="구글 로그인"
           >
             <View style={styles.googleInner}>
@@ -172,6 +245,7 @@ export const LoginScreen = () => {
                 resizeMode="contain"
               />
               <Text style={styles.googleText}>Google</Text>
+              {isLoading && <ActivityIndicator size="small" color="#344966" style={{ marginLeft: 8 }} />}
             </View>
           </TouchableOpacity>
 
@@ -216,6 +290,22 @@ const styles = StyleSheet.create({
     letterSpacing: -0.01 * 30,
     color: "#4D3E3E",
     marginBottom: 48,
+  },
+  devBadge: {
+    alignSelf: "center",
+    backgroundColor: "#FFF4CC",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: -20,
+    marginBottom: 24,
+  },
+  devBadgeText: {
+    fontFamily: "Inter",
+    fontWeight: "700",
+    fontSize: 12,
+    color: "#7A5C00",
+    letterSpacing: 0.3,
   },
 
   // ── Forgot ────────────────────────────────────────────────────────────────

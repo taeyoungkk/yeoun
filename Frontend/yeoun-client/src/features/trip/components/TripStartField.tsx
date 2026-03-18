@@ -73,6 +73,8 @@ export function TripStartInputField({
           onChangeText={onChangeText}
           style={styles.input}
           textAlign="center"
+          autoCorrect={false}
+          underlineColorAndroid="transparent"
         />
       </View>
 

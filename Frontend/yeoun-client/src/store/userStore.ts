@@ -12,7 +12,6 @@ export const globalUserState = {
   locationPerm: true,
   showPhotoPins: true,
   showPaymentPins: false,
-  showMemoPins: false,
 };
 
 // Minimal shared store for profile and settings screens.

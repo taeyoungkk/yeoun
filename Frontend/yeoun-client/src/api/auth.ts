@@ -1,3 +1,4 @@
+import axios from 'axios';
 import apiClient from './client';
 
 export interface CommonResponse<T = any> {
@@ -36,6 +37,39 @@ export interface SignupRequest {
   nickname: string;
 }
 
+const API_MOCKS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_API_MOCKS === 'true';
+const FORCE_MOCK_LOGIN = process.env.EXPO_PUBLIC_FORCE_MOCK_LOGIN === 'true';
+
+const createMockLoginResponse = (email: string, nickname = 'MockUser'): CommonResponse<LoginResponseData> => ({
+  success: true,
+  code: 'SUCCESS',
+  message: 'Logged in (MOCK)',
+  data: {
+    user: {
+      userId: 'mock-uuid-1234',
+      email,
+      nickname,
+    },
+    tokens: {
+      accessToken: 'mock-access-token',
+      refreshToken: 'mock-refresh-token',
+      tokenType: 'Bearer',
+      expiresIn: 1800,
+      isNewUser: false,
+    },
+  },
+  timestamp: new Date().toISOString(),
+});
+
+const shouldMockInDev = (error: unknown) => {
+  if (!__DEV__ || !API_MOCKS_ENABLED) {
+    return false;
+  }
+
+  // Only fall back to mocks when the request never reached the server.
+  return axios.isAxiosError(error) && !error.response;
+};
+
 /**
  * Logs the user out by calling the backend API.
  * Currently mocks success in development if the network fails.
@@ -45,8 +79,7 @@ export const logoutApi = async (): Promise<CommonResponse<string>> => {
     const response = await apiClient.post<CommonResponse<string>>('/auth/logout');
     return response.data;
   } catch (error) {
-    // If we're in development, we'll mock a successful response for a better DX
-    if (__DEV__) {
+    if (shouldMockInDev(error)) {
       console.log('API call failed, but mocking success for logout in development.');
       return {
         success: true,
@@ -69,7 +102,7 @@ export const sendEmailCode = async (email: string): Promise<CommonResponse<strin
     const response = await apiClient.post<CommonResponse<string>>('/auth/email/code', { email });
     return response.data;
   } catch (error) {
-    if (__DEV__) {
+    if (shouldMockInDev(error)) {
       console.log('sendEmailCode failed, mocking success in dev');
       return {
         success: true,
@@ -92,7 +125,7 @@ export const verifyEmailCode = async (email: string, code: string): Promise<Comm
     const response = await apiClient.post<CommonResponse<string>>('/auth/email/verify', { email, code });
     return response.data;
   } catch (error) {
-    if (__DEV__) {
+    if (shouldMockInDev(error)) {
       console.log('verifyEmailCode failed, mocking success in dev');
       return {
         success: true,
@@ -111,32 +144,18 @@ export const verifyEmailCode = async (email: string, code: string): Promise<Comm
  * Mocks success in development if the network fails.
  */
 export const loginApi = async (data: LoginRequest): Promise<CommonResponse<LoginResponseData>> => {
+  if (__DEV__ && FORCE_MOCK_LOGIN) {
+    console.log('FORCE_MOCK_LOGIN is enabled. Skipping /auth/login request.');
+    return createMockLoginResponse(data.email);
+  }
+
   try {
     const response = await apiClient.post<CommonResponse<LoginResponseData>>('/auth/login', data);
     return response.data;
   } catch (error) {
-    if (__DEV__) {
+    if (shouldMockInDev(error)) {
       console.log('loginApi failed, mocking success in dev');
-      return {
-        success: true,
-        code: 'SUCCESS',
-        message: 'Logged in (MOCK)',
-        data: {
-          user: {
-            userId: 'mock-uuid-1234',
-            email: data.email,
-            nickname: 'MockUser',
-          },
-          tokens: {
-            accessToken: 'mock-access-token',
-            refreshToken: 'mock-refresh-token',
-            tokenType: 'Bearer',
-            expiresIn: 1800,
-            isNewUser: false,
-          },
-        },
-        timestamp: new Date().toISOString(),
-      };
+      return createMockLoginResponse(data.email);
     }
     throw error;
   }
@@ -151,7 +170,7 @@ export const refreshApi = async (refreshToken: string): Promise<CommonResponse<A
     const response = await apiClient.post<CommonResponse<AuthTokens>>('/auth/refresh', { refreshToken });
     return response.data;
   } catch (error) {
-    if (__DEV__) {
+    if (shouldMockInDev(error)) {
       console.log('refreshApi failed, mocking success in dev');
       return {
         success: true,
@@ -185,7 +204,7 @@ export const requestPasswordReset = async (email: string): Promise<CommonRespons
     const response = await apiClient.post<CommonResponse<string>>('/auth/password/reset/request', { email });
     return response.data;
   } catch (error) {
-    if (__DEV__) {
+    if (shouldMockInDev(error)) {
       console.log('requestPasswordReset failed, mocking success in dev');
       return {
         success: true,
@@ -207,7 +226,7 @@ export const confirmPasswordReset = async (data: ResetConfirmRequest): Promise<C
     const response = await apiClient.post<CommonResponse<string>>('/auth/password/reset/confirm', data);
     return response.data;
   } catch (error) {
-    if (__DEV__) {
+    if (shouldMockInDev(error)) {
       console.log('confirmPasswordReset failed, mocking success in dev');
       return {
         success: true,
@@ -230,7 +249,7 @@ export const signupApi = async (data: SignupRequest): Promise<CommonResponse<Log
     const response = await apiClient.post<CommonResponse<LoginResponseData>>('/auth/signup', data);
     return response.data;
   } catch (error) {
-    if (__DEV__) {
+    if (shouldMockInDev(error)) {
       console.log('signupApi failed, mocking success in dev');
       return {
         success: true,
@@ -248,6 +267,42 @@ export const signupApi = async (data: SignupRequest): Promise<CommonResponse<Log
             tokenType: 'Bearer',
             expiresIn: 1800,
             isNewUser: true,
+          },
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
+
+/**
+ * Authenticates with Google using an idToken.
+ * Mocks success in development if the network fails.
+ */
+export const googleAuthApi = async (idToken: string): Promise<CommonResponse<LoginResponseData>> => {
+  try {
+    const response = await apiClient.post<CommonResponse<LoginResponseData>>('/auth/oauth/google', { idToken });
+    return response.data;
+  } catch (error) {
+    if (shouldMockInDev(error)) {
+      console.log('googleAuthApi failed, mocking success in dev');
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Google login successful (MOCK)',
+        data: {
+          user: {
+            userId: 'mock-google-user',
+            email: 'google-user@example.com',
+            nickname: 'GoogleUser',
+          },
+          tokens: {
+            accessToken: 'mock-access-token-google',
+            refreshToken: 'mock-refresh-token-google',
+            tokenType: 'Bearer',
+            expiresIn: 1800,
+            isNewUser: false,
           },
         },
         timestamp: new Date().toISOString(),
