@@ -30,10 +30,10 @@ import {
   ignoreTripPaymentCandidate,
   selectTripPaymentCandidate,
   subscribeTripEvents,
-  type TimelineEvent,
-  updateTripPaymentDetails,
   updateTripEvent,
+  updateTripPaymentDetails,
   updateTripPhoto,
+  type TimelineEvent,
 } from '@/src/features/trip/store/tripMockStore';
 import { locationService } from '@/src/services/locationService';
 import { useTripStore } from '@/src/store/trip.store';
@@ -44,7 +44,7 @@ const MIN_MAP_HEIGHT = 250;
 const MAP_COLLAPSE_DISTANCE = 260;
 const INITIAL_PANEL_PEEK = 120;
 const MAP_SIDE_MARGIN = 16;
-const MAP_TOP_OFFSET = 82;
+const MAP_TOP_OFFSET = 112;
 const PANEL_TOP_OFFSET = 118;
 
 type DayFilter = 'all' | 'day1' | 'day2' | 'day3';
@@ -366,8 +366,8 @@ export default function TripRecordingScreen() {
             // 4. 전역 여행 상태 종료
             endTrip();
 
-            // 5. 홈 또는 마이페이지 트립 리스트로 이동
-            router.replace('/(tabs)');
+            // 5. 여행 종료 리포트로 이동
+            router.push('/trip/report');
           },
         },
       ]
