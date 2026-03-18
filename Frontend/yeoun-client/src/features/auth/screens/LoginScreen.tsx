@@ -21,6 +21,7 @@ import { FormField } from "@/src/components/ui/form-field";
 import { PasswordToggle } from "@/src/components/ui/password-toggle";
 import { loginApi, googleAuthApi, LoginRequest } from "@/src/api/auth";
 import { useAuthStore } from "@/src/store/auth.store";
+import { useUserStore } from "@/src/store";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -34,7 +35,9 @@ export const LoginScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const isForceMockLogin = process.env.EXPO_PUBLIC_FORCE_MOCK_LOGIN === "true";
   const setTokens = useAuthStore((state) => state.setTokens);
+  const setProfile = useUserStore((state) => state.setProfile);
 
   const {
     control,
@@ -64,8 +67,20 @@ export const LoginScreen = () => {
     try {
       const apiResponse = await googleAuthApi(idToken);
       if (apiResponse.success && apiResponse.data) {
-        const { tokens } = apiResponse.data;
+        const { tokens, user } = apiResponse.data;
         setTokens(tokens.accessToken, tokens.refreshToken);
+        
+        // Populate user store with basic info
+        setProfile({
+          userId: user.userId,
+          email: user.email,
+          nickname: user.nickname,
+          profileImageUrl: null,
+          timezone: 'Asia/Seoul',
+          role: 'USER',
+          status: 'ACTIVE',
+        });
+
         router.replace("/(tabs)");
       } else {
         setLoginError(apiResponse.message || "구글 로그인에 실패했습니다.");
@@ -84,8 +99,20 @@ export const LoginScreen = () => {
     try {
       const response = await loginApi(data);
       if (response.success && response.data) {
-        const { tokens } = response.data;
+        const { tokens, user } = response.data;
         setTokens(tokens.accessToken, tokens.refreshToken);
+        
+        // Populate user store with basic info
+        setProfile({
+          userId: user.userId,
+          email: user.email,
+          nickname: user.nickname,
+          profileImageUrl: null,
+          timezone: 'Asia/Seoul',
+          role: 'USER',
+          status: 'ACTIVE',
+        });
+
         router.replace("/(tabs)");
       } else {
         setLoginError(response.message || "로그인에 실패했습니다.");
@@ -112,6 +139,12 @@ export const LoginScreen = () => {
         >
           {/* Title */}
           <Text style={styles.title}>로그인</Text>
+
+          {__DEV__ && isForceMockLogin ? (
+            <View style={styles.devBadge}>
+              <Text style={styles.devBadgeText}>DEV MOCK LOGIN ON</Text>
+            </View>
+          ) : null}
 
           {/* Email field */}
           <Controller
@@ -257,6 +290,22 @@ const styles = StyleSheet.create({
     letterSpacing: -0.01 * 30,
     color: "#4D3E3E",
     marginBottom: 48,
+  },
+  devBadge: {
+    alignSelf: "center",
+    backgroundColor: "#FFF4CC",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: -20,
+    marginBottom: 24,
+  },
+  devBadgeText: {
+    fontFamily: "Inter",
+    fontWeight: "700",
+    fontSize: 12,
+    color: "#7A5C00",
+    letterSpacing: 0.3,
   },
 
   // ── Forgot ────────────────────────────────────────────────────────────────
