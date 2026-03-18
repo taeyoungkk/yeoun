@@ -25,6 +25,9 @@ import {
   TripStartInputField,
 } from '../components/TripStartField';
 import { TripStartHeader } from '../components/TripStartHeader';
+import { startTripApi } from '@/src/api/trip';
+import { locationService } from '@/src/services/locationService';
+import { Alert } from 'react-native';
 
 type ScreenMode = 'form' | 'invite';
 type PickerMode = 'month' | 'year' | null;
@@ -279,9 +282,27 @@ export default function TripStartScreen() {
     setNoticeModalType(isFormComplete ? 'start' : 'missing');
   };
 
-  const handleStartTrip = () => {
+  const handleStartTrip = async () => {
     setNoticeModalType(null);
-    router.push('/trip/recording');
+    
+    // 1. API 호출로 여행 시작 상태 변경
+    const response = await startTripApi('trip-demo-uuid'); // 임시 UUID 사용
+    
+    if (response.success) {
+      // 2. GPS 트래킹 시작
+      const trackingSuccess = await locationService.startTracking();
+      if (!trackingSuccess) {
+        Alert.alert(
+          '위치 권한 필요',
+          '여행 경로를 기록하려면 항시 위치 허용 권한이 필요합니다. 설정에서 확인해 주세요.'
+        );
+      }
+      
+      // 3. 기록 화면으로 이동
+      router.push('/trip/recording');
+    } else {
+      Alert.alert('오류', response.message);
+    }
   };
 
   if (screenMode === 'invite') {
