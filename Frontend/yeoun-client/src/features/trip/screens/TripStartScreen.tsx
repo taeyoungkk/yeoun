@@ -25,6 +25,10 @@ import {
   TripStartInputField,
 } from '../components/TripStartField';
 import { TripStartHeader } from '../components/TripStartHeader';
+import { startTripApi } from '@/src/api/trip';
+import { locationService } from '@/src/services/locationService';
+import { useTripStore } from '@/src/store/trip.store';
+import { Alert } from 'react-native';
 
 type ScreenMode = 'form' | 'invite';
 type PickerMode = 'month' | 'year' | null;
@@ -195,6 +199,8 @@ function FieldNoticeModal({
 
 export default function TripStartScreen() {
   const router = useRouter();
+  const startTrip = useTripStore((state) => state.startTrip);
+  
   const [tripName, setTripName] = useState('');
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date(2025, 8, 1));
@@ -279,9 +285,42 @@ export default function TripStartScreen() {
     setNoticeModalType(isFormComplete ? 'start' : 'missing');
   };
 
-  const handleStartTrip = () => {
+  const handleStartTrip = async () => {
     setNoticeModalType(null);
-    router.push('/trip/recording');
+
+    const startTrackingAndNavigate = async () => {
+      // 2. GPS 트래킹 시작
+      const trackingSuccess = await locationService.startTracking();
+      if (!trackingSuccess) {
+        Alert.alert(
+          '위치 권한 필요',
+          '여행 경로를 기록하려면 항시 위치 허용 권한이 필요합니다. 설정에서 확인해 주세요.'
+        );
+      }
+      
+      // 3. 전역 상태 활성화 및 기록 화면으로 이동
+      startTrip('trip-demo-uuid');
+      router.push('/trip/recording');
+    };
+    
+    try {
+      // 1. API 호출로 여행 시작 상태 변경
+      const response = await startTripApi('trip-demo-uuid'); // 임시 UUID 사용
+      
+      if (response.success) {
+        await startTrackingAndNavigate();
+      } else {
+        Alert.alert('서버 응답 오류', `${response.message}\n\n서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
+          { text: '취소', style: 'cancel' },
+          { text: '테스트 시작', onPress: startTrackingAndNavigate }
+        ]);
+      }
+    } catch (error) {
+       Alert.alert('서버 연결 실패', `서버와 연결할 수 없습니다.\n\n서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
+        { text: '취소', style: 'cancel' },
+        { text: '테스트 시작', onPress: startTrackingAndNavigate }
+      ]);
+    }
   };
 
   if (screenMode === 'invite') {

@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Mapbox from '@rnmapbox/maps';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -19,6 +19,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { configureMapbox } from '@/src/lib/mapbox';
+import { startTripApi, endTripApi } from '@/src/api/trip';
+import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 import {
   CURRENT_USER_ID,
   deleteTripEvent,
@@ -32,8 +35,8 @@ import {
   updateTripPhoto,
   type TimelineEvent,
 } from '@/src/features/trip/store/tripMockStore';
-import { configureMapbox } from '@/src/lib/mapbox';
-import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
+import { locationService } from '@/src/services/locationService';
+import { useTripStore } from '@/src/store/trip.store';
 
 const hasMapboxToken = configureMapbox();
 const MAX_MAP_HEIGHT = 620;
@@ -144,6 +147,8 @@ export default function TripRecordingScreen() {
   const cardPositionsRef = useRef<Record<string, number>>({});
   const [scrollOffset, setScrollOffset] = useState(0);
   const [tripEvents, setTripEvents] = useState<TimelineEvent[]>(() => getTripEvents());
+  const params = useLocalSearchParams();
+  const endTrip = useTripStore((state) => state.endTrip);
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -175,6 +180,8 @@ export default function TripRecordingScreen() {
     showPhotoPins: globalUserState.showPhotoPins,
     showPaymentPins: globalUserState.showPaymentPins,
   });
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [liveRoute, setLiveRoute] = useState<Coordinate[]>([]);
 
   const filteredDays = useMemo(() => getFilteredDays(activeFilter), [activeFilter]);
   const filteredEvents = useMemo(
@@ -202,7 +209,10 @@ export default function TripRecordingScreen() {
     [filteredEvents, mapPreferences.showPaymentPins, mapPreferences.showPhotoPins, routeOnlyMode]
   );
 
-  const routeCoordinates = useMemo(() => filteredDays.flatMap((day) => day.route), [filteredDays]);
+  const routeCoordinates = useMemo(() => {
+    const historical = filteredDays.flatMap((day) => day.route);
+    return [...historical, ...liveRoute];
+  }, [filteredDays, liveRoute]);
   const routeShape = useMemo(
     () => ({
       type: 'Feature' as const,
@@ -298,10 +308,71 @@ export default function TripRecordingScreen() {
   }, [filteredEvents, selectedEventId]);
 
   useEffect(() => {
+    // Subscribe to real-time location updates for instant map updates
+    const unsubscribe = locationService.subscribe((location) => {
+      setLiveRoute((prev) => [...prev, [location.longitude, location.latitude]]);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     if (photoViewer && (!selectedPhotoEvent || !selectedPhotoItem)) {
       setPhotoViewer(null);
     }
   }, [photoViewer, selectedPhotoEvent, selectedPhotoItem]);
+
+  // Periodic Auto-sync (Every 5 minutes)
+  useEffect(() => {
+    const SYNC_INTERVAL = 5 * 60 * 1000;
+    const timer = setInterval(() => {
+      locationService.syncLocations('trip-demo-uuid'); // Using demo trip ID
+    }, SYNC_INTERVAL);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    const success = await locationService.syncLocations('trip-demo-uuid');
+    setIsSyncing(false);
+    
+    if (success) {
+      Alert.alert('동기화 완료', '모든 위치 기록이 서버에 안전하게 저장되었습니다.');
+    } else {
+      Alert.alert('동기화 실패', '네트워크 연결을 확인해주세요. 기록은 안전하게 보관 중입니다.');
+    }
+  };
+
+  const handleEndTrip = async () => {
+    Alert.alert(
+      '여행 종료',
+      '정말로 여행을 종료하시겠습니까? 현재까지의 모든 경로가 저장됩니다.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '종료',
+          style: 'destructive',
+          onPress: async () => {
+            setIsSyncing(true);
+            // 1. 마지막 위치 동기화
+            await locationService.syncLocations('trip-demo-uuid');
+            // 2. API로 여행 종료 상태 변경
+            await endTripApi('trip-demo-uuid');
+            // 3. 트래킹 중지
+            await locationService.stopTracking();
+            setIsSyncing(false);
+      
+            // 4. 전역 여행 상태 종료
+            endTrip();
+
+            // 5. 여행 종료 리포트로 이동
+            router.push('/trip/report');
+          },
+        },
+      ]
+    );
+  };
 
   const handleMapReady = () => {
     setIsMapReady(true);
@@ -525,11 +596,6 @@ export default function TripRecordingScreen() {
     setEmotionPicker(null);
   };
 
-  const handleFinishTrip = () => {
-    setIsMenuOpen(false);
-    router.push('/trip/report');
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -543,10 +609,19 @@ export default function TripRecordingScreen() {
               <View style={styles.recordingDot} />
               <Text style={styles.recordingInlineText}>기록중</Text>
             </View>
+            {/* GPS 활성 표시 */}
+            <View style={styles.gpsIndicator}>
+              <MaterialIcons name="location-on" size={12} color="#4C8E5E" />
+              <Text style={styles.gpsIndicatorText}>GPS 작동중</Text>
+            </View>
           </View>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.syncHeaderButton} activeOpacity={0.88}>
+          <TouchableOpacity 
+            style={styles.syncHeaderButton} 
+            activeOpacity={0.88}
+            onPress={handleManualSync}
+          >
             <MaterialIcons name="sync" size={16} color="#274232" />
             <Text style={styles.syncHeaderButtonText}>동기화</Text>
           </TouchableOpacity>
@@ -559,7 +634,7 @@ export default function TripRecordingScreen() {
       {isMenuOpen ? (
         <Pressable style={styles.menuBackdrop} onPress={() => setIsMenuOpen(false)}>
           <View style={styles.menuCard}>
-            <TouchableOpacity style={styles.menuItem} onPress={handleFinishTrip} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
@@ -1249,7 +1324,7 @@ export default function TripRecordingScreen() {
           </View>
 
           <View style={styles.bottomActions}>
-            <TouchableOpacity style={styles.endButton} onPress={handleFinishTrip} activeOpacity={0.88}>
+            <TouchableOpacity style={styles.endButton} onPress={handleEndTrip} activeOpacity={0.88}>
               <Text style={styles.endButtonText}>여행 종료</Text>
             </TouchableOpacity>
           </View>
@@ -1269,6 +1344,21 @@ const styles = StyleSheet.create({
   recordingInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   recordingDot: { width: 7, height: 7, borderRadius: 999, backgroundColor: '#F35B4F' },
   recordingInlineText: { fontFamily: 'Pretendard-SemiBold', fontSize: 11, color: '#F35B4F' },
+  gpsIndicator: {
+    marginLeft: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  gpsIndicatorText: {
+    fontFamily: 'Pretendard-SemiBold',
+    fontSize: 10,
+    color: '#4C8E5E',
+    marginLeft: 3,
+  },
   headerTitle: { fontFamily: 'Pretendard-Bold', fontSize: 22, color: '#17201A' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   syncHeaderButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 18, backgroundColor: '#E3EBDD', paddingHorizontal: 12, height: 36 },
