@@ -19,8 +19,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { configureMapbox } from '@/src/lib/mapbox';
-import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 import {
   CURRENT_USER_ID,
   deleteTripEvent,
@@ -29,11 +27,13 @@ import {
   ignoreTripPaymentCandidate,
   selectTripPaymentCandidate,
   subscribeTripEvents,
-  type TimelineEvent,
-  updateTripPaymentDetails,
   updateTripEvent,
+  updateTripPaymentDetails,
   updateTripPhoto,
+  type TimelineEvent,
 } from '@/src/features/trip/store/tripMockStore';
+import { configureMapbox } from '@/src/lib/mapbox';
+import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 
 const hasMapboxToken = configureMapbox();
 const MAX_MAP_HEIGHT = 620;
@@ -41,7 +41,7 @@ const MIN_MAP_HEIGHT = 250;
 const MAP_COLLAPSE_DISTANCE = 260;
 const INITIAL_PANEL_PEEK = 120;
 const MAP_SIDE_MARGIN = 16;
-const MAP_TOP_OFFSET = 82;
+const MAP_TOP_OFFSET = 112;
 const PANEL_TOP_OFFSET = 118;
 
 type DayFilter = 'all' | 'day1' | 'day2' | 'day3';
