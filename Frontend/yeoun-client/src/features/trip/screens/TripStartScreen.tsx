@@ -287,11 +287,8 @@ export default function TripStartScreen() {
 
   const handleStartTrip = async () => {
     setNoticeModalType(null);
-    
-    // 1. API 호출로 여행 시작 상태 변경
-    const response = await startTripApi('trip-demo-uuid'); // 임시 UUID 사용
-    
-    if (response.success) {
+
+    const startTrackingAndNavigate = async () => {
       // 2. GPS 트래킹 시작
       const trackingSuccess = await locationService.startTracking();
       if (!trackingSuccess) {
@@ -304,8 +301,25 @@ export default function TripStartScreen() {
       // 3. 전역 상태 활성화 및 기록 화면으로 이동
       startTrip('trip-demo-uuid');
       router.push('/trip/recording');
-    } else {
-      Alert.alert('오류', response.message);
+    };
+    
+    try {
+      // 1. API 호출로 여행 시작 상태 변경
+      const response = await startTripApi('trip-demo-uuid'); // 임시 UUID 사용
+      
+      if (response.success) {
+        await startTrackingAndNavigate();
+      } else {
+        Alert.alert('서버 응답 오류', `${response.message}\n\n서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
+          { text: '취소', style: 'cancel' },
+          { text: '테스트 시작', onPress: startTrackingAndNavigate }
+        ]);
+      }
+    } catch (error) {
+       Alert.alert('서버 연결 실패', `서버와 연결할 수 없습니다.\n\n서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
+        { text: '취소', style: 'cancel' },
+        { text: '테스트 시작', onPress: startTrackingAndNavigate }
+      ]);
     }
   };
 
