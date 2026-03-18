@@ -32,13 +32,13 @@ public class LocationLogController {
     }
 
     @PostMapping(":batch")
-    @Operation(summary = "위치 로그 수집 요청", description = "위치 로그 batch를 수집 파이프라인에 접수합니다.")
+    @Operation(summary = "위치 로그 수집 요청", description = "위치 로그 batch를 Kafka 수집 파이프라인에 접수합니다.")
     public ApiResponse<LocationLogBatchUploadResponse> ingestBatch(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @PathVariable("tripId") UUID tripId,
             @Valid @RequestBody LocationLogBatchUploadRequest request
     ) {
-        // 수집 요청 검증과 후속 처리 위임은 서비스 계층에서 담당한다.
+        // 수집 요청 검증과 Kafka 발행은 서비스 계층에서 처리한다.
         LocationLogBatchUploadResponse response = locationLogService.uploadBatch(principal.userId(), tripId, request);
         return ApiResponse.ok(response);
     }

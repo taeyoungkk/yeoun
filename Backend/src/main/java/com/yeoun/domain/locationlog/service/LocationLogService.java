@@ -4,6 +4,7 @@ import com.yeoun.domain.locationlog.dto.request.LocationLogBatchUploadRequest;
 import com.yeoun.domain.locationlog.dto.request.LocationLogUploadItemRequest;
 import com.yeoun.domain.locationlog.dto.response.LocationLogBatchUploadResponse;
 import com.yeoun.domain.locationlog.event.LocationLogBatchStoredEvent;
+import com.yeoun.domain.locationlog.event.LocationLogBatchStoredEventItem;
 import com.yeoun.domain.locationlog.event.LocationLogBatchStoredEventPublisher;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripStatus;
@@ -56,20 +57,35 @@ public class LocationLogService {
 
         Instant now = Instant.now();
 
-        // raw 저장은 더 이상 API 서버가 하지 않고, Kafka에 적재 이벤트만 발행한다.
+        // raw 저장은 더 이상 API 서버가 하지 않고, 컨슈머가 저장할 수 있도록 GPS batch 본문을 Kafka에 싣는다.
         locationLogBatchStoredEventPublisher.publish(new LocationLogBatchStoredEvent(
                 tripId,
                 requesterUserId,
-                logs.size(),
-                now
+                now,
+                logs.stream()
+                        .map(this::toEventItem)
+                        .toList()
         ));
 
         return new LocationLogBatchUploadResponse(
                 tripId,
                 requesterUserId,
                 acceptedClientLogUuids.size(),
-                logs.size() - acceptedClientLogUuids.size(),
-                List.copyOf(acceptedClientLogUuids)
+                List.copyOf(acceptedClientLogUuids),
+                now
+        );
+    }
+
+    private LocationLogBatchStoredEventItem toEventItem(LocationLogUploadItemRequest log) {
+        return new LocationLogBatchStoredEventItem(
+                log.clientLogUuid().trim(),
+                log.recordedAt(),
+                log.latitude(),
+                log.longitude(),
+                log.accuracyM(),
+                log.speedMps(),
+                log.heading(),
+                log.source()
         );
     }
 }
