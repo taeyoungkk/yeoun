@@ -20,7 +20,14 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.hoimook.yeoun"
+      "package": "com.hoimook.yeoun",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -41,7 +48,19 @@
         }
       ],
       "expo-secure-store",
-      "@rnmapbox/maps"
+      [
+        "expo-location",
+        {
+          "locationAlwaysPermission": "여행 경로를 기록하기 위해 항상 위치 권한이 필요합니다.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "@rnmapbox/maps",
+        {
+          "RNMapboxMapsImpl": "mapbox"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
