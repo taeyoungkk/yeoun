@@ -21,7 +21,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/trips/{tripId}/location-logs")
-@Tag(name = "LocationLog", description = "위치 로그 API")
+@Tag(name = "LocationLog", description = "위치 로그 수집 API")
 @SecurityRequirement(name = "bearerAuth")
 public class LocationLogController {
 
@@ -32,13 +32,13 @@ public class LocationLogController {
     }
 
     @PostMapping(":batch")
-    @Operation(summary = "위치 로그 일괄 업로드", description = "위치 로그를 한 번에 업로드합니다.")
-    public ApiResponse<LocationLogBatchUploadResponse> uploadBatch(
+    @Operation(summary = "위치 로그 수집 요청", description = "위치 로그 batch를 수집 파이프라인에 접수합니다.")
+    public ApiResponse<LocationLogBatchUploadResponse> ingestBatch(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @PathVariable("tripId") UUID tripId,
             @Valid @RequestBody LocationLogBatchUploadRequest request
     ) {
-        // 실제 업로드 규칙과 저장 로직은 서비스 계층에서 처리한다.
+        // 수집 요청 검증과 후속 처리 위임은 서비스 계층에서 담당한다.
         LocationLogBatchUploadResponse response = locationLogService.uploadBatch(principal.userId(), tripId, request);
         return ApiResponse.ok(response);
     }

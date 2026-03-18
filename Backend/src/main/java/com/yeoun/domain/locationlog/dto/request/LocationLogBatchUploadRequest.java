@@ -7,7 +7,7 @@ import jakarta.validation.constraints.NotEmpty;
 import java.util.List;
 
 public record LocationLogBatchUploadRequest(
-        @Schema(description = "일괄 업로드할 위치 로그 목록")
+        @Schema(description = "수집 파이프라인에 접수할 위치 로그 목록")
         @NotEmpty(message = "logs must not be empty.")
         List<@Valid LocationLogUploadItemRequest> logs
 ) {
