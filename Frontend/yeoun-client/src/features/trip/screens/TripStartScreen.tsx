@@ -25,7 +25,7 @@ import {
   TripStartInputField,
 } from '../components/TripStartField';
 import { TripStartHeader } from '../components/TripStartHeader';
-import { startTripApi } from '@/src/api/trip';
+import { startTripApi, getTripDetailApi } from '@/src/api/trip';
 import { locationService } from '@/src/services/locationService';
 import { useTripStore } from '@/src/store/trip.store';
 import { Alert } from 'react-native';
@@ -288,7 +288,7 @@ export default function TripStartScreen() {
   const handleStartTrip = async () => {
     setNoticeModalType(null);
 
-    const startTrackingAndNavigate = async () => {
+    const startTrackingAndNavigate = async (tripId: string) => {
       // 2. GPS 트래킹 시작
       const trackingSuccess = await locationService.startTracking();
       if (!trackingSuccess) {
@@ -298,27 +298,72 @@ export default function TripStartScreen() {
         );
       }
       
-      // 3. 전역 상태 활성화 및 기록 화면으로 이동
-      startTrip('trip-demo-uuid');
+      // 3. 전역 상태 활성화 및 상세 정보 저장
+      startTrip(tripId);
+      
+      try {
+        const detailRes = await getTripDetailApi(tripId);
+        if (detailRes.success) {
+          useTripStore.getState().setActiveTrip(detailRes.data);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch trip details after start:', err);
+      }
+
       router.push('/trip/recording');
     };
     
     try {
+      const targetTripId = 'trip-demo-uuid';
       // 1. API 호출로 여행 시작 상태 변경
-      const response = await startTripApi('trip-demo-uuid'); // 임시 UUID 사용
+      const response = await startTripApi(targetTripId); // 임시 UUID 사용
       
       if (response.success) {
-        await startTrackingAndNavigate();
+        await startTrackingAndNavigate(response.data.tripId || targetTripId);
       } else {
+        const fallbackTrip: any = {
+          tripId: targetTripId,
+          title: tripName || '제주도 여행',
+          startDate: startDate ? formatDateLabel(startDate) : '2025.03.19',
+          endDate: endDate ? formatDateLabel(endDate) : '2025.03.22',
+          region: '제주도',
+          country: '대한민국',
+          participants: memberCount,
+          status: 'ACTIVE',
+        };
+
         Alert.alert('서버 응답 오류', `${response.message}\n\n서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
           { text: '취소', style: 'cancel' },
-          { text: '테스트 시작', onPress: startTrackingAndNavigate }
+          { 
+            text: '테스트 시작', 
+            onPress: () => {
+              useTripStore.getState().setActiveTrip(fallbackTrip);
+              startTrackingAndNavigate(targetTripId);
+            } 
+          }
         ]);
       }
     } catch (error) {
+       const fallbackTrip: any = {
+          tripId: 'trip-demo-uuid',
+          title: tripName || '제주도 여행',
+          startDate: startDate ? formatDateLabel(startDate) : '2025.03.19',
+          endDate: endDate ? formatDateLabel(endDate) : '2025.03.22',
+          region: '제주도',
+          country: '대한민국',
+          participants: memberCount,
+          status: 'ACTIVE',
+        };
+
        Alert.alert('서버 연결 실패', `서버와 연결할 수 없습니다.\n\n서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
         { text: '취소', style: 'cancel' },
-        { text: '테스트 시작', onPress: startTrackingAndNavigate }
+        { 
+          text: '테스트 시작', 
+          onPress: () => {
+            useTripStore.getState().setActiveTrip(fallbackTrip);
+            startTrackingAndNavigate('trip-demo-uuid');
+          } 
+        }
       ]);
     }
   };

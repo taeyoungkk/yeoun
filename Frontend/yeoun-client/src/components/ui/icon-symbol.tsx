@@ -22,6 +22,9 @@ const MAPPING = {
   'play.fill': 'play-arrow',
   'stop.fill': 'stop',
   'pause.fill': 'pause',
+  'location.fill': 'location-on',
+  'calendar': 'calendar-today',
+  'person.2.fill': 'group',
 } as IconMapping;
 
 /**

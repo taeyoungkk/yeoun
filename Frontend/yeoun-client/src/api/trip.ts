@@ -27,6 +27,26 @@ export interface TripLocationResponse {
   timestamp: string;
 }
 
+export interface TripDetail {
+  tripId: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  region: string;
+  country: string;
+  participants: number;
+  imageUrl?: string;
+  status: string;
+}
+
+export interface TripDetailResponse {
+  success: boolean;
+  code: string;
+  message: string;
+  data: TripDetail;
+  timestamp: string;
+}
+
 /**
  * Starts a trip by its ID.
  * POST /api/v1/trips/{tripId}/start
@@ -83,6 +103,26 @@ export const uploadLocationsApi = async (tripId: string, locations: LocationLog[
       success: false,
       code: 'ERROR',
       message: error.response?.data?.message || '위치 정보 업로드 중 오류가 발생했습니다.',
+      data: {} as any,
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+/**
+ * Gets trip details by ID.
+ * GET /api/v1/trips/{tripId}
+ */
+export const getTripDetailApi = async (tripId: string): Promise<TripDetailResponse> => {
+  try {
+    const response = await apiClient.get(`/trips/${tripId}`);
+    return response.data;
+  } catch (error: any) {
+    console.error('Get Trip Detail API Error:', error);
+    return {
+      success: false,
+      code: 'ERROR',
+      message: error.response?.data?.message || '여행 정보를 불러오는 중 오류가 발생했습니다.',
       data: {} as any,
       timestamp: new Date().toISOString(),
     };
