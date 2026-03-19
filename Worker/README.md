@@ -23,10 +23,12 @@ Worker/
       health.py
       receipt.py
     schemas/
+      photo.py
       receipt.py
     services/
       receipt_ocr.py
     consumer/
+      photo_consumer.py
       receipt_consumer.py
   requirements.txt
   .env.example
@@ -55,9 +57,17 @@ Worker/
   - 영수증 OCR 요청/응답 모델 정의
   - Kafka request/result/dlq 메시지 스키마도 함께 정의
 
+- `app/schemas/photo.py`
+  - 여행 사진 처리 request/result/dlq 메시지 스키마 정의
+  - 타임라인 생성에 필요한 촬영 시각/좌표/썸네일/메타데이터 필드 초안 포함
+
 - `app/services/receipt_ocr.py`
   - 실제 영수증 분석 로직 담당
   - 이미지 다운로드 후 Gemini API를 호출하고 결과를 구조화
+
+- `app/consumer/photo_consumer.py`
+  - 여행 사진 처리용 Kafka consumer/producer 뼈대
+  - 현재는 메시지 검증과 Kafka 입출력 유틸만 구현되어 있으며 실제 이미지 처리 로직은 후속 작업 범위
 
 - `app/consumer/receipt_consumer.py`
   - Kafka에서 영수증 OCR 요청 메시지를 소비
@@ -144,20 +154,43 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 - 토픽명: `receipt-ocr-dlq`
 - 최대 재시도 초과 메시지를 저장
 
+### travel photo processing topics
+
+- request topic: `photo-processing-request`
+- result topic: `photo-processing-result`
+- retry topic: `photo-processing-retry`
+- dlq topic: `photo-processing-dlq`
+- 현재 단계에서는 request/result/dlq 스키마와 consumer/producer 뼈대만 추가된 상태
+- 실제 이미지 다운로드, EXIF 추출, 정규화, 썸네일 생성은 후속 작업에서 구현 예정
+
 ## 환경변수
 
 실제 Docker compose 실행 시에는 `Infra/docker/node2/.env`가 더 중요합니다.
 `Worker/.env.example`는 Worker 단독 실행 시 참고용 예시 파일로 보면 됩니다.
+
+여행 사진 처리 관련 주요 예시 값:
+
+- `KAFKA_PHOTO_ENABLED=false`
+- `KAFKA_PHOTO_REQUEST_TOPIC=photo-processing-request`
+- `KAFKA_PHOTO_RESULT_TOPIC=photo-processing-result`
+- `KAFKA_PHOTO_RETRY_TOPIC=photo-processing-retry`
+- `KAFKA_PHOTO_DLQ_TOPIC=photo-processing-dlq`
+- `KAFKA_PHOTO_CONSUMER_GROUP=yeoun-worker-photo`
 
 ## 현재 구현 상태
 
 - Gemini 2.5 Flash 기반 영수증 추출 코드 구현됨
 - Kafka request/result/retry/dlq 구조 반영됨
 - manual commit 기반 consumer 처리 반영됨
+- 여행 사진 처리용 Kafka 스키마와 consumer/producer 뼈대 추가됨
+- `KAFKA_PHOTO_ENABLED=false` 기본값으로 안전하게 비활성화되어 있음
 
 아직 필요한 것:
 
 - 백엔드의 request producer
 - 백엔드의 result consumer
 - 이미지 저장소 연동
+- 여행 사진 원본 다운로드 및 이미지 로더 구현
+- 여행 사진 EXIF/시간/위치 메타데이터 추출 및 정규화
+- 여행 사진 썸네일 생성 및 저장
 - 프론트의 OCR 상태 조회 및 수정 UI 연동
