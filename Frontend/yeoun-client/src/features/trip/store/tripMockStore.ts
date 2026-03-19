@@ -1,4 +1,4 @@
-type DayFilter = 'all' | 'day1' | 'day2' | 'day3';
+type DayKey = `day${number}`;
 type TimelineEventType = 'location' | 'photo' | 'payment';
 type Coordinate = [number, number];
 type PaymentStatus = 'candidate' | 'confirmed';
@@ -19,7 +19,7 @@ export type TimelinePhotoItem = {
 
 export type TimelineEvent = {
   id: string;
-  day: Exclude<DayFilter, 'all'>;
+  day: DayKey;
   type: TimelineEventType;
   time: string;
   title: string;

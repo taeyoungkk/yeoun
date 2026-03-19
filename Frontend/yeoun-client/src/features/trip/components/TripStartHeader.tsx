@@ -3,13 +3,16 @@ import { StyleSheet, Text, View } from 'react-native';
 
 type TripStartHeaderProps = {
   nickname: string;
+  isEditing?: boolean;
 };
 
-export function TripStartHeader({ nickname }: TripStartHeaderProps) {
+export function TripStartHeader({ nickname, isEditing = false }: TripStartHeaderProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>
-        {nickname}님,{'\n'}여행을 시작하시나요?
+        {isEditing
+          ? '\uC5EC\uD589 \uC815\uBCF4 \uC218\uC815'
+          : `${nickname}\uB2D8,\n\uC5EC\uD589\uC744 \uC2DC\uC791\uD574\uBCFC\uAE4C\uC694?`}
       </Text>
     </View>
   );

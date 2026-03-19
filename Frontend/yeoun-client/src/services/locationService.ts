@@ -4,7 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uploadLocationsApi, LocationLog } from '../api/trip';
 
 const LOCATION_TRACKING_TASK = 'LOCATION_TRACKING_TASK';
-const STORAGE_KEY = 'pending_location_logs';
+const STORAGE_KEY_PREFIX = 'pending_location_logs_chunk_';
+const STORAGE_INDEX_KEY = 'pending_location_logs_index';
+const MAX_LOGS_PER_CHUNK = 100;
 
 /**
  * Task manager definition for background location updates.
@@ -36,10 +38,18 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
  */
 async function appendLogsToStorage(newLogs: any[]) {
   try {
-    const existing = await AsyncStorage.getItem(STORAGE_KEY);
-    const logs = existing ? JSON.parse(existing) : [];
-    const updatedLogs = [...logs, ...newLogs];
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLogs));
+    const existingIndexRaw = await AsyncStorage.getItem(STORAGE_INDEX_KEY);
+    const existingIndex = existingIndexRaw ? (JSON.parse(existingIndexRaw) as string[]) : [];
+    const chunkKeys = [...existingIndex];
+
+    for (let i = 0; i < newLogs.length; i += MAX_LOGS_PER_CHUNK) {
+      const chunk = newLogs.slice(i, i + MAX_LOGS_PER_CHUNK);
+      const chunkKey = `${STORAGE_KEY_PREFIX}${Date.now()}_${i}`;
+      await AsyncStorage.setItem(chunkKey, JSON.stringify(chunk));
+      chunkKeys.push(chunkKey);
+    }
+
+    await AsyncStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(chunkKeys));
   } catch (e) {
     console.error('Failed to save location logs to storage:', e);
   }
@@ -152,9 +162,28 @@ export const locationService = {
    */
   flushLogs: async (): Promise<LocationLog[]> => {
     try {
-      const existing = await AsyncStorage.getItem(STORAGE_KEY);
-      await AsyncStorage.removeItem(STORAGE_KEY);
-      return existing ? JSON.parse(existing) : [];
+      const existingIndexRaw = await AsyncStorage.getItem(STORAGE_INDEX_KEY);
+      const chunkKeys = existingIndexRaw ? (JSON.parse(existingIndexRaw) as string[]) : [];
+      if (chunkKeys.length === 0) {
+        return [];
+      }
+
+      const chunkEntries = await AsyncStorage.multiGet(chunkKeys);
+      await AsyncStorage.multiRemove(chunkKeys);
+      await AsyncStorage.removeItem(STORAGE_INDEX_KEY);
+
+      return chunkEntries.flatMap(([, value]) => {
+        if (!value) {
+          return [];
+        }
+
+        try {
+          return JSON.parse(value) as LocationLog[];
+        } catch (parseError) {
+          console.error('Failed to parse location log chunk:', parseError);
+          return [];
+        }
+      });
     } catch (e) {
       console.error('Failed to flush logs:', e);
       return [];
