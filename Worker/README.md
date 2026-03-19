@@ -26,6 +26,7 @@ Worker/
       photo.py
       receipt.py
     services/
+      photo_loader.py
       receipt_ocr.py
     consumer/
       photo_consumer.py
@@ -65,9 +66,13 @@ Worker/
   - 실제 영수증 분석 로직 담당
   - 이미지 다운로드 후 Gemini API를 호출하고 결과를 구조화
 
+- `app/services/photo_loader.py`
+  - 여행 사진 원본 다운로드 및 이미지 로더
+  - `imageUrl` 우선, 없으면 `IMAGE_BASE_URL + storageKey` 조합으로 원본을 읽고 Pillow로 이미지 열기
+
 - `app/consumer/photo_consumer.py`
   - 여행 사진 처리용 Kafka consumer/producer 뼈대
-  - 현재는 메시지 검증과 Kafka 입출력 유틸만 구현되어 있으며 실제 이미지 처리 로직은 후속 작업 범위
+  - 현재는 메시지 검증 후 원본 다운로드 및 이미지 로딩까지 수행하며 실제 EXIF/썸네일 처리 로직은 후속 작업 범위
 
 - `app/consumer/receipt_consumer.py`
   - Kafka에서 영수증 OCR 요청 메시지를 소비
@@ -162,6 +167,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 - dlq topic: `photo-processing-dlq`
 - 현재 단계에서는 request/result/dlq 스키마와 consumer/producer 뼈대만 추가된 상태
 - 실제 이미지 다운로드, EXIF 추출, 정규화, 썸네일 생성은 후속 작업에서 구현 예정
+  - 현재 단계에서는 원본 다운로드와 Pillow 기반 이미지 로딩까지 구현됨
 
 ## 환경변수
 
@@ -183,6 +189,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 - Kafka request/result/retry/dlq 구조 반영됨
 - manual commit 기반 consumer 처리 반영됨
 - 여행 사진 처리용 Kafka 스키마와 consumer/producer 뼈대 추가됨
+- 여행 사진 원본 다운로드 및 이미지 로더 구현됨
 - `KAFKA_PHOTO_ENABLED=false` 기본값으로 안전하게 비활성화되어 있음
 
 아직 필요한 것:
@@ -190,7 +197,6 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 - 백엔드의 request producer
 - 백엔드의 result consumer
 - 이미지 저장소 연동
-- 여행 사진 원본 다운로드 및 이미지 로더 구현
 - 여행 사진 EXIF/시간/위치 메타데이터 추출 및 정규화
 - 여행 사진 썸네일 생성 및 저장
 - 프론트의 OCR 상태 조회 및 수정 UI 연동

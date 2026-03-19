@@ -6,6 +6,7 @@ from typing import Any
 
 from app.config import Settings
 from app.schemas.photo import PhotoProcessingDlqMessage, PhotoProcessingRequest, PhotoProcessingResultMessage
+from app.services.photo_loader import PhotoLoaderService
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ except ImportError:  # pragma: no cover
 class PhotoConsumer:
     def __init__(self, settings: Settings):
         self.settings = settings
+        self.loader = PhotoLoaderService(settings)
         self._consumer: Any = None
         self._producer: Any = None
         self._task: asyncio.Task | None = None
@@ -69,11 +71,21 @@ class PhotoConsumer:
 
     async def _process_message(self, message: Any) -> None:
         payload = PhotoProcessingRequest.model_validate(message.value)
+        loaded_photo = await self.loader.download_and_load(payload)
         logger.info(
-            "Received photo processing message photoId=%s tripId=%s attempt=%s",
+            (
+                "Loaded photo processing source photoId=%s tripId=%s attempt=%s "
+                "source=%s format=%s mimeType=%s size=%sx%s mode=%s"
+            ),
             payload.photo_id,
             payload.trip_id,
             payload.attempt,
+            loaded_photo.source_url,
+            loaded_photo.format,
+            loaded_photo.mime_type,
+            loaded_photo.width,
+            loaded_photo.height,
+            loaded_photo.mode,
         )
         await self._consumer.commit()
 
