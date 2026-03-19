@@ -3,6 +3,7 @@ package com.yeoun.domain.user.controller;
 import com.yeoun.domain.auth.dto.response.AuthTokenResponse;
 import com.yeoun.domain.user.dto.request.ChangePasswordRequest;
 import com.yeoun.domain.user.dto.request.UpdateMeRequest;
+import com.yeoun.domain.user.dto.response.AvailabilityCheckResponse;
 import com.yeoun.domain.user.dto.response.MeResponse;
 import com.yeoun.domain.user.service.UserProfileService;
 import com.yeoun.global.response.ApiResponse;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -34,6 +36,24 @@ public class UserController {
     public UserController(UserProfileService userProfileService, JwtTokenResolver jwtTokenResolver) {
         this.userProfileService = userProfileService;
         this.jwtTokenResolver = jwtTokenResolver;
+    }
+
+    @GetMapping("/check-nickname")
+    @Operation(summary = "닉네임 중복 확인", description = "입력한 닉네임이 사용 가능한지 확인합니다.")
+    public ApiResponse<AvailabilityCheckResponse> checkNicknameAvailability(
+            @RequestParam("nickname") String nickname
+    ) {
+        AvailabilityCheckResponse response = userProfileService.checkNicknameAvailability(nickname);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/check-email")
+    @Operation(summary = "이메일 중복 확인", description = "입력한 이메일이 사용 가능한지 확인합니다.")
+    public ApiResponse<AvailabilityCheckResponse> checkEmailAvailability(
+            @RequestParam("email") String email
+    ) {
+        AvailabilityCheckResponse response = userProfileService.checkEmailAvailability(email);
+        return ApiResponse.ok(response);
     }
 
     @GetMapping("/me")
