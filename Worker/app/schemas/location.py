@@ -39,6 +39,10 @@ class LocationLogBatchResultMessage(BaseModel):
     duplicate_count: int = Field(alias="duplicateCount", default=0, ge=0)
     stored_count: int = Field(alias="storedCount", ge=0)
     attempt: int = Field(default=0, ge=0)
+    preprocessed_count: int = Field(alias="preprocessedCount", default=0, ge=0)
+    filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", default=0, ge=0)
+    filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", default=0, ge=0)
+    filtered_jump_count: int = Field(alias="filteredJumpCount", default=0, ge=0)
     error_code: str | None = Field(alias="errorCode", default=None)
     error_message: str | None = Field(alias="errorMessage", default=None)
 
@@ -56,3 +60,13 @@ class LocationLogBatchDlqMessage(BaseModel):
     error_code: str = Field(alias="errorCode")
     error_message: str = Field(alias="errorMessage")
     failed_at: datetime = Field(alias="failedAt")
+
+
+class LocationPreprocessSummary(BaseModel):
+    accepted_count: int = Field(alias="acceptedCount", ge=0)
+    duplicate_count: int = Field(alias="duplicateCount", ge=0)
+    stored_count: int = Field(alias="storedCount", ge=0)
+    preprocessed_count: int = Field(alias="preprocessedCount", ge=0)
+    filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", ge=0)
+    filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", ge=0)
+    filtered_jump_count: int = Field(alias="filteredJumpCount", ge=0)

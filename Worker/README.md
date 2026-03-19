@@ -12,6 +12,8 @@
 - `(trip_id, user_id, client_log_uuid)` 기준 idempotency 처리
 - GPS 처리 실패 시 retry / DLQ 발행
 - GPS payload 검증 실패 시 즉시 DLQ 발행
+- GPS 1차 전처리 파이프라인 실행
+- 정렬, near-duplicate 제거, accuracy 필터, jump outlier 제거
 
 ## 디렉터리 구조
 
@@ -30,6 +32,7 @@ Worker/
     services/
       location_log_writer.py
       location_pipeline.py
+      location_preprocessor.py
       photo_loader.py
       photo_metadata.py
       photo_thumbnail.py
@@ -62,7 +65,13 @@ Worker/
 
 - `app/services/location_pipeline.py`
   - GPS batch 처리 진입점
-  - 현재는 raw 저장 단계까지 연결
+  - raw 저장 후 1차 전처리 단계까지 연결
+
+- `app/services/location_preprocessor.py`
+  - recordedAt 기준 정렬
+  - near-duplicate 제거
+  - accuracy threshold 초과 포인트 제거
+  - 비정상 jump/outlier 제거
 
 - `app/consumer/location_consumer.py`
   - `trip-location-log-batch` / retry 토픽 consume
@@ -76,8 +85,9 @@ Worker/
 2. Worker의 `location_consumer`가 메시지 consume
 3. `location_pipeline`이 raw 저장 파이프라인 실행
 4. `location_log_writer`가 `location_logs_raw` 테이블에 저장
-5. 저장 결과를 result topic으로 발행
-6. 실패 시 retry 또는 DLQ topic으로 발행
+5. `location_preprocessor`가 1차 clean 파이프라인 실행
+6. 저장/전처리 결과를 result topic으로 발행
+7. 실패 시 retry 또는 DLQ topic으로 발행
 
 ## Kafka 토픽
 
@@ -115,6 +125,8 @@ Worker/
 - `KAFKA_LOCATION_DLQ_TOPIC`
 - `KAFKA_LOCATION_CONSUMER_GROUP`
 - `WORKER_DATABASE_URL`
+- `GPS_ACCURACY_THRESHOLD_M`
+- `GPS_JUMP_SPEED_THRESHOLD_MPS`
 - `IMAGE_BASE_URL`
 - `AWS_S3_BUCKET`
 - `GEMINI_MODEL`
@@ -142,6 +154,6 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 여행 GPS 쪽 다음 단계는 아래 순서로 이어집니다.
 
 1. processing status 갱신
-2. GPS clean pipeline 연결
+2. clean GPS 영속화
 3. stay detection
 4. route / place 생성

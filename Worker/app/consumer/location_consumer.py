@@ -10,6 +10,7 @@ from app.config import Settings
 from app.schemas.location import (
     LocationLogBatchDlqMessage,
     LocationLogBatchResultMessage,
+    LocationPreprocessSummary,
     LocationLogBatchStoredEvent,
 )
 from app.services.location_pipeline import LocationPipelineService
@@ -89,11 +90,18 @@ class LocationConsumer:
             await self.publish_result(result_message)
             await self._consumer.commit()
             logger.info(
-                "Processed GPS batch tripId=%s userId=%s accepted=%s stored=%s",
+                (
+                    "Processed GPS batch tripId=%s userId=%s accepted=%s stored=%s "
+                    "preprocessed=%s filteredAccuracy=%s filteredDuplicate=%s filteredJump=%s"
+                ),
                 payload.trip_id,
                 payload.user_id,
-                result["accepted_count"],
-                result["stored_count"],
+                result.accepted_count,
+                result.stored_count,
+                result.preprocessed_count,
+                result.filtered_accuracy_count,
+                result.filtered_duplicate_count,
+                result.filtered_jump_count,
             )
         except Exception as exc:
             await self._handle_processing_failure(message, payload, exc)
@@ -123,7 +131,7 @@ class LocationConsumer:
     def build_completed_result(
         self,
         payload: LocationLogBatchStoredEvent,
-        result: dict[str, int],
+        result: LocationPreprocessSummary,
     ) -> LocationLogBatchResultMessage:
         return LocationLogBatchResultMessage(
             trip_id=payload.trip_id,
@@ -131,10 +139,14 @@ class LocationConsumer:
             status="COMPLETED",
             requested_at=payload.requested_at,
             processed_at=self._utcnow(),
-            accepted_count=result["accepted_count"],
-            duplicate_count=result["duplicate_count"],
-            stored_count=result["stored_count"],
+            accepted_count=result.accepted_count,
+            duplicate_count=result.duplicate_count,
+            stored_count=result.stored_count,
             attempt=payload.attempt,
+            preprocessed_count=result.preprocessed_count,
+            filtered_accuracy_count=result.filtered_accuracy_count,
+            filtered_duplicate_count=result.filtered_duplicate_count,
+            filtered_jump_count=result.filtered_jump_count,
         )
 
     def build_failed_result(self, payload: LocationLogBatchStoredEvent, exc: Exception) -> LocationLogBatchResultMessage:
