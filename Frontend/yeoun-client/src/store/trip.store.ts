@@ -1,6 +1,15 @@
 import { create } from 'zustand';
+import { TripDetail, TripListItem } from '../api/trip';
 
-import { TripDetail } from '../api/trip';
+export interface CurrentTrip {
+  tripId: string;
+  title?: string;
+  location?: string;
+  date?: string;
+  participants?: number;
+  imageUrl?: string | null;
+  region?: string;
+}
 
 export interface CurrentTrip {
   tripId: string;
@@ -17,10 +26,16 @@ interface TripState {
   currentTripId: string | null;
   currentTrip: CurrentTrip | null;
   activeTrip: TripDetail | null;
+  pastTrips: TripListItem[];
+  likedTripIds: string[];
+
+  // ─── Actions ────────────────────────────────────────────────────────────────
   startTrip: (trip: CurrentTrip) => void;
   updateCurrentTrip: (trip: CurrentTrip) => void;
   setActiveTrip: (trip: TripDetail) => void;
   endTrip: () => void;
+  setPastTrips: (trips: TripListItem[]) => void;
+  toggleFavorite: (tripId: string) => void;
   clearTrip: () => void;
 }
 
@@ -29,6 +44,9 @@ export const useTripStore = create<TripState>((set) => ({
   currentTripId: null,
   currentTrip: null,
   activeTrip: null,
+  pastTrips: [],
+  likedTripIds: [],
+
   startTrip: (trip) =>
     set({
       isTripActive: true,
@@ -50,6 +68,14 @@ export const useTripStore = create<TripState>((set) => ({
       isTripActive: false,
       currentTripId: state.currentTrip?.tripId ?? null,
       activeTrip: null,
+    })),
+  setPastTrips: (trips) =>
+    set({ pastTrips: trips }),
+  toggleFavorite: (tripId) =>
+    set((state) => ({
+      likedTripIds: state.likedTripIds.includes(tripId)
+        ? state.likedTripIds.filter((id) => id !== tripId)
+        : [...state.likedTripIds, tripId],
     })),
   clearTrip: () =>
     set({

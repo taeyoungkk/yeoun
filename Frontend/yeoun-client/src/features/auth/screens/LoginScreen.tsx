@@ -3,14 +3,13 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import * as WebBrowser from "expo-web-browser";
-import * as Google from "expo-auth-session/providers/google";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -48,24 +47,25 @@ export const LoginScreen = () => {
   });
 
   // Google OAuth Hook
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    // TRICK: Use the iOS Client ID even for Android to allow custom URI schemes
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  });
-
   useEffect(() => {
-    if (response?.type === "success") {
-      const { id_token } = response.params;
-      handleGoogleLogin(id_token);
-    }
-  }, [response]);
+    GoogleSignin.configure({
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      offlineAccess: true, // If you need a refresh token or server side access
+    });
+  }, []);
 
-  const handleGoogleLogin = async (idToken: string) => {
+  const handleGoogleLogin = async () => {
     setIsLoading(true);
     setLoginError("");
     try {
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      const idToken = userInfo.data?.idToken;
+
+      if (!idToken) {
+        throw new Error("No idToken received from Google.");
+      }
+
       const apiResponse = await googleAuthApi(idToken);
       if (apiResponse.success && apiResponse.data) {
         const { tokens, user } = apiResponse.data;
@@ -86,9 +86,14 @@ export const LoginScreen = () => {
       } else {
         setLoginError(apiResponse.message || "구글 로그인에 실패했습니다.");
       }
-    } catch (error) {
+    } catch (error: any) {
       setLoginError("구글 로그인 중 오류가 발생했습니다.");
-      console.error("Google Login Error:", error);
+      console.error("Google Login Error:", error.message);
+      if (error.response?.data) {
+        console.error("Backend Error Data:", JSON.stringify(error.response.data, null, 2));
+      } else if (error.stack) {
+        console.error(error.stack);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -141,23 +146,23 @@ export const LoginScreen = () => {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView className="flex-1 bg-white">
       <StatusBar style="dark" />
       <KeyboardAvoidingView
-        style={styles.flex}
+        className="flex-1"
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
-          contentContainerStyle={styles.container}
+          contentContainerClassName="flex-grow px-4 pt-20 pb-10"
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {/* Title */}
-          <Text style={styles.title}>로그인</Text>
+          <Text className="font-pretendard-bold text-[30px] leading-[39px] text-center tracking-[-0.3px] text-secondary mb-12">로그인</Text>
 
           {__DEV__ && isForceMockLogin ? (
-            <View style={styles.devBadge}>
-              <Text style={styles.devBadgeText}>DEV MOCK LOGIN ON</Text>
+            <View className="self-center bg-[#FFF4CC] rounded-full px-3 py-1.5 -mt-5 mb-6">
+              <Text className="font-pretendard-bold text-[12px] text-[#7A5C00] tracking-[0.3px]">DEV MOCK LOGIN ON</Text>
             </View>
           ) : null}
 
@@ -211,11 +216,11 @@ export const LoginScreen = () => {
 
           {/* Forgot password */}
           <TouchableOpacity
-            style={styles.forgotWrapper}
+            className="self-end mb-7 -mt-2"
             onPress={() => router.push("/(auth)/forgot-password" as never)}
             accessibilityLabel="비밀번호 찾기"
           >
-            <Text style={styles.forgotText}>비밀번호 찾기</Text>
+            <Text className="font-pretendard-medium text-[12px] text-gray-300">비밀번호 찾기</Text>
           </TouchableOpacity>
 
           {/* Login Error message */}
@@ -227,7 +232,7 @@ export const LoginScreen = () => {
 
           {/* Sign in button */}
           <TouchableOpacity
-            style={[styles.signInButton, isLoading && { backgroundColor: "#8FA3B8" }]}
+            className={`rounded-[15px] py-[18px] items-center mb-9 ${isLoading ? 'bg-[#8FA3B8]' : 'bg-primary'}`}
             onPress={handleSubmit(onSubmit)}
             disabled={isLoading}
             accessibilityLabel="로그인 버튼"
@@ -235,54 +240,54 @@ export const LoginScreen = () => {
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.signInText}>로그인</Text>
+              <Text className="font-pretendard-medium text-[16px] leading-[24px] text-white">로그인</Text>
             )}
           </TouchableOpacity>
 
           {/* Dev-only Mock Login Button */}
           {__DEV__ && (
             <TouchableOpacity
-              style={styles.mockLoginButton}
+              className="bg-[#FFEBEE] border border-[#FFCDD2] rounded-[15px] py-3 items-center mb-9"
               onPress={handleMockLogin}
               accessibilityLabel="개발용 목업 로그인"
             >
-              <Text style={styles.mockLoginText}>개발용 목업 로그인 (서버 패스)</Text>
+              <Text className="font-pretendard-semibold text-[14px] text-[#D32F2F]">개발용 목업 로그인 (서버 패스)</Text>
             </TouchableOpacity>
           )}
 
           {/* Or with divider */}
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>또는</Text>
-            <View style={styles.dividerLine} />
+          <View className="flex-row items-center mb-5 gap-3">
+            <View className="flex-1 h-[1px] bg-gray-200" />
+            <Text className="font-pretendard text-[14px] text-black/70">또는</Text>
+            <View className="flex-1 h-[1px] bg-gray-200" />
           </View>
 
           {/* Google button */}
           <TouchableOpacity
-            style={[styles.googleButton, (!request || isLoading) && { opacity: 0.5 }]}
-            onPress={() => promptAsync()}
-            disabled={!request || isLoading}
+            className={`border border-gray-200 rounded-[10px] py-[18px] px-[45px] items-center mb-9 bg-white ${isLoading ? 'opacity-50' : ''}`}
+            onPress={handleGoogleLogin}
+            disabled={isLoading}
             accessibilityLabel="구글 로그인"
           >
-            <View style={styles.googleInner}>
+            <View className="flex-row flex items-center gap-3">
               <Image
                 source={require("@/assets/images/Google__G__logo.png")}
-                style={styles.googleLogoImg}
+                className="w-5 h-5"
                 resizeMode="contain"
               />
-              <Text style={styles.googleText}>Google</Text>
-              {isLoading && <ActivityIndicator size="small" color="#344966" style={{ marginLeft: 8 }} />}
+              <Text className="font-pretendard-medium text-[14px] text-primary">Google</Text>
+              {isLoading && <ActivityIndicator size="small" color="#344966" className="ml-2" />}
             </View>
           </TouchableOpacity>
 
           {/* Sign up link */}
           <TouchableOpacity
-            style={styles.signUpWrapper}
+            className="items-center"
             onPress={() => router.push("/(auth)/register" as never)}
             accessibilityLabel="회원가입 페이지로 이동"
           >
-            <Text style={styles.signUpText}>
-              계정이 없으신가요? <Text style={styles.signUpLink}>회원가입</Text>
+            <Text className="font-pretendard text-[14px] text-black/70">
+              계정이 없으신가요? <Text className="font-pretendard-bold text-primary">회원가입</Text>
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -290,152 +295,3 @@ export const LoginScreen = () => {
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  flex: {
-    flex: 1,
-  },
-  container: {
-    flexGrow: 1,
-    paddingHorizontal: 16,
-    paddingTop: 80,
-    paddingBottom: 40,
-  },
-
-  // ── Title ─────────────────────────────────────────────────────────────────
-  title: {
-    fontFamily: "Poppins",
-    fontWeight: "700",
-    fontSize: 30,
-    lineHeight: 39,
-    textAlign: "center",
-    letterSpacing: -0.01 * 30,
-    color: "#4D3E3E",
-    marginBottom: 48,
-  },
-  devBadge: {
-    alignSelf: "center",
-    backgroundColor: "#FFF4CC",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginTop: -20,
-    marginBottom: 24,
-  },
-  devBadgeText: {
-    fontFamily: "Inter",
-    fontWeight: "700",
-    fontSize: 12,
-    color: "#7A5C00",
-    letterSpacing: 0.3,
-  },
-
-  // ── Forgot ────────────────────────────────────────────────────────────────
-  forgotWrapper: {
-    alignSelf: "flex-end",
-    marginBottom: 28,
-    marginTop: -8,
-  },
-  forgotText: {
-    fontFamily: "Poppins",
-    fontWeight: "500",
-    fontSize: 12,
-    color: "#CACACA",
-  },
-
-  // ── Sign in button ────────────────────────────────────────────────────────
-  signInButton: {
-    backgroundColor: "#344966",
-    borderRadius: 15,
-    paddingVertical: 18,
-    alignItems: "center",
-    marginBottom: 36,
-  },
-  signInText: {
-    fontFamily: "Poppins",
-    fontWeight: "500",
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#FFFFFF",
-  },
-
-  // ── Divider ───────────────────────────────────────────────────────────────
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-    gap: 12,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#D8DADC",
-  },
-  dividerText: {
-    fontFamily: "Inter",
-    fontWeight: "400",
-    fontSize: 14,
-    color: "rgba(0,0,0,0.7)",
-  },
-
-  // ── Google button ─────────────────────────────────────────────────────────
-  googleButton: {
-    borderWidth: 1,
-    borderColor: "#D8DADC",
-    borderRadius: 10,
-    paddingVertical: 18,
-    paddingHorizontal: 45,
-    alignItems: "center",
-    marginBottom: 36,
-    backgroundColor: "#FFFFFF",
-  },
-  googleInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  googleLogoImg: {
-    width: 20,
-    height: 20,
-  },
-  googleText: {
-    fontFamily: "Inter",
-    fontWeight: "500",
-    fontSize: 14,
-    color: "#344966",
-  },
-
-  // ── Sign up ───────────────────────────────────────────────────────────────
-  signUpWrapper: {
-    alignItems: "center",
-  },
-  signUpText: {
-    fontFamily: "Inter",
-    fontWeight: "400",
-    fontSize: 14,
-    color: "rgba(0,0,0,0.7)",
-  },
-  signUpLink: {
-    fontWeight: "700",
-    color: "#344966",
-  },
-  mockLoginButton: {
-    backgroundColor: "#FFEBEE",
-    borderWidth: 1,
-    borderColor: "#FFCDD2",
-    borderRadius: 15,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginBottom: 36,
-  },
-  mockLoginText: {
-    fontFamily: "Poppins",
-    fontWeight: "600",
-    fontSize: 14,
-    color: "#D32F2F",
-  },
-});
