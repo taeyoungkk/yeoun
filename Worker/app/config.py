@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     kafka_photo_retry_topic: str = Field(default="photo-processing-retry", alias="KAFKA_PHOTO_RETRY_TOPIC")
     kafka_photo_dlq_topic: str = Field(default="photo-processing-dlq", alias="KAFKA_PHOTO_DLQ_TOPIC")
     kafka_photo_consumer_group: str = Field(default="yeoun-worker-photo", alias="KAFKA_PHOTO_CONSUMER_GROUP")
+    kafka_location_enabled: bool = Field(default=False, alias="KAFKA_LOCATION_ENABLED")
+    kafka_location_request_topic: str = Field(default="trip-location-log-batch", alias="KAFKA_LOCATION_REQUEST_TOPIC")
+    kafka_location_result_topic: str = Field(default="trip-location-log-result", alias="KAFKA_LOCATION_RESULT_TOPIC")
+    kafka_location_retry_topic: str = Field(default="trip-location-log-retry", alias="KAFKA_LOCATION_RETRY_TOPIC")
+    kafka_location_dlq_topic: str = Field(default="trip-location-log-dlq", alias="KAFKA_LOCATION_DLQ_TOPIC")
+    kafka_location_consumer_group: str = Field(default="yeoun-worker-location", alias="KAFKA_LOCATION_CONSUMER_GROUP")
     kafka_auto_offset_reset: str = Field(default="earliest", alias="KAFKA_AUTO_OFFSET_RESET")
     kafka_max_retry_attempts: int = Field(default=3, alias="KAFKA_MAX_RETRY_ATTEMPTS")
 
