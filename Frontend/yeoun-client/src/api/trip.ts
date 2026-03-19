@@ -1,3 +1,4 @@
+import axios from 'axios';
 import apiClient from './client';
 
 export interface TripStartResponse {
@@ -27,6 +28,16 @@ export interface TripLocationResponse {
   timestamp: string;
 }
 
+const API_MOCKS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_API_MOCKS === 'true';
+
+const shouldMockInDev = (error: unknown) => {
+  if (!__DEV__ || !API_MOCKS_ENABLED) {
+    return false;
+  }
+
+  return axios.isAxiosError(error) && !error.response;
+};
+
 /**
  * Starts a trip by its ID.
  * POST /api/v1/trips/{tripId}/start
@@ -36,6 +47,21 @@ export const startTripApi = async (tripId: string): Promise<TripStartResponse> =
     const response = await apiClient.post(`/trips/${tripId}/start`);
     return response.data;
   } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      console.log('startTripApi failed, mocking success in dev');
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: '여행 시작 처리 완료 (MOCK)',
+        data: {
+          tripId,
+          status: 'IN_PROGRESS',
+          startedAt: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     console.error('Start Trip API Error:', error);
     return {
       success: false,
@@ -56,6 +82,21 @@ export const endTripApi = async (tripId: string): Promise<TripStartResponse> => 
     const response = await apiClient.post(`/trips/${tripId}/end`);
     return response.data;
   } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      console.log('endTripApi failed, mocking success in dev');
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: '여행 종료 처리 완료 (MOCK)',
+        data: {
+          tripId,
+          status: 'COMPLETED',
+          startedAt: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     console.error('End Trip API Error:', error);
     return {
       success: false,
@@ -78,6 +119,20 @@ export const uploadLocationsApi = async (tripId: string, locations: LocationLog[
     });
     return response.data;
   } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      console.log('uploadLocationsApi failed, mocking success in dev');
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: '위치 로그 업로드 완료 (MOCK)',
+        data: {
+          tripId,
+          uploadedCount: locations.length,
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     console.error('Upload Locations API Error:', error);
     return {
       success: false,

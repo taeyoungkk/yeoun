@@ -149,6 +149,7 @@ export default function TripRecordingScreen() {
   const [tripEvents, setTripEvents] = useState<TimelineEvent[]>(() => getTripEvents());
   const params = useLocalSearchParams();
   const endTrip = useTripStore((state) => state.endTrip);
+  const isTripActive = useTripStore((state) => state.isTripActive);
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -272,6 +273,8 @@ export default function TripRecordingScreen() {
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
   const panelLift = -145 * collapseProgress;
+  const isReviewMode = params.mode === 'review' || !isTripActive;
+  const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
 
   useEffect(() => {
     if (routeCoordinates.length < 2) {
@@ -342,6 +345,10 @@ export default function TripRecordingScreen() {
     } else {
       Alert.alert('동기화 실패', '네트워크 연결을 확인해주세요. 기록은 안전하게 보관 중입니다.');
     }
+  };
+
+  const handleOpenReport = () => {
+    router.push('/trip/report');
   };
 
   const handleEndTrip = async () => {
@@ -606,11 +613,12 @@ export default function TripRecordingScreen() {
           <View style={styles.headerTitleRow}>
             <Text style={styles.headerTitle}>제주도 여행</Text>
             <View style={styles.recordingInline}>
-              <View style={styles.recordingDot} />
+              <View style={[styles.recordingDot, isReviewMode && styles.recordingDotCompleted]} />
+              <Text style={[styles.recordingStatusText, isReviewMode && styles.recordingStatusTextCompleted]}>{recordingStatusText}</Text>
               <Text style={styles.recordingInlineText}>기록중</Text>
             </View>
             {/* GPS 활성 표시 */}
-            <View style={styles.gpsIndicator}>
+            <View style={[styles.gpsIndicator, isReviewMode && styles.gpsIndicatorHidden]}>
               <MaterialIcons name="location-on" size={12} color="#4C8E5E" />
               <Text style={styles.gpsIndicatorText}>GPS 작동중</Text>
             </View>
@@ -634,7 +642,13 @@ export default function TripRecordingScreen() {
       {isMenuOpen ? (
         <Pressable style={styles.menuBackdrop} onPress={() => setIsMenuOpen(false)}>
           <View style={styles.menuCard}>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
+            {isReviewMode ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleOpenReport(); }} activeOpacity={0.85}>
+                <MaterialIcons name="article" size={18} color="#244934" />
+                <Text style={styles.menuItemText}>여행 리포트 확인</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity style={[styles.menuItem, isReviewMode && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
@@ -1323,8 +1337,16 @@ export default function TripRecordingScreen() {
             })}
           </View>
 
-          <View style={styles.bottomActions}>
-            <TouchableOpacity style={styles.endButton} onPress={handleEndTrip} activeOpacity={0.88}>
+          {isReviewMode ? (
+            <View style={styles.bottomActions}>
+              <TouchableOpacity style={styles.endButton} onPress={handleOpenReport} activeOpacity={0.88}>
+                <Text style={styles.endButtonText}>여행 리포트 확인</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          <View style={[styles.bottomActions, isReviewMode && styles.hiddenAction]}>
+            <TouchableOpacity style={styles.endButton} onPress={isReviewMode ? handleOpenReport : handleEndTrip} activeOpacity={0.88}>
+              {isReviewMode ? <Text style={styles.endButtonText}>여행 리포트 확인</Text> : null}
               <Text style={styles.endButtonText}>여행 종료</Text>
             </TouchableOpacity>
           </View>
@@ -1343,7 +1365,10 @@ const styles = StyleSheet.create({
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   recordingInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   recordingDot: { width: 7, height: 7, borderRadius: 999, backgroundColor: '#F35B4F' },
-  recordingInlineText: { fontFamily: 'Pretendard-SemiBold', fontSize: 11, color: '#F35B4F' },
+  recordingInlineText: { width: 0, height: 0, opacity: 0 },
+  recordingDotCompleted: { backgroundColor: '#4C8E5E' },
+  recordingStatusText: { fontFamily: 'Pretendard-SemiBold', fontSize: 11, color: '#F35B4F' },
+  recordingStatusTextCompleted: { color: '#4C8E5E' },
   gpsIndicator: {
     marginLeft: 8,
     flexDirection: 'row',
@@ -1353,6 +1378,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 8,
   },
+  gpsIndicatorHidden: { display: 'none' },
   gpsIndicatorText: {
     fontFamily: 'Pretendard-SemiBold',
     fontSize: 10,
@@ -1368,6 +1394,7 @@ const styles = StyleSheet.create({
   menuCard: { marginLeft: 'auto', width: 156, borderRadius: 20, backgroundColor: '#FCFEFB', paddingVertical: 8, shadowColor: '#223428', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   menuItem: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 },
   menuItemText: { fontFamily: 'Pretendard-SemiBold', fontSize: 14, color: '#244934' },
+  hiddenAction: { display: 'none' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(18, 25, 20, 0.3)', justifyContent: 'center', paddingHorizontal: 22 },
   modalCard: { borderRadius: 28, backgroundColor: '#FCFEFB', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 18 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

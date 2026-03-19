@@ -76,6 +76,8 @@ export default function TripReportScreen() {
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const receiptAppear = useRef(new Animated.Value(0)).current;
+  const handleGoHome = () => router.replace('/(tabs)');
+  const handleBackToTimeline = () => router.replace('/trip/recording?mode=review');
 
   const events = useMemo(() => getTripEvents(), []);
   const totalDistance = useMemo(() => REPORT_DAYS.reduce((sum, day) => sum + day.distanceKm, 0), []);
@@ -110,12 +112,15 @@ export default function TripReportScreen() {
 
           {/* 헤더 */}
           <View style={styles.headerRow}>
-            <TouchableOpacity style={styles.headerButton} onPress={() => router.back()}>
+            <TouchableOpacity style={styles.headerButton} onPress={handleBackToTimeline}>
               <MaterialIcons name="arrow-back" size={22} color="#3852D6" />
             </TouchableOpacity>
             <View style={styles.headerCopy}>
               <Text style={styles.headerTitle}>제주도 여행 종료</Text>
             </View>
+            <TouchableOpacity style={styles.headerActionButton} onPress={handleGoHome}>
+              <Text style={styles.headerActionText}>완료</Text>
+            </TouchableOpacity>
           </View>
 
           {/* 메인 티켓 */}
@@ -287,8 +292,8 @@ export default function TripReportScreen() {
             )}
           </View>
 
-          <TouchableOpacity style={styles.finishButton} onPress={() => router.replace('/(tabs)')}>
-            <Text style={styles.finishButtonText}>공유하기</Text>
+          <TouchableOpacity style={styles.finishButton} onPress={handleGoHome}>
+            <Text style={styles.finishButtonText}>홈으로 돌아가기</Text>
           </TouchableOpacity>
         </ScrollView>
       </LinearGradient>
@@ -305,9 +310,11 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1 },
   headerKicker: { fontSize: 11, color: '#7281B8', fontWeight: '600' },
   headerTitle: { fontSize: 22, color: '#182245', fontWeight: 'bold' },
+  headerActionButton: { minWidth: 56, height: 38, borderRadius: 19, backgroundColor: '#3852D6', paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  headerActionText: { fontSize: 14, color: '#FFF', fontWeight: '700' },
 
   // 티켓 스타일
-  ticketWrap: { borderBottomLeftRadius: 35, borderBottomRightRadius: 35, backgroundColor: '#FFF', overflow: 'hidden' },
+  ticketWrap: { borderBottomLeftRadius: 35, borderBottomRightRadius: 35, backgroundColor: '#FFF', overflow: 'hidden', borderWidth: 1, borderColor: '#EEE' },
   barcodeSection: { height: 74, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 0, backgroundColor: '#FFFFFF' },
   barcodeStrip: { flexDirection: 'row', height: 44, gap: 3 },
   barcodeBar: { backgroundColor: '#5B4F66' },
@@ -346,7 +353,7 @@ const styles = StyleSheet.create({
   inlineDayValue: { fontSize: 14, color: '#7E8CB6', fontWeight: 'bold' },
 
   // 하단 공통 카드 스타일
-  sectionCard: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFF', padding: 20, elevation: 2 },
+  sectionCard: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFF', padding: 20, elevation: 2, borderWidth: 1, borderColor: '#EEE' },
   sectionKicker: { fontSize: 11, color: '#7182BC', fontWeight: '600' },
   sectionTitle: { fontSize: 19, color: '#1C2751', marginTop: 4, fontWeight: 'bold', marginBottom: 15 },
 

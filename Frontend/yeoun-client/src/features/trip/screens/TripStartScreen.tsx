@@ -323,6 +323,26 @@ export default function TripStartScreen() {
     }
   };
 
+  const handleStartTripImmediateNavigation = async () => {
+    setNoticeModalType(null);
+    startTrip('trip-demo-uuid');
+    router.replace('/trip/recording');
+
+    try {
+      await startTripApi('trip-demo-uuid');
+    } catch (error) {
+      console.error('Trip start API request failed after navigation:', error);
+    }
+
+    const trackingSuccess = await locationService.startTracking();
+    if (!trackingSuccess) {
+      Alert.alert(
+        '?ê¾©íŠ‚ æ²…ëš°ë¸³ ?ê¾©ìŠ‚',
+        '?Ñ‹ë»¾ å¯ƒìŽˆì¤ˆç‘œ?æ¹²ê³•ì¤‰?ì„Žì ®ï§Ž???ë–† ?ê¾©íŠ‚ ?ë‰ìŠœ æ²…ëš°ë¸³???ê¾©ìŠ‚?â‘¸ë•²?? ?ã…¼ì ™?ë¨¯ê½Œ ?ëº¤ì”¤??äºŒì‡±ê½­??'
+      );
+    }
+  };
+
   if (screenMode === 'invite') {
     return (
       <TripInviteScreen
@@ -440,7 +460,7 @@ export default function TripStartScreen() {
         memberCount={memberCount}
         missingLabels={missingLabels}
         onClose={() => setNoticeModalType(null)}
-        onConfirm={handleStartTrip}
+        onConfirm={handleStartTripImmediateNavigation}
       />
     </SafeAreaView>
   );
