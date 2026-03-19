@@ -107,7 +107,6 @@ public class PhotoSyncService {
                     .photoId(UUID.randomUUID())
                     .ownerUserId(requesterUserId)
                     .tripId(tripId)
-                    .eventId(null)
                     .storageKey(storageKey)
                     .thumbnailKey(null)
                     .fileHash(hash)
@@ -128,7 +127,6 @@ public class PhotoSyncService {
 
             syncedItems.add(new PhotoSyncItemResponse(
                     photo.getPhotoId(),
-                    photo.getEventId(),
                     photo.getThumbnailKey(),
                     photo.getTakenAt(),
                     photo.isExcluded()
