@@ -27,7 +27,6 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
       }));
 
       await appendLogsToStorage(newLogs);
-      console.log(`[Background] Collected ${newLogs.length} location points.`);
     }
   }
 });
