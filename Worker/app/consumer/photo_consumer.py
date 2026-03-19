@@ -75,43 +75,45 @@ class PhotoConsumer:
 
     async def _process_message(self, message: Any) -> None:
         payload = PhotoProcessingRequest.model_validate(message.value)
-        loaded_photo = await self.loader.download_and_load(payload)
-        extracted = self.metadata_service.extract_and_normalize(payload, loaded_photo)
-        thumbnail = self.thumbnail_service.generate_and_store(payload, loaded_photo)
-        logger.info(
-            (
-                "Loaded photo processing source photoId=%s tripId=%s attempt=%s "
-                "source=%s format=%s mimeType=%s size=%sx%s mode=%s "
-                "extractedTakenAt=%s normalizedTakenAt=%s extractedCoordinates=%s normalizedCoordinates=%s "
-                "thumbnailKey=%s thumbnailSize=%sx%s thumbnailBytes=%s"
-            ),
-            payload.photo_id,
-            payload.trip_id,
-            payload.attempt,
-            loaded_photo.source_url,
-            loaded_photo.format,
-            loaded_photo.mime_type,
-            loaded_photo.width,
-            loaded_photo.height,
-            loaded_photo.mode,
-            extracted.extracted_taken_at.isoformat() if extracted.extracted_taken_at else None,
-            extracted.normalized_taken_at.isoformat() if extracted.normalized_taken_at else None,
-            (
-                f"{extracted.extracted_coordinates.latitude},{extracted.extracted_coordinates.longitude}"
-                if extracted.extracted_coordinates
-                else None
-            ),
-            (
-                f"{extracted.normalized_coordinates.latitude},{extracted.normalized_coordinates.longitude}"
-                if extracted.normalized_coordinates
-                else None
-            ),
-            thumbnail.thumbnail_key,
-            thumbnail.width,
-            thumbnail.height,
-            thumbnail.file_size_bytes,
-        )
-        await self._consumer.commit()
+        try:
+            loaded_photo = await self.loader.download_and_load(payload)
+            extracted = self.metadata_service.extract_and_normalize(payload, loaded_photo)
+            thumbnail = self.thumbnail_service.generate_and_store(payload, loaded_photo)
+            result_message = self.build_completed_result(payload, loaded_photo, extracted, thumbnail)
+
+            await self.publish_result(result_message)
+            await self._consumer.commit()
+
+            logger.info(
+                (
+                    "Processed photo request photoId=%s tripId=%s attempt=%s "
+                    "source=%s format=%s mimeType=%s size=%sx%s mode=%s "
+                    "normalizedTakenAt=%s normalizedCoordinates=%s "
+                    "thumbnailKey=%s thumbnailSize=%sx%s thumbnailBytes=%s"
+                ),
+                payload.photo_id,
+                payload.trip_id,
+                payload.attempt,
+                loaded_photo.source_url,
+                loaded_photo.format,
+                loaded_photo.mime_type,
+                loaded_photo.width,
+                loaded_photo.height,
+                loaded_photo.mode,
+                extracted.normalized_taken_at.isoformat() if extracted.normalized_taken_at else None,
+                (
+                    f"{extracted.normalized_coordinates.latitude},{extracted.normalized_coordinates.longitude}"
+                    if extracted.normalized_coordinates
+                    else None
+                ),
+                thumbnail.thumbnail_key,
+                thumbnail.width,
+                thumbnail.height,
+                thumbnail.file_size_bytes,
+            )
+        except Exception as exc:
+            await self._handle_processing_failure(message, payload, exc)
+            await self._consumer.commit()
 
     async def publish_result(self, message: PhotoProcessingResultMessage) -> None:
         await self._publish(
@@ -132,6 +134,46 @@ class PhotoConsumer:
             self.settings.kafka_photo_dlq_topic,
             message.photo_id or "unknown-photo",
             message.model_dump(mode="json", by_alias=True),
+        )
+
+    def build_completed_result(
+        self,
+        payload: PhotoProcessingRequest,
+        loaded_photo: Any,
+        extracted: Any,
+        thumbnail: Any,
+    ) -> PhotoProcessingResultMessage:
+        metadata = dict(extracted.metadata)
+        metadata.update(
+            {
+                "thumbnailFormat": thumbnail.format,
+                "thumbnailMimeType": thumbnail.mime_type,
+                "thumbnailWidth": thumbnail.width,
+                "thumbnailHeight": thumbnail.height,
+                "thumbnailSizeBytes": thumbnail.file_size_bytes,
+                "thumbnailUrl": thumbnail.thumbnail_url,
+            }
+        )
+
+        return PhotoProcessingResultMessage(
+            photo_id=payload.photo_id,
+            trip_id=payload.trip_id,
+            owner_user_id=payload.owner_user_id,
+            status="COMPLETED",
+            storage_key=payload.storage_key,
+            thumbnail_key=thumbnail.thumbnail_key,
+            content_type=payload.content_type or loaded_photo.mime_type,
+            file_name=payload.file_name,
+            taken_at=payload.taken_at or extracted.extracted_taken_at,
+            taken_timezone=payload.taken_timezone,
+            normalized_taken_at=extracted.normalized_taken_at,
+            coordinates=payload.coordinates or extracted.extracted_coordinates,
+            normalized_coordinates=extracted.normalized_coordinates,
+            width=loaded_photo.width,
+            height=loaded_photo.height,
+            metadata=metadata,
+            processed_at=self._utcnow(),
+            attempt=payload.attempt,
         )
 
     def build_failed_result(
@@ -170,6 +212,32 @@ class PhotoConsumer:
             error_code=type(exc).__name__,
             error_message=str(exc),
             failed_at=self._utcnow(),
+        )
+
+    async def _handle_processing_failure(self, message: Any, payload: PhotoProcessingRequest, exc: Exception) -> None:
+        next_attempt = payload.attempt + 1
+
+        if next_attempt <= self.settings.kafka_max_retry_attempts:
+            retry_payload = payload.model_copy(update={"attempt": next_attempt})
+            await self.publish_retry(retry_payload)
+            logger.warning(
+                "Queued photo processing retry photoId=%s attempt=%s error=%s",
+                payload.photo_id,
+                next_attempt,
+                exc,
+            )
+            return
+
+        failed_result = self.build_failed_result(payload, exc)
+        dlq_message = self.build_dlq_message(message, payload, exc)
+
+        await self.publish_result(failed_result)
+        await self.publish_dlq(dlq_message)
+        logger.exception(
+            "Moved photo processing message to DLQ photoId=%s after %s attempts",
+            payload.photo_id,
+            payload.attempt,
+            exc_info=exc,
         )
 
     async def _publish(self, topic: str, key: str, value: dict[str, Any]) -> None:

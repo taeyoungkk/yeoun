@@ -78,7 +78,7 @@ Worker/
   - 촬영 시각과 GPS 좌표를 타임라인 생성에 맞게 정규화
 
 - `app/services/photo_thumbnail.py`
-  - 여행 사진 썸네일 생성 및 저장
+  - 여행 사진 썸네일 생성 및 S3 업로드
   - EXIF orientation 반영 후 리사이즈 수행
 
 - `app/consumer/receipt_consumer.py`
@@ -87,7 +87,7 @@ Worker/
 
 - `app/consumer/photo_consumer.py`
   - 여행 사진 처리 consumer/producer 뼈대
-  - 현재는 request 검증, 원본 다운로드, EXIF 추출/정규화, 썸네일 생성/저장까지 수행
+  - 현재는 request 검증, 원본 다운로드, EXIF 추출/정규화, 썸네일 생성/S3 업로드까지 수행
 
 ## 실행 방식
 
@@ -158,7 +158,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 - consumer/producer 뼈대 추가
 - 원본 이미지 다운로드 및 이미지 로딩 구현
 - EXIF 촬영 시각 / GPS 추출 및 정규화 구현
-- 썸네일 생성 및 로컬 저장 구현
+- 썸네일 생성 및 S3 업로드 구현
 
 ## 주요 환경변수
 
@@ -169,10 +169,15 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 - `KAFKA_PHOTO_DLQ_TOPIC=photo-processing-dlq`
 - `KAFKA_PHOTO_CONSUMER_GROUP=yeoun-worker-photo`
 - `IMAGE_BASE_URL=http://localhost/images`
-- `PHOTO_THUMBNAIL_OUTPUT_DIR=storage/thumbnails`
 - `PHOTO_THUMBNAIL_FORMAT=JPEG`
 - `PHOTO_THUMBNAIL_MAX_SIZE=512`
 - `PHOTO_THUMBNAIL_QUALITY=85`
+- `AWS_REGION=ap-northeast-2`
+- `AWS_S3_BUCKET=your_bucket_name`
+- `AWS_ACCESS_KEY_ID=your_access_key`
+- `AWS_SECRET_ACCESS_KEY=your_secret_key`
+- `AWS_S3_THUMBNAIL_PREFIX=thumbnails`
+- `AWS_S3_PUBLIC_BASE_URL=https://your-bucket.s3.ap-northeast-2.amazonaws.com`
 
 ## 현재 구현 상태
 
@@ -183,12 +188,11 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 - 여행 사진 Kafka 스키마 및 consumer/producer 뼈대
 - 여행 사진 원본 다운로드 및 이미지 로더
 - 여행 사진 EXIF 메타데이터 추출 및 시간/위치 정규화
-- 여행 사진 썸네일 생성 및 로컬 저장
+- 여행 사진 썸네일 생성 및 S3 업로드
 
 아직 필요한 것:
 
 - 백엔드의 여행 사진 request producer
 - 백엔드의 여행 사진 result consumer
-- 원본 이미지/썸네일 공유 저장소 연동
 - 여행 사진 처리 결과 메시지 발행
 - 여행 사진 retry/DLQ 처리
