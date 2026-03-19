@@ -13,9 +13,9 @@ public class S3Config {
 
     @Bean
     public S3Client s3Client(
-            @Value("${aws.access-key-id}") String accessKeyId,
-            @Value("${aws.secret-access-key}") String secretAccessKey,
-            @Value("${aws.region}") String region
+            @Value("${AWS_ACCESS_KEY_ID:${aws.access-key-id}}") String accessKeyId,
+            @Value("${AWS_SECRET_ACCESS_KEY:${aws.secret-access-key}}") String secretAccessKey,
+            @Value("${AWS_REGION:${aws.region}}") String region
     ) {
         return S3Client.builder()
                 .region(Region.of(region))
