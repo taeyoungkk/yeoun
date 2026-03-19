@@ -1,4 +1,4 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+﻿import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Mapbox from '@rnmapbox/maps';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -150,6 +150,8 @@ export default function TripRecordingScreen() {
   const params = useLocalSearchParams();
   const endTrip = useTripStore((state) => state.endTrip);
   const isTripActive = useTripStore((state) => state.isTripActive);
+  const currentTrip = useTripStore((state) => state.currentTrip);
+  const currentTripId = useTripStore((state) => state.currentTripId);
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -273,6 +275,8 @@ export default function TripRecordingScreen() {
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
   const panelLift = -145 * collapseProgress;
+  const activeTripId = currentTripId ?? 'trip-demo-uuid';
+  const tripTitle = currentTrip?.tripName || 'Trip';
   const isReviewMode = params.mode === 'review' || !isTripActive;
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
 
@@ -329,7 +333,7 @@ export default function TripRecordingScreen() {
   useEffect(() => {
     const SYNC_INTERVAL = 5 * 60 * 1000;
     const timer = setInterval(() => {
-      locationService.syncLocations('trip-demo-uuid'); // Using demo trip ID
+      locationService.syncLocations(activeTripId); // Using demo trip ID
     }, SYNC_INTERVAL);
 
     return () => clearInterval(timer);
@@ -337,7 +341,7 @@ export default function TripRecordingScreen() {
 
   const handleManualSync = async () => {
     setIsSyncing(true);
-    const success = await locationService.syncLocations('trip-demo-uuid');
+    const success = await locationService.syncLocations(activeTripId);
     setIsSyncing(false);
     
     if (success) {
@@ -363,9 +367,9 @@ export default function TripRecordingScreen() {
           onPress: async () => {
             setIsSyncing(true);
             // 1. 마지막 위치 동기화
-            await locationService.syncLocations('trip-demo-uuid');
+            await locationService.syncLocations(activeTripId);
             // 2. API로 여행 종료 상태 변경
-            await endTripApi('trip-demo-uuid');
+            await endTripApi(activeTripId);
             // 3. 트래킹 중지
             await locationService.stopTracking();
             setIsSyncing(false);
@@ -611,16 +615,11 @@ export default function TripRecordingScreen() {
         </TouchableOpacity>
         <View style={styles.headerTextWrap}>
           <View style={styles.headerTitleRow}>
-            <Text style={styles.headerTitle}>제주도 여행</Text>
+            <Text style={styles.headerTitle}>{tripTitle}</Text>
             <View style={styles.recordingInline}>
               <View style={[styles.recordingDot, isReviewMode && styles.recordingDotCompleted]} />
               <Text style={[styles.recordingStatusText, isReviewMode && styles.recordingStatusTextCompleted]}>{recordingStatusText}</Text>
               <Text style={styles.recordingInlineText}>기록중</Text>
-            </View>
-            {/* GPS 활성 표시 */}
-            <View style={[styles.gpsIndicator, isReviewMode && styles.gpsIndicatorHidden]}>
-              <MaterialIcons name="location-on" size={12} color="#4C8E5E" />
-              <Text style={styles.gpsIndicatorText}>GPS 작동중</Text>
             </View>
           </View>
         </View>
@@ -1364,27 +1363,12 @@ const styles = StyleSheet.create({
   headerTextWrap: { flex: 1 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   recordingInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerMeta: { marginTop: 4, fontFamily: 'Pretendard-Medium', fontSize: 12, color: '#5F6E65' },
   recordingDot: { width: 7, height: 7, borderRadius: 999, backgroundColor: '#F35B4F' },
   recordingInlineText: { width: 0, height: 0, opacity: 0 },
   recordingDotCompleted: { backgroundColor: '#4C8E5E' },
   recordingStatusText: { fontFamily: 'Pretendard-SemiBold', fontSize: 11, color: '#F35B4F' },
   recordingStatusTextCompleted: { color: '#4C8E5E' },
-  gpsIndicator: {
-    marginLeft: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  gpsIndicatorHidden: { display: 'none' },
-  gpsIndicatorText: {
-    fontFamily: 'Pretendard-SemiBold',
-    fontSize: 10,
-    color: '#4C8E5E',
-    marginLeft: 3,
-  },
   headerTitle: { fontFamily: 'Pretendard-Bold', fontSize: 22, color: '#17201A' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   syncHeaderButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 18, backgroundColor: '#E3EBDD', paddingHorizontal: 12, height: 36 },

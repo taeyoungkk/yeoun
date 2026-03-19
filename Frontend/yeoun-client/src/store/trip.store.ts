@@ -1,25 +1,47 @@
 import { create } from 'zustand';
 
+export interface CurrentTrip {
+  tripId: string;
+  tripName: string;
+  startDate: string;
+  endDate: string;
+  memberCount: number;
+  origin: string;
+  destination: string;
+}
+
 interface TripState {
   isTripActive: boolean;
   currentTripId: string | null;
-
-  // ─── Actions ────────────────────────────────────────────────────────────────
-  startTrip: (tripId: string) => void;
+  currentTrip: CurrentTrip | null;
+  startTrip: (trip: CurrentTrip) => void;
   endTrip: () => void;
+  clearTrip: () => void;
 }
 
 export const useTripStore = create<TripState>((set) => ({
   isTripActive: false,
   currentTripId: null,
-
-  startTrip: (tripId) =>
-    set({ isTripActive: true, currentTripId: tripId }),
-
+  currentTrip: null,
+  startTrip: (trip) =>
+    set({
+      isTripActive: true,
+      currentTripId: trip.tripId,
+      currentTrip: trip,
+    }),
   endTrip: () =>
-    set({ isTripActive: false, currentTripId: null }),
+    set((state) => ({
+      isTripActive: false,
+      currentTripId: state.currentTrip?.tripId ?? null,
+    })),
+  clearTrip: () =>
+    set({
+      isTripActive: false,
+      currentTripId: null,
+      currentTrip: null,
+    }),
 }));
 
-// ─── Selectors ────────────────────────────────────────────────────────────────
 export const selectIsTripActive = (s: TripState) => s.isTripActive;
 export const selectCurrentTripId = (s: TripState) => s.currentTripId;
+export const selectCurrentTrip = (s: TripState) => s.currentTrip;

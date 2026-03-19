@@ -200,14 +200,21 @@ function FieldNoticeModal({
 export default function TripStartScreen() {
   const router = useRouter();
   const startTrip = useTripStore((state) => state.startTrip);
+  const currentTrip = useTripStore((state) => state.currentTrip);
   
-  const [tripName, setTripName] = useState('');
+  const [tripName, setTripName] = useState(currentTrip?.tripName ?? '');
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(new Date(2025, 8, 1));
+  const [calendarMonth, setCalendarMonth] = useState(
+    currentTrip?.startDate ? new Date(currentTrip.startDate) : new Date(2025, 8, 1)
+  );
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
-  const [memberCount, setMemberCount] = useState(2);
+  const [startDate, setStartDate] = useState<Date | null>(
+    currentTrip?.startDate ? new Date(currentTrip.startDate) : null
+  );
+  const [endDate, setEndDate] = useState<Date | null>(
+    currentTrip?.endDate ? new Date(currentTrip.endDate) : null
+  );
+  const [memberCount, setMemberCount] = useState(currentTrip?.memberCount ?? 2);
   const [screenMode, setScreenMode] = useState<ScreenMode>('form');
   const [searchQuery, setSearchQuery] = useState('');
   const [inviteMembers, setInviteMembers] = useState<InviteMember[]>(INITIAL_INVITE_MEMBERS);
@@ -248,6 +255,23 @@ export default function TripStartScreen() {
     if (!startDate || !endDate) return undefined;
     return `${formatDateLabel(startDate)} - ${formatDateLabel(endDate)}`;
   }, [endDate, startDate]);
+  const tripDraft = useMemo(
+    () => ({
+      tripId: currentTrip?.tripId ?? 'trip-demo-uuid',
+      tripName: tripName.trim(),
+      startDate: startDate?.toISOString() ?? new Date().toISOString(),
+      endDate: endDate?.toISOString() ?? startDate?.toISOString() ?? new Date().toISOString(),
+      memberCount,
+      origin: currentTrip?.origin ?? '대전',
+      destination:
+        currentTrip?.destination ??
+        tripName
+          .trim()
+          .replace(/\s*여행$/, '')
+          .replace(/\s*trip$/i, ''),
+    }),
+    [currentTrip?.destination, currentTrip?.origin, currentTrip?.tripId, endDate, memberCount, startDate, tripName]
+  );
 
   const handlePickDay = (date: Date) => {
     if (!startDate || endDate) {
@@ -299,7 +323,7 @@ export default function TripStartScreen() {
       }
       
       // 3. 전역 상태 활성화 및 기록 화면으로 이동
-      startTrip('trip-demo-uuid');
+      startTrip(tripDraft);
       router.push('/trip/recording');
     };
     
@@ -325,7 +349,7 @@ export default function TripStartScreen() {
 
   const handleStartTripImmediateNavigation = async () => {
     setNoticeModalType(null);
-    startTrip('trip-demo-uuid');
+    startTrip(tripDraft);
     router.replace('/trip/recording');
 
     try {

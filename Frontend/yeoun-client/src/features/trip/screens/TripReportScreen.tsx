@@ -1,4 +1,4 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+﻿import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { CURRENT_USER_ID, getTripEvents, type TimelineEvent } from '@/src/features/trip/store/tripMockStore';
+import { useTripStore } from '@/src/store/trip.store';
 
 // --- 상수 및 데이터 (기존 유지) ---
 const REPORT_DAYS = [
@@ -38,6 +39,7 @@ const parseAmount = (amount?: string) => {
   return digits ? Number(digits) : 0;
 };
 const formatWon = (value: number) => `₩${value.toLocaleString('ko-KR')}`;
+const formatTripDate = (date?: string) => (date ? date.slice(2, 10).replace(/-/g, '.') : '--.--.--');
 
 const getEmotionSnapshot = (events: TimelineEvent[]) => {
   const counts = new Map();
@@ -72,6 +74,7 @@ const getSettlementRows = (events: TimelineEvent[]) =>
     });
 
 export default function TripReportScreen() {
+  const currentTrip = useTripStore((state) => state.currentTrip);
   const router = useRouter();
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
@@ -92,6 +95,14 @@ export default function TripReportScreen() {
   const remainingAmount = Math.max(2000000 - totalUsed, 0);
   const remainingPerPerson = Math.round(remainingAmount / 2);
   const unsettledAmount = settlementRows.filter((row) => row.status === '대기').reduce((sum, row) => sum + row.amount, 0);
+  const tripTitle = currentTrip?.tripName || 'Trip';
+  const tripStartLabel = formatTripDate(currentTrip?.startDate);
+  const tripEndLabel = formatTripDate(currentTrip?.endDate);
+  const travelerCount = String(currentTrip?.memberCount ?? 4).padStart(2, '0');
+  const tripOrigin = currentTrip?.origin || '대전';
+  const tripDestination = currentTrip?.destination || tripTitle;
+  const emotionCount = String(emotionSnapshot.reduce((sum, emotion) => sum + emotion.count, 0)).padStart(2, '0');
+  const totalCostLabel = formatWon(totalUsed);
   const confirmedRows = settlementRows.filter((row) => row.status === '확정');
   const candidateRows = settlementRows.filter((row) => row.status === '대기');
 
@@ -116,7 +127,7 @@ export default function TripReportScreen() {
               <MaterialIcons name="arrow-back" size={22} color="#3852D6" />
             </TouchableOpacity>
             <View style={styles.headerCopy}>
-              <Text style={styles.headerTitle}>제주도 여행 종료</Text>
+              <Text style={styles.headerTitle}>{tripTitle}</Text>
             </View>
             <TouchableOpacity style={styles.headerActionButton} onPress={handleGoHome}>
               <Text style={styles.headerActionText}>완료</Text>
@@ -147,8 +158,8 @@ export default function TripReportScreen() {
 
               <View style={styles.ticketRow}>
                 <View style={styles.ticketRouteBlock}>
-                  <Text style={styles.ticketCode}>대전</Text>
-                  <Text style={styles.ticketDateText}>26.03.03</Text>
+                  <Text style={styles.ticketCode}>{tripOrigin}</Text>
+                  <Text style={styles.ticketDateText}>{tripStartLabel}</Text>
                 </View>
 
                 <View style={styles.ticketRouteCenter}>
@@ -161,8 +172,8 @@ export default function TripReportScreen() {
                 </View>
 
                 <View style={styles.ticketRouteBlock}>
-                  <Text style={[styles.ticketCode, styles.ticketCodeRight]}>제주</Text>
-                  <Text style={[styles.ticketDateText, styles.ticketDateTextRight]}>26.03.07</Text>
+                  <Text style={[styles.ticketCode, styles.ticketCodeRight]}>{tripDestination}</Text>
+                  <Text style={[styles.ticketDateText, styles.ticketDateTextRight]}>{tripEndLabel}</Text>
                 </View>
               </View>
 
@@ -173,9 +184,9 @@ export default function TripReportScreen() {
                   { label: 'Distance', value: `${totalDistance.toFixed(1)}km` },
                   { label: 'Photos', value: String(totalPhotos).padStart(2, '0') },
                   { label: 'Records', value: String(totalLogs).padStart(2, '0') },
-                  { label: 'Travelers', value: '04' },
-                  { label: 'Emotions', value: '04' },
-                  { label: 'Total Cost', value: '₩120,000' },
+                  { label: 'Travelers', value: travelerCount },
+                  { label: 'Emotions', value: emotionCount },
+                  { label: 'Total Cost', value: totalCostLabel },
                 ].map((item, idx) => (
                   <View key={idx} style={styles.ticketInfoCell}>
                     <Text style={styles.ticketInfoLabel}>{item.label}</Text>
