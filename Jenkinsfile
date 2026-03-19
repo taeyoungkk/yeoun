@@ -129,8 +129,14 @@ pipeline {
 
               chmod +x mvnw || true
               
-              # 3. 테스트용 .env 더미 생성 (APP_INVITE_BASE_URL 포함)
-              cat <<EOT > .env
+              # 3. 테스트용 .env 더미 생성 (하드코딩 제거!)
+              # 백엔드의 .env.example 템플릿을 그대로 복사해서 가져옵니다. (AWS, Kafka 등 모든 변수 자동 포함)
+              cp src/main/resources/application-local.properties.example src/main/resources/application-ci.properties || true
+              cp .env.example .env || true
+              
+              # 동적으로 생성된 임시 DB/Redis 주소와 보안 규칙에 걸리지 않는 형태의 JWT 키만 덮어씌웁니다.
+              # (추후 .env.example 에 새로운 변수가 생겨도 젠킨스 코드를 고칠 필요가 없습니다!)
+              cat <<EOT >> .env
 DB_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
 FLYWAY_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
 DB_USERNAME=${CI_POSTGRES_USER}
@@ -138,19 +144,12 @@ DB_PASSWORD=${CI_POSTGRES_PASSWORD}
 REDIS_HOST=${REDIS_IP}
 REDIS_PORT=6379
 JWT_SECRET=c2VjcmV0LWtleS1mb3ItdGVzdGluZy1wdXJwb3Nlcw==
-JWT_ACCESS_EXPIRE_SECONDS=1800
-JWT_REFRESH_EXPIRE_SECONDS=1209600
-MAIL_HOST=smtp.gmail.com
-MAIL_PORT=587
-MAIL_USERNAME=dummy@gmail.com
-MAIL_PASSWORD=dummy
-MAIL_FROM=dummy@gmail.com
-GOOGLE_CLIENT_ID=dummy.apps.googleusercontent.com
-GOOGLE_JWK_SET_URI=https://www.googleapis.com/oauth2/v3/certs
-APP_INVITE_BASE_URL=http://localhost:8080
 EOT
 
-              cp src/main/resources/application-local.properties.example src/main/resources/application-ci.properties || true
+              # 젠킨스 터미널을 위해 .env 파일의 변수들을 bash 환경 변수로 내보냅니다 (export)
+              set -a
+              source .env
+              set +a
 
               # 4. 테스트 실행
               ./mvnw -q clean test \
