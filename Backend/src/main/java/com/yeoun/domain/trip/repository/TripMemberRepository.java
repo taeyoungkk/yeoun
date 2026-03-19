@@ -57,4 +57,13 @@ public interface TripMemberRepository extends JpaRepository<TripMember, UUID> {
     List<TripMemberSummaryProjection> findVisibleMembersByTripId(@Param("tripId") UUID tripId);
 
     List<TripMember> findByTripIdAndInviteStatusAndLeftAtIsNull(UUID tripId, TripMemberInviteStatus inviteStatus);
+
+    @Query("""
+            SELECT tm.userId
+            FROM TripMember tm
+            WHERE tm.tripId = :tripId
+              AND tm.inviteStatus = com.yeoun.domain.trip.entity.TripMemberInviteStatus.ACCEPTED
+              AND tm.leftAt IS NULL
+            """)
+    List<UUID> findCurrentUserIdsByTripId(@Param("tripId") UUID tripId);
 }

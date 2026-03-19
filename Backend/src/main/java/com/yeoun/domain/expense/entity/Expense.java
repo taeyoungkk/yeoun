@@ -76,4 +76,29 @@ public class Expense {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public void update(
+            String merchantName,
+            ExpenseCategory category,
+            String currencyCode,
+            BigDecimal totalAmount,
+            Instant paidAt,
+            UUID payerUserId,
+            String memo,
+            Instant now
+    ) {
+        this.merchantName = merchantName;
+        this.category = category;
+        this.currencyCode = currencyCode;
+        this.totalAmount = totalAmount;
+        this.paidAt = paidAt;
+        this.payerUserId = payerUserId;
+        this.memo = memo;
+        this.updatedAt = now;
+    }
+
+    public void markDeleted(Instant now) {
+        this.status = ExpenseStatus.DELETED;
+        this.updatedAt = now;
+    }
 }
