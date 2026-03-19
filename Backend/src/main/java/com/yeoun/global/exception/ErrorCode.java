@@ -39,6 +39,7 @@ public enum ErrorCode {
     TRIP_START_NOT_ALLOWED(HttpStatus.CONFLICT, "Trip start is not allowed for this status."),
     TRIP_END_NOT_ALLOWED(HttpStatus.CONFLICT, "Trip end is not allowed for this status."),
     TRIP_LOCATION_LOG_UPLOAD_NOT_ALLOWED(HttpStatus.CONFLICT, "Location log upload is not allowed for this trip status."),
+    TIMELINE_BUILD_NOT_ALLOWED(HttpStatus.CONFLICT, "Timeline build is not allowed for this trip status."),
     TRIP_PROCESSING_STATUS_NOT_FOUND(HttpStatus.NOT_FOUND, "Trip processing status not found."),
     TRIP_INVITE_NOT_ALLOWED(HttpStatus.CONFLICT, "Invites are not allowed for this trip status."),
     TRIP_INVITE_ACCEPT_NOT_ALLOWED(HttpStatus.CONFLICT, "This invite cannot be accepted."),

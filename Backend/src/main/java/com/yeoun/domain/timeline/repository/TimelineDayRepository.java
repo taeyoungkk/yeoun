@@ -12,4 +12,6 @@ public interface TimelineDayRepository extends JpaRepository<TimelineDay, UUID> 
     List<TimelineDay> findByTripIdOrderByDayDateAsc(UUID tripId);
 
     Optional<TimelineDay> findByTripIdAndDayDate(UUID tripId, LocalDate dayDate);
+
+    void deleteByTripId(UUID tripId);
 }

@@ -43,6 +43,22 @@ public class TripProcessingStatusService {
     }
 
     @Transactional
+    public void markProcessing(UUID tripId, Instant now) {
+        TripProcessingStatus status = tripProcessingStatusRepository.findById(tripId)
+                .orElseThrow();
+        status.markProcessing(now);
+        tripProcessingStatusRepository.save(status);
+    }
+
+    @Transactional
+    public void markReady(UUID tripId, Instant now) {
+        TripProcessingStatus status = tripProcessingStatusRepository.findById(tripId)
+                .orElseThrow();
+        status.markReady(now);
+        tripProcessingStatusRepository.save(status);
+    }
+
+    @Transactional
     public void markFailed(UUID tripId, Instant now, String errorMessage) {
         TripProcessingStatus status = tripProcessingStatusRepository.findById(tripId)
                 .orElseGet(() -> TripProcessingStatus.builder()

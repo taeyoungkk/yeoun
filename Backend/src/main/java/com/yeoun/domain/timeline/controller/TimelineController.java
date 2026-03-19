@@ -1,8 +1,10 @@
 package com.yeoun.domain.timeline.controller;
 
 import com.yeoun.domain.timeline.dto.response.EventDetailResponse;
+import com.yeoun.domain.timeline.dto.response.TimelineBuildJobResponse;
 import com.yeoun.domain.timeline.dto.response.TimelineDayDetailResponse;
 import com.yeoun.domain.timeline.dto.response.TimelineDayListResponse;
+import com.yeoun.domain.timeline.service.TimelineBuildService;
 import com.yeoun.domain.timeline.service.TimelineQueryService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -13,6 +15,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,9 +28,21 @@ import java.util.UUID;
 public class TimelineController {
 
     private final TimelineQueryService timelineQueryService;
+    private final TimelineBuildService timelineBuildService;
 
-    public TimelineController(TimelineQueryService timelineQueryService) {
+    public TimelineController(TimelineQueryService timelineQueryService, TimelineBuildService timelineBuildService) {
         this.timelineQueryService = timelineQueryService;
+        this.timelineBuildService = timelineBuildService;
+    }
+
+    @PostMapping("/trips/{tripId}/timeline-build-jobs")
+    @Operation(summary = "타임라인 생성 작업 요청", description = "현재는 사진 메타데이터만 기준으로 여행 타임라인을 임시 생성합니다.")
+    public ApiResponse<TimelineBuildJobResponse> buildTimeline(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") UUID tripId
+    ) {
+        TimelineBuildJobResponse response = timelineBuildService.buildTimelineFromPhotos(principal.userId(), tripId);
+        return ApiResponse.ok(response);
     }
 
     @GetMapping("/trips/{tripId}/timeline-days")
