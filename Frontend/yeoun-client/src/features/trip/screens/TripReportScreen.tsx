@@ -10,6 +10,9 @@ import { CURRENT_USER_ID, getTripEvents, type TimelineEvent } from '@/src/featur
 import { useTripStore } from '@/src/store/trip.store';
 
 // --- 상수 및 데이터 (기존 유지) ---
+// NOTE:
+// - reportDays uses currentTrip start/end date from the real trip flow.
+// - REPORT_DAYS remains mock-only data for per-day metrics/content until real aggregation is connected.
 const REPORT_DAYS = [
   { id: 'day1', label: '1일차', dateLabel: '03.11', distanceKm: 12.8 },
   { id: 'day2', label: '2일차', dateLabel: '03.12', distanceKm: 9.4 },
@@ -40,6 +43,41 @@ const parseAmount = (amount?: string) => {
 };
 const formatWon = (value: number) => `₩${value.toLocaleString('ko-KR')}`;
 const formatTripDate = (date?: string) => (date ? date.slice(2, 10).replace(/-/g, '.') : '--.--.--');
+const formatDayLabel = (date: Date) =>
+  `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+
+const buildReportDays = (startDate?: string, endDate?: string) => {
+  const start = startDate ? new Date(startDate) : null;
+  const end = endDate ? new Date(endDate) : null;
+
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return REPORT_DAYS;
+  }
+
+  const normalizedStart = new Date(start);
+  const normalizedEnd = new Date(end);
+  normalizedStart.setHours(0, 0, 0, 0);
+  normalizedEnd.setHours(0, 0, 0, 0);
+
+  const diffDays = Math.max(
+    1,
+    Math.floor((normalizedEnd.getTime() - normalizedStart.getTime()) / (24 * 60 * 60 * 1000)) + 1,
+  );
+
+  return Array.from({ length: diffDays }, (_, index) => {
+    const targetDate = new Date(normalizedStart);
+    targetDate.setDate(normalizedStart.getDate() + index);
+    // Keep mock summary values for now, but align the visible day/date with the actual trip schedule.
+    const template = REPORT_DAYS[Math.min(index, REPORT_DAYS.length - 1)];
+
+    return {
+      ...template,
+      id: `day${index + 1}`,
+      label: `${index + 1}\uC77C\uCC28`,
+      dateLabel: formatDayLabel(targetDate),
+    };
+  });
+};
 
 const getEmotionSnapshot = (events: TimelineEvent[]) => {
   const counts = new Map();
@@ -83,7 +121,11 @@ export default function TripReportScreen() {
   const handleBackToTimeline = () => router.replace('/trip/recording?mode=review');
 
   const events = useMemo(() => getTripEvents(), []);
-  const totalDistance = useMemo(() => REPORT_DAYS.reduce((sum, day) => sum + day.distanceKm, 0), []);
+  const reportDays = useMemo(
+    () => buildReportDays(currentTrip?.startDate, currentTrip?.endDate),
+    [currentTrip?.endDate, currentTrip?.startDate],
+  );
+  const totalDistance = useMemo(() => reportDays.reduce((sum, day) => sum + day.distanceKm, 0), [reportDays]);
   const totalPhotos = useMemo(() => events.reduce((sum, event) => sum + (event.photoItems?.length ?? 0), 0), [events]);
   const totalLogs = useMemo(() => events.length, [events]);
   const timelineEvents = useMemo(() => [...events], [events]);
@@ -92,10 +134,9 @@ export default function TripReportScreen() {
 
   const totalUsed = useMemo(() => settlementRows.reduce((sum, row) => sum + row.amount, 0), [settlementRows]);
   const sharedPerPerson = useMemo(() => Math.round(settlementRows.reduce((sum, row) => sum + row.share, 0)), [settlementRows]);
-  const remainingAmount = Math.max(2000000 - totalUsed, 0);
-  const remainingPerPerson = Math.round(remainingAmount / 2);
   const unsettledAmount = settlementRows.filter((row) => row.status === '대기').reduce((sum, row) => sum + row.amount, 0);
   const tripTitle = currentTrip?.tripName || 'Trip';
+  const reportTitle = `${tripTitle} 종료`;
   const tripStartLabel = formatTripDate(currentTrip?.startDate);
   const tripEndLabel = formatTripDate(currentTrip?.endDate);
   const travelerCount = String(currentTrip?.memberCount ?? 4).padStart(2, '0');
@@ -127,7 +168,7 @@ export default function TripReportScreen() {
               <MaterialIcons name="arrow-back" size={22} color="#3852D6" />
             </TouchableOpacity>
             <View style={styles.headerCopy}>
-              <Text style={styles.headerTitle}>{tripTitle}</Text>
+              <Text style={styles.headerTitle}>{reportTitle}</Text>
             </View>
             <TouchableOpacity style={styles.headerActionButton} onPress={handleGoHome}>
               <Text style={styles.headerActionText}>완료</Text>
@@ -199,7 +240,8 @@ export default function TripReportScreen() {
 
               <View>
                 <Text style={styles.ticketSectionTitle}>일정 요약</Text>
-                {REPORT_DAYS.map((day, idx) => {
+                {reportDays.map((day, idx) => {
+                  // TODO: Replace mock per-day counts with real aggregates from trip events/API.
                   const mockPhotos = idx === 0 ? 8 : idx === 1 ? 5 : 2;
                   const mockPlaces = idx === 0 ? 3 : idx === 1 ? 2 : 1;
                   return (
@@ -280,9 +322,6 @@ export default function TripReportScreen() {
               <View style={styles.summaryTop}>
                 <View style={styles.summaryRow}><Text style={styles.summaryLeft}>총 사용 금액</Text><Text style={styles.summaryRight}>{formatWon(totalUsed)}</Text></View>
                 <View style={styles.summaryRow}><Text style={styles.summaryLeft}>1인당 금액</Text><Text style={styles.summaryRight}>{formatWon(sharedPerPerson)}</Text></View>
-              </View>
-              <View style={styles.summaryBottom}>
-                <View style={styles.summaryRow}><Text style={styles.summaryBottomLeft}>남은 금액</Text><Text style={styles.summaryBottomRight}>{formatWon(remainingAmount)}</Text></View>
               </View>
             </Animated.View>
 
@@ -394,7 +433,7 @@ const styles = StyleSheet.create({
   timelineEmotionText: { fontSize: 11, color: '#B76A2E' },
 
   settlementSection: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFF', padding: 20 },
-  settlementTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
+  settlementTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'left', marginBottom: 15 },
   summaryTicket: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#EEE' },
   summaryTop: { padding: 15 },
   summaryBottom: { padding: 15, backgroundColor: '#DFF7FF' },
