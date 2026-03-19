@@ -2,10 +2,12 @@ package com.yeoun.domain.photo.service;
 
 import com.yeoun.domain.photo.dto.request.PhotoUpdateRequest;
 import com.yeoun.domain.photo.dto.response.PhotoDetailResponse;
+import com.yeoun.domain.photo.dto.response.PhotoDetailMyMemoResponse;
 import com.yeoun.domain.photo.dto.response.PhotoUpdateResponse;
 import com.yeoun.domain.photo.dto.response.TripPhotoListItemResponse;
 import com.yeoun.domain.photo.dto.response.TripPhotoListResponse;
 import com.yeoun.domain.photo.entity.Photo;
+import com.yeoun.domain.photo.repository.PhotoMemoRepository;
 import com.yeoun.domain.photo.repository.PhotoRepository;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripMemberInviteStatus;
@@ -26,15 +28,18 @@ import java.util.UUID;
 public class PhotoQueryService {
 
     private final PhotoRepository photoRepository;
+    private final PhotoMemoRepository photoMemoRepository;
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
 
     public PhotoQueryService(
             PhotoRepository photoRepository,
+            PhotoMemoRepository photoMemoRepository,
             TripRepository tripRepository,
             TripMemberRepository tripMemberRepository
     ) {
         this.photoRepository = photoRepository;
+        this.photoMemoRepository = photoMemoRepository;
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
     }
@@ -54,6 +59,9 @@ public class PhotoQueryService {
 
     public PhotoDetailResponse getPhotoDetail(UUID requesterUserId, UUID photoId) {
         Photo photo = getAccessiblePhoto(photoId, requesterUserId);
+        PhotoDetailMyMemoResponse myMemo = photoMemoRepository.findByPhotoIdAndUserId(photoId, requesterUserId)
+                .map(PhotoDetailMyMemoResponse::from)
+                .orElse(null);
 
         return new PhotoDetailResponse(
                 photo.getPhotoId(),
@@ -70,7 +78,8 @@ public class PhotoQueryService {
                 photo.getTakenTimezone(),
                 photo.getExifLatitude(),
                 photo.getExifLongitude(),
-                photo.isExcluded()
+                photo.isExcluded(),
+                myMemo
         );
     }
 

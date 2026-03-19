@@ -15,7 +15,7 @@ public record PhotoDetailResponse(
         UUID tripId,
         @Schema(description = "연결된 이벤트 ID")
         UUID eventId,
-        @Schema(description = "원본 저장 URL 또는 key")
+        @Schema(description = "원본 이미지 URL 또는 key")
         String storageUrl,
         @Schema(description = "썸네일 URL 또는 key")
         String thumbnailUrl,
@@ -36,6 +36,8 @@ public record PhotoDetailResponse(
         @Schema(description = "EXIF 경도")
         BigDecimal exifLongitude,
         @Schema(description = "제외 여부")
-        boolean isExcluded
+        boolean isExcluded,
+        @Schema(description = "현재 로그인한 사용자의 사진 메모")
+        PhotoDetailMyMemoResponse myMemo
 ) {
 }
