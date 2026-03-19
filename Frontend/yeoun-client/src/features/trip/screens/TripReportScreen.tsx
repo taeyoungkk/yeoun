@@ -1,4 +1,4 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+﻿import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -7,8 +7,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { CURRENT_USER_ID, getTripEvents, type TimelineEvent } from '@/src/features/trip/store/tripMockStore';
+import { useTripStore } from '@/src/store/trip.store';
 
 // --- 상수 및 데이터 (기존 유지) ---
+// NOTE:
+// - reportDays uses currentTrip start/end date from the real trip flow.
+// - REPORT_DAYS remains mock-only data for per-day metrics/content until real aggregation is connected.
 const REPORT_DAYS = [
   { id: 'day1', label: '1일차', dateLabel: '03.11', distanceKm: 12.8 },
   { id: 'day2', label: '2일차', dateLabel: '03.12', distanceKm: 9.4 },
@@ -38,6 +42,42 @@ const parseAmount = (amount?: string) => {
   return digits ? Number(digits) : 0;
 };
 const formatWon = (value: number) => `₩${value.toLocaleString('ko-KR')}`;
+const formatTripDate = (date?: string) => (date ? date.slice(2, 10).replace(/-/g, '.') : '--.--.--');
+const formatDayLabel = (date: Date) =>
+  `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+
+const buildReportDays = (startDate?: string, endDate?: string) => {
+  const start = startDate ? new Date(startDate) : null;
+  const end = endDate ? new Date(endDate) : null;
+
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return REPORT_DAYS;
+  }
+
+  const normalizedStart = new Date(start);
+  const normalizedEnd = new Date(end);
+  normalizedStart.setHours(0, 0, 0, 0);
+  normalizedEnd.setHours(0, 0, 0, 0);
+
+  const diffDays = Math.max(
+    1,
+    Math.floor((normalizedEnd.getTime() - normalizedStart.getTime()) / (24 * 60 * 60 * 1000)) + 1,
+  );
+
+  return Array.from({ length: diffDays }, (_, index) => {
+    const targetDate = new Date(normalizedStart);
+    targetDate.setDate(normalizedStart.getDate() + index);
+    // Keep mock summary values for now, but align the visible day/date with the actual trip schedule.
+    const template = REPORT_DAYS[Math.min(index, REPORT_DAYS.length - 1)];
+
+    return {
+      ...template,
+      id: `day${index + 1}`,
+      label: `${index + 1}\uC77C\uCC28`,
+      dateLabel: formatDayLabel(targetDate),
+    };
+  });
+};
 
 const getEmotionSnapshot = (events: TimelineEvent[]) => {
   const counts = new Map();
@@ -72,14 +112,21 @@ const getSettlementRows = (events: TimelineEvent[]) =>
     });
 
 export default function TripReportScreen() {
+  const currentTrip = useTripStore((state) => state.currentTrip);
   const router = useRouter();
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const receiptAppear = useRef(new Animated.Value(0)).current;
+  const handleGoHome = () => router.replace('/(tabs)');
+  const handleBackToTimeline = () => router.replace('/trip/recording?mode=review');
 
   const events = useMemo(() => getTripEvents(), []);
-  const totalDistance = useMemo(() => REPORT_DAYS.reduce((sum, day) => sum + day.distanceKm, 0), []);
+  const reportDays = useMemo(
+    () => buildReportDays(currentTrip?.startDate, currentTrip?.endDate),
+    [currentTrip?.endDate, currentTrip?.startDate],
+  );
+  const totalDistance = useMemo(() => reportDays.reduce((sum, day) => sum + day.distanceKm, 0), [reportDays]);
   const totalPhotos = useMemo(() => events.reduce((sum, event) => sum + (event.photoItems?.length ?? 0), 0), [events]);
   const totalLogs = useMemo(() => events.length, [events]);
   const timelineEvents = useMemo(() => [...events], [events]);
@@ -88,9 +135,16 @@ export default function TripReportScreen() {
 
   const totalUsed = useMemo(() => settlementRows.reduce((sum, row) => sum + row.amount, 0), [settlementRows]);
   const sharedPerPerson = useMemo(() => Math.round(settlementRows.reduce((sum, row) => sum + row.share, 0)), [settlementRows]);
-  const remainingAmount = Math.max(2000000 - totalUsed, 0);
-  const remainingPerPerson = Math.round(remainingAmount / 2);
   const unsettledAmount = settlementRows.filter((row) => row.status === '대기').reduce((sum, row) => sum + row.amount, 0);
+  const tripTitle = currentTrip?.tripName || 'Trip';
+  const reportTitle = `${tripTitle} 종료`;
+  const tripStartLabel = formatTripDate(currentTrip?.startDate);
+  const tripEndLabel = formatTripDate(currentTrip?.endDate);
+  const travelerCount = String(currentTrip?.memberCount ?? 4).padStart(2, '0');
+  const tripOrigin = currentTrip?.origin || '대전';
+  const tripDestination = currentTrip?.destination || tripTitle;
+  const emotionCount = String(emotionSnapshot.reduce((sum, emotion) => sum + emotion.count, 0)).padStart(2, '0');
+  const totalCostLabel = formatWon(totalUsed);
   const confirmedRows = settlementRows.filter((row) => row.status === '확정');
   const candidateRows = settlementRows.filter((row) => row.status === '대기');
 
@@ -111,12 +165,15 @@ export default function TripReportScreen() {
 
           {/* 헤더 */}
           <View style={styles.headerRow}>
-            <TouchableOpacity style={styles.headerButton} onPress={() => router.back()}>
+            <TouchableOpacity style={styles.headerButton} onPress={handleBackToTimeline}>
               <MaterialIcons name="arrow-back" size={22} color="#3852D6" />
             </TouchableOpacity>
             <View style={styles.headerCopy}>
-              <Text style={styles.headerTitle}>제주도 여행 종료</Text>
+              <Text style={styles.headerTitle}>{reportTitle}</Text>
             </View>
+            <TouchableOpacity style={styles.headerActionButton} onPress={handleGoHome}>
+              <Text style={styles.headerActionText}>완료</Text>
+            </TouchableOpacity>
           </View>
 
           {/* 메인 티켓 */}
@@ -143,8 +200,8 @@ export default function TripReportScreen() {
 
               <View style={styles.ticketRow}>
                 <View style={styles.ticketRouteBlock}>
-                  <Text style={styles.ticketCode}>대전</Text>
-                  <Text style={styles.ticketDateText}>26.03.03</Text>
+                  <Text style={styles.ticketCode}>{tripOrigin}</Text>
+                  <Text style={styles.ticketDateText}>{tripStartLabel}</Text>
                 </View>
 
                 <View style={styles.ticketRouteCenter}>
@@ -157,8 +214,8 @@ export default function TripReportScreen() {
                 </View>
 
                 <View style={styles.ticketRouteBlock}>
-                  <Text style={[styles.ticketCode, styles.ticketCodeRight]}>제주</Text>
-                  <Text style={[styles.ticketDateText, styles.ticketDateTextRight]}>26.03.07</Text>
+                  <Text style={[styles.ticketCode, styles.ticketCodeRight]}>{tripDestination}</Text>
+                  <Text style={[styles.ticketDateText, styles.ticketDateTextRight]}>{tripEndLabel}</Text>
                 </View>
               </View>
 
@@ -169,9 +226,9 @@ export default function TripReportScreen() {
                   { label: 'Distance', value: `${totalDistance.toFixed(1)}km` },
                   { label: 'Photos', value: String(totalPhotos).padStart(2, '0') },
                   { label: 'Records', value: String(totalLogs).padStart(2, '0') },
-                  { label: 'Travelers', value: '04' },
-                  { label: 'Emotions', value: '04' },
-                  { label: 'Total Cost', value: '₩120,000' },
+                  { label: 'Travelers', value: travelerCount },
+                  { label: 'Emotions', value: emotionCount },
+                  { label: 'Total Cost', value: totalCostLabel },
                 ].map((item, idx) => (
                   <View key={idx} style={styles.ticketInfoCell}>
                     <Text style={styles.ticketInfoLabel}>{item.label}</Text>
@@ -184,7 +241,8 @@ export default function TripReportScreen() {
 
               <View>
                 <Text style={styles.ticketSectionTitle}>일정 요약</Text>
-                {REPORT_DAYS.map((day, idx) => {
+                {reportDays.map((day, idx) => {
+                  // TODO: Replace mock per-day counts with real aggregates from trip events/API.
                   const mockPhotos = idx === 0 ? 8 : idx === 1 ? 5 : 2;
                   const mockPlaces = idx === 0 ? 3 : idx === 1 ? 2 : 1;
                   return (
@@ -266,9 +324,6 @@ export default function TripReportScreen() {
                 <View style={styles.summaryRow}><Text style={styles.summaryLeft}>총 사용 금액</Text><Text style={styles.summaryRight}>{formatWon(totalUsed)}</Text></View>
                 <View style={styles.summaryRow}><Text style={styles.summaryLeft}>1인당 금액</Text><Text style={styles.summaryRight}>{formatWon(sharedPerPerson)}</Text></View>
               </View>
-              <View style={styles.summaryBottom}>
-                <View style={styles.summaryRow}><Text style={styles.summaryBottomLeft}>남은 금액</Text><Text style={styles.summaryBottomRight}>{formatWon(remainingAmount)}</Text></View>
-              </View>
             </Animated.View>
 
             <TouchableOpacity style={styles.detailButton} onPress={() => setIsSettlementOpen(!isSettlementOpen)}>
@@ -288,8 +343,8 @@ export default function TripReportScreen() {
             )}
           </View>
 
-          <TouchableOpacity style={styles.finishButton} onPress={() => router.replace('/(tabs)')}>
-            <Text style={styles.finishButtonText}>공유하기</Text>
+          <TouchableOpacity style={styles.finishButton} onPress={handleGoHome}>
+            <Text style={styles.finishButtonText}>홈으로 돌아가기</Text>
           </TouchableOpacity>
         </ScrollView>
       </LinearGradient>
@@ -306,9 +361,11 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1 },
   headerKicker: { fontSize: 11, color: '#7281B8', fontWeight: '600' },
   headerTitle: { fontSize: 22, color: '#182245', fontWeight: 'bold' },
+  headerActionButton: { minWidth: 56, height: 38, borderRadius: 19, backgroundColor: '#3852D6', paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  headerActionText: { fontSize: 14, color: '#FFF', fontWeight: '700' },
 
   // 티켓 스타일
-  ticketWrap: { borderBottomLeftRadius: 35, borderBottomRightRadius: 35, backgroundColor: '#FFF', overflow: 'hidden' },
+  ticketWrap: { borderBottomLeftRadius: 35, borderBottomRightRadius: 35, backgroundColor: '#FFF', overflow: 'hidden', borderWidth: 1, borderColor: '#EEE' },
   barcodeSection: { height: 74, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 0, backgroundColor: '#FFFFFF' },
   barcodeStrip: { flexDirection: 'row', height: 44, gap: 3 },
   barcodeBar: { backgroundColor: '#5B4F66' },
@@ -347,7 +404,7 @@ const styles = StyleSheet.create({
   inlineDayValue: { fontSize: 14, color: '#7E8CB6', fontWeight: 'bold' },
 
   // 하단 공통 카드 스타일
-  sectionCard: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFF', padding: 20, elevation: 2 },
+  sectionCard: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFF', padding: 20, elevation: 2, borderWidth: 1, borderColor: '#EEE' },
   sectionKicker: { fontSize: 11, color: '#7182BC', fontWeight: '600' },
   sectionTitle: { fontSize: 19, color: '#1C2751', marginTop: 4, fontWeight: 'bold', marginBottom: 15 },
 
@@ -377,7 +434,7 @@ const styles = StyleSheet.create({
   timelineEmotionText: { fontSize: 11, color: '#B76A2E' },
 
   settlementSection: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFF', padding: 20 },
-  settlementTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
+  settlementTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'left', marginBottom: 15 },
   summaryTicket: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#EEE' },
   summaryTop: { padding: 15 },
   summaryBottom: { padding: 15, backgroundColor: '#DFF7FF' },

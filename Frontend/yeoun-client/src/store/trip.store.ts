@@ -11,6 +11,16 @@ export interface CurrentTrip {
   region?: string;
 }
 
+export interface CurrentTrip {
+  tripId: string;
+  tripName: string;
+  startDate: string;
+  endDate: string;
+  memberCount: number;
+  origin: string;
+  destination: string;
+}
+
 interface TripState {
   isTripActive: boolean;
   currentTripId: string | null;
@@ -78,4 +88,5 @@ export const useTripStore = create<TripState>((set) => ({
 
 export const selectIsTripActive = (s: TripState) => s.isTripActive;
 export const selectCurrentTripId = (s: TripState) => s.currentTripId;
+export const selectCurrentTrip = (s: TripState) => s.currentTrip;
 export const selectActiveTrip = (s: TripState) => s.activeTrip;

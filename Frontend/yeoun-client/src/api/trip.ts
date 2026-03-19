@@ -82,13 +82,10 @@ const shouldMockInDev = (error: unknown) => {
   if (!__DEV__ || !API_MOCKS_ENABLED) {
     return false;
   }
+
   return axios.isAxiosError(error) && !error.response;
 };
 
-/**
- * Creates a new trip.
- * POST /api/v1/trips
- */
 export const createTripApi = async (data: CreateTripRequest): Promise<TripDetailResponse> => {
   try {
     const response = await apiClient.post('/trips', data);
@@ -100,13 +97,14 @@ export const createTripApi = async (data: CreateTripRequest): Promise<TripDetail
         code: 'SUCCESS',
         message: 'Trip created (MOCK)',
         data: {
-          tripId: 'mock-trip-' + Date.now(),
+          tripId: `mock-trip-${Date.now()}`,
           ...data,
           status: 'DRAFT',
         },
         timestamp: new Date().toISOString(),
       };
     }
+
     console.error('Create Trip API Error:', error);
     return {
       success: false,
@@ -118,28 +116,26 @@ export const createTripApi = async (data: CreateTripRequest): Promise<TripDetail
   }
 };
 
-/**
- * Starts a trip by its ID.
- * POST /api/v1/trips/{tripId}/start
- */
 export const startTripApi = async (tripId: string): Promise<TripStartResponse> => {
   try {
     const response = await apiClient.post(`/trips/${tripId}/start`);
     return response.data;
   } catch (error: any) {
     if (shouldMockInDev(error)) {
+      console.log('startTripApi failed, mocking success in dev');
       return {
         success: true,
         code: 'SUCCESS',
-        message: 'Trip started (MOCK)',
+        message: '여행 시작 처리 성공 (MOCK)',
         data: {
-          tripId: tripId || 'mock-trip-id',
-          status: 'DRAFT',
+          tripId,
+          status: 'IN_PROGRESS',
           startedAt: new Date().toISOString(),
         },
         timestamp: new Date().toISOString(),
       };
     }
+
     console.error('Start Trip API Error:', error);
     return {
       success: false,
@@ -151,28 +147,26 @@ export const startTripApi = async (tripId: string): Promise<TripStartResponse> =
   }
 };
 
-/**
- * Ends a trip by its ID.
- * POST /api/v1/trips/{tripId}/end
- */
 export const endTripApi = async (tripId: string): Promise<TripStartResponse> => {
   try {
     const response = await apiClient.post(`/trips/${tripId}/end`);
     return response.data;
   } catch (error: any) {
     if (shouldMockInDev(error)) {
+      console.log('endTripApi failed, mocking success in dev');
       return {
         success: true,
         code: 'SUCCESS',
-        message: 'Trip ended (MOCK)',
+        message: '여행 종료 처리 성공 (MOCK)',
         data: {
-          tripId: tripId || 'mock-trip-id',
+          tripId,
           status: 'COMPLETED',
           startedAt: new Date().toISOString(),
         },
         timestamp: new Date().toISOString(),
       };
     }
+
     console.error('End Trip API Error:', error);
     return {
       success: false,
@@ -184,11 +178,10 @@ export const endTripApi = async (tripId: string): Promise<TripStartResponse> => 
   }
 };
 
-/**
- * Uploads a batch of location logs for a trip.
- * POST /api/v1/trips/{tripId}/locations
- */
-export const uploadLocationsApi = async (tripId: string, locations: LocationLog[]): Promise<TripLocationResponse> => {
+export const uploadLocationsApi = async (
+  tripId: string,
+  locations: LocationLog[],
+): Promise<TripLocationResponse> => {
   try {
     const response = await apiClient.post(`/trips/${tripId}/locations`, {
       locations,
@@ -196,29 +189,30 @@ export const uploadLocationsApi = async (tripId: string, locations: LocationLog[
     return response.data;
   } catch (error: any) {
     if (shouldMockInDev(error)) {
+      console.log('uploadLocationsApi failed, mocking success in dev');
       return {
         success: true,
         code: 'SUCCESS',
-        message: 'Locations uploaded (MOCK)',
-        data: null,
+        message: '위치 업로드 성공 (MOCK)',
+        data: {
+          tripId,
+          uploadedCount: locations.length,
+        },
         timestamp: new Date().toISOString(),
       };
     }
+
     console.error('Upload Locations API Error:', error);
     return {
       success: false,
       code: 'ERROR',
-      message: error.response?.data?.message || '위치 정보 업로드 중 오류가 발생했습니다.',
+      message: error.response?.data?.message || '위치 업로드 중 오류가 발생했습니다.',
       data: {} as any,
       timestamp: new Date().toISOString(),
     };
   }
 };
 
-/**
- * Gets trip details by ID.
- * GET /api/v1/trips/{tripId}
- */
 export const getTripDetailApi = async (tripId: string): Promise<TripDetailResponse> => {
   try {
     const response = await apiClient.get(`/trips/${tripId}`);
@@ -231,10 +225,10 @@ export const getTripDetailApi = async (tripId: string): Promise<TripDetailRespon
         message: 'Trip details fetched (MOCK)',
         data: {
           tripId: tripId || 'mock-trip-id',
-          title: 'mock 제주도 여행',
+          title: 'mock 여행 제목',
           startDate: '2024.02.03',
           endDate: '2024.02.06',
-          region: '제주도',
+          region: '제주',
           country: '대한민국',
           participants: 2,
           status: 'ONGOING',
@@ -242,21 +236,18 @@ export const getTripDetailApi = async (tripId: string): Promise<TripDetailRespon
         timestamp: new Date().toISOString(),
       };
     }
+
     console.error('Get Trip Detail API Error:', error);
     return {
       success: false,
       code: 'ERROR',
-      message: error.response?.data?.message || '여행 정보를 불러오는 중 오류가 발생했습니다.',
+      message: error.response?.data?.message || '여행 상세 조회 중 오류가 발생했습니다.',
       data: {} as any,
       timestamp: new Date().toISOString(),
     };
   }
 };
 
-/**
- * Gets a list of trips.
- * GET /api/v1/trips
- */
 export const getTripsApi = async (): Promise<TripListResponse> => {
   try {
     const response = await apiClient.get('/trips');
@@ -271,7 +262,7 @@ export const getTripsApi = async (): Promise<TripListResponse> => {
           items: [
             {
               tripId: 'mock-1',
-              title: '일본 여행',
+              title: '제주도 여행',
               startDate: '2024.02.03',
               endDate: '2024.02.06',
               status: 'COMPLETED',
@@ -279,7 +270,7 @@ export const getTripsApi = async (): Promise<TripListResponse> => {
             },
             {
               tripId: 'mock-2',
-              title: '제주도 가족 여행',
+              title: '강릉 우정 여행',
               startDate: '2023.12.15',
               endDate: '2023.12.18',
               status: 'COMPLETED',
@@ -290,11 +281,12 @@ export const getTripsApi = async (): Promise<TripListResponse> => {
         timestamp: new Date().toISOString(),
       };
     }
+
     console.error('Get Trips API Error:', error);
     return {
       success: false,
       code: 'ERROR',
-      message: error.response?.data?.message || '여행 목록을 불러오는 중 오류가 발생했습니다.',
+      message: error.response?.data?.message || '여행 목록 조회 중 오류가 발생했습니다.',
       data: { items: [] },
       timestamp: new Date().toISOString(),
     };

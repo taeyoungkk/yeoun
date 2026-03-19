@@ -1,4 +1,4 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+﻿import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Mapbox from '@rnmapbox/maps';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -47,13 +47,14 @@ const MAP_SIDE_MARGIN = 16;
 const MAP_TOP_OFFSET = 112;
 const PANEL_TOP_OFFSET = 118;
 
-type DayFilter = 'all' | 'day1' | 'day2' | 'day3';
+type DayKey = `day${number}`;
+type DayFilter = 'all' | DayKey;
 type TimelineEventType = 'location' | 'photo' | 'payment';
 type Coordinate = [number, number];
 type MapFilterKey = 'showPhotoPins' | 'showPaymentPins';
 
 type TripDay = {
-  id: Exclude<DayFilter, 'all'>;
+  id: DayKey;
   label: string;
   dateLabel: string;
   distanceKm: number;
@@ -61,11 +62,8 @@ type TripDay = {
   route: Coordinate[];
 };
 
-const TRIP_DAYS: TripDay[] = [
+const TRIP_DAY_TEMPLATES: Omit<TripDay, 'id' | 'label' | 'dateLabel'>[] = [
   {
-    id: 'day1',
-    label: 'Day 1',
-    dateLabel: '03.11',
     distanceKm: 12.8,
     summary: '서울 도심을 걸으며 사진과 결제를 함께 기록한 날이에요.',
     route: [
@@ -77,9 +75,6 @@ const TRIP_DAYS: TripDay[] = [
     ],
   },
   {
-    id: 'day2',
-    label: 'Day 2',
-    dateLabel: '03.12',
     distanceKm: 9.4,
     summary: '성수 일대에서 머문 장소와 이동 흐름이 또렷했던 구간이에요.',
     route: [
@@ -91,9 +86,6 @@ const TRIP_DAYS: TripDay[] = [
     ],
   },
   {
-    id: 'day3',
-    label: 'Day 3',
-    dateLabel: '03.13',
     distanceKm: 14.2,
     summary: '한강 근처를 따라 이동하며 결제와 방문 기록이 쌓인 하루예요.',
     route: [
@@ -136,8 +128,50 @@ function getBounds(route: Coordinate[]) {
   };
 }
 
-function getFilteredDays(activeFilter: DayFilter) {
-  return activeFilter === 'all' ? TRIP_DAYS : TRIP_DAYS.filter((day) => day.id === activeFilter);
+function formatDayTabLabel(date: Date) {
+  return `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function buildTripDays(startDate?: string, endDate?: string): TripDay[] {
+  const start = startDate ? new Date(startDate) : null;
+  const end = endDate ? new Date(endDate) : null;
+
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return TRIP_DAY_TEMPLATES.map((template, index) => ({
+      id: `day${index + 1}`,
+      label: `DAY ${index + 1}`,
+      dateLabel: formatDayTabLabel(new Date(2025, 2, 11 + index)),
+      ...template,
+    }));
+  }
+
+  const normalizedStart = new Date(start);
+  const normalizedEnd = new Date(end);
+  normalizedStart.setHours(0, 0, 0, 0);
+  normalizedEnd.setHours(0, 0, 0, 0);
+
+  const diffDays =
+    Math.max(
+      1,
+      Math.floor((normalizedEnd.getTime() - normalizedStart.getTime()) / (24 * 60 * 60 * 1000)) + 1,
+    );
+
+  return Array.from({ length: diffDays }, (_, index) => {
+    const targetDate = new Date(normalizedStart);
+    targetDate.setDate(normalizedStart.getDate() + index);
+    const template = TRIP_DAY_TEMPLATES[Math.min(index, TRIP_DAY_TEMPLATES.length - 1)];
+
+    return {
+      id: `day${index + 1}`,
+      label: `DAY ${index + 1}`,
+      dateLabel: formatDayTabLabel(targetDate),
+      ...template,
+    };
+  });
+}
+
+function getFilteredDays(activeFilter: DayFilter, tripDays: TripDay[]) {
+  return activeFilter === 'all' ? tripDays : tripDays.filter((day) => day.id === activeFilter);
 }
 
 export default function TripRecordingScreen() {
@@ -149,6 +183,9 @@ export default function TripRecordingScreen() {
   const [tripEvents, setTripEvents] = useState<TimelineEvent[]>(() => getTripEvents());
   const params = useLocalSearchParams();
   const endTrip = useTripStore((state) => state.endTrip);
+  const isTripActive = useTripStore((state) => state.isTripActive);
+  const currentTrip = useTripStore((state) => state.currentTrip);
+  const currentTripId = useTripStore((state) => state.currentTripId);
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -183,7 +220,11 @@ export default function TripRecordingScreen() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [liveRoute, setLiveRoute] = useState<Coordinate[]>([]);
 
-  const filteredDays = useMemo(() => getFilteredDays(activeFilter), [activeFilter]);
+  const tripDays = useMemo(
+    () => buildTripDays(currentTrip?.startDate, currentTrip?.endDate),
+    [currentTrip?.endDate, currentTrip?.startDate],
+  );
+  const filteredDays = useMemo(() => getFilteredDays(activeFilter, tripDays), [activeFilter, tripDays]);
   const filteredEvents = useMemo(
     () => tripEvents.filter((event) => activeFilter === 'all' || event.day === activeFilter),
     [activeFilter, tripEvents]
@@ -272,6 +313,10 @@ export default function TripRecordingScreen() {
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
   const panelLift = -145 * collapseProgress;
+  const activeTripId = currentTripId ?? 'trip-demo-uuid';
+  const tripTitle = currentTrip?.tripName || 'Trip';
+  const isReviewMode = params.mode === 'review' || !isTripActive;
+  const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
 
   useEffect(() => {
     if (routeCoordinates.length < 2) {
@@ -308,6 +353,12 @@ export default function TripRecordingScreen() {
   }, [filteredEvents, selectedEventId]);
 
   useEffect(() => {
+    if (activeFilter !== 'all' && !tripDays.some((day) => day.id === activeFilter)) {
+      setActiveFilter('all');
+    }
+  }, [activeFilter, tripDays]);
+
+  useEffect(() => {
     // Subscribe to real-time location updates for instant map updates
     const unsubscribe = locationService.subscribe((location) => {
       setLiveRoute((prev) => [...prev, [location.longitude, location.latitude]]);
@@ -326,7 +377,7 @@ export default function TripRecordingScreen() {
   useEffect(() => {
     const SYNC_INTERVAL = 5 * 60 * 1000;
     const timer = setInterval(() => {
-      locationService.syncLocations('trip-demo-uuid'); // Using demo trip ID
+      locationService.syncLocations(activeTripId); // Using demo trip ID
     }, SYNC_INTERVAL);
 
     return () => clearInterval(timer);
@@ -334,7 +385,7 @@ export default function TripRecordingScreen() {
 
   const handleManualSync = async () => {
     setIsSyncing(true);
-    const success = await locationService.syncLocations('trip-demo-uuid');
+    const success = await locationService.syncLocations(activeTripId);
     setIsSyncing(false);
     
     if (success) {
@@ -342,6 +393,10 @@ export default function TripRecordingScreen() {
     } else {
       Alert.alert('동기화 실패', '네트워크 연결을 확인해주세요. 기록은 안전하게 보관 중입니다.');
     }
+  };
+
+  const handleOpenReport = () => {
+    router.push('/trip/report');
   };
 
   const handleEndTrip = async () => {
@@ -356,9 +411,9 @@ export default function TripRecordingScreen() {
           onPress: async () => {
             setIsSyncing(true);
             // 1. 마지막 위치 동기화
-            await locationService.syncLocations('trip-demo-uuid');
+            await locationService.syncLocations(activeTripId);
             // 2. API로 여행 종료 상태 변경
-            await endTripApi('trip-demo-uuid');
+            await endTripApi(activeTripId);
             // 3. 트래킹 중지
             await locationService.stopTracking();
             setIsSyncing(false);
@@ -604,15 +659,11 @@ export default function TripRecordingScreen() {
         </TouchableOpacity>
         <View style={styles.headerTextWrap}>
           <View style={styles.headerTitleRow}>
-            <Text style={styles.headerTitle}>제주도 여행</Text>
+            <Text style={styles.headerTitle}>{tripTitle}</Text>
             <View style={styles.recordingInline}>
-              <View style={styles.recordingDot} />
+              <View style={[styles.recordingDot, isReviewMode && styles.recordingDotCompleted]} />
+              <Text style={[styles.recordingStatusText, isReviewMode && styles.recordingStatusTextCompleted]}>{recordingStatusText}</Text>
               <Text style={styles.recordingInlineText}>기록중</Text>
-            </View>
-            {/* GPS 활성 표시 */}
-            <View style={styles.gpsIndicator}>
-              <MaterialIcons name="location-on" size={12} color="#4C8E5E" />
-              <Text style={styles.gpsIndicatorText}>GPS 작동중</Text>
             </View>
           </View>
         </View>
@@ -634,7 +685,13 @@ export default function TripRecordingScreen() {
       {isMenuOpen ? (
         <Pressable style={styles.menuBackdrop} onPress={() => setIsMenuOpen(false)}>
           <View style={styles.menuCard}>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
+            {isReviewMode ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleOpenReport(); }} activeOpacity={0.85}>
+                <MaterialIcons name="article" size={18} color="#244934" />
+                <Text style={styles.menuItemText}>여행 리포트 확인</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity style={[styles.menuItem, isReviewMode && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
@@ -1094,7 +1151,7 @@ export default function TripRecordingScreen() {
             <Pressable style={[styles.dayTab, activeFilter === 'all' && styles.dayTabActive]} onPress={() => setActiveFilter('all')}>
               <Text style={[styles.dayTabText, activeFilter === 'all' && styles.dayTabTextActive]}>전체</Text>
             </Pressable>
-            {TRIP_DAYS.map((day) => {
+            {tripDays.map((day) => {
               const isActive = activeFilter === day.id;
               return (
                 <Pressable key={day.id} style={[styles.dayTab, isActive && styles.dayTabActive]} onPress={() => setActiveFilter(day.id)}>
@@ -1323,8 +1380,16 @@ export default function TripRecordingScreen() {
             })}
           </View>
 
-          <View style={styles.bottomActions}>
-            <TouchableOpacity style={styles.endButton} onPress={handleEndTrip} activeOpacity={0.88}>
+          {isReviewMode ? (
+            <View style={styles.bottomActions}>
+              <TouchableOpacity style={styles.endButton} onPress={handleOpenReport} activeOpacity={0.88}>
+                <Text style={styles.endButtonText}>여행 리포트 확인</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          <View style={[styles.bottomActions, isReviewMode && styles.hiddenAction]}>
+            <TouchableOpacity style={styles.endButton} onPress={isReviewMode ? handleOpenReport : handleEndTrip} activeOpacity={0.88}>
+              {isReviewMode ? <Text style={styles.endButtonText}>여행 리포트 확인</Text> : null}
               <Text style={styles.endButtonText}>여행 종료</Text>
             </TouchableOpacity>
           </View>
@@ -1342,23 +1407,12 @@ const styles = StyleSheet.create({
   headerTextWrap: { flex: 1 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   recordingInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerMeta: { marginTop: 4, fontFamily: 'Pretendard-Medium', fontSize: 12, color: '#5F6E65' },
   recordingDot: { width: 7, height: 7, borderRadius: 999, backgroundColor: '#F35B4F' },
-  recordingInlineText: { fontFamily: 'Pretendard-SemiBold', fontSize: 11, color: '#F35B4F' },
-  gpsIndicator: {
-    marginLeft: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  gpsIndicatorText: {
-    fontFamily: 'Pretendard-SemiBold',
-    fontSize: 10,
-    color: '#4C8E5E',
-    marginLeft: 3,
-  },
+  recordingInlineText: { width: 0, height: 0, opacity: 0 },
+  recordingDotCompleted: { backgroundColor: '#4C8E5E' },
+  recordingStatusText: { fontFamily: 'Pretendard-SemiBold', fontSize: 11, color: '#F35B4F' },
+  recordingStatusTextCompleted: { color: '#4C8E5E' },
   headerTitle: { fontFamily: 'Pretendard-Bold', fontSize: 22, color: '#17201A' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   syncHeaderButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 18, backgroundColor: '#E3EBDD', paddingHorizontal: 12, height: 36 },
@@ -1368,6 +1422,7 @@ const styles = StyleSheet.create({
   menuCard: { marginLeft: 'auto', width: 156, borderRadius: 20, backgroundColor: '#FCFEFB', paddingVertical: 8, shadowColor: '#223428', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   menuItem: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 },
   menuItemText: { fontFamily: 'Pretendard-SemiBold', fontSize: 14, color: '#244934' },
+  hiddenAction: { display: 'none' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(18, 25, 20, 0.3)', justifyContent: 'center', paddingHorizontal: 22 },
   modalCard: { borderRadius: 28, backgroundColor: '#FCFEFB', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 18 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

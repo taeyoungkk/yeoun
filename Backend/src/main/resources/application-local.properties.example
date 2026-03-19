@@ -24,7 +24,7 @@ app.invite.base-url=${APP_INVITE_BASE_URL}
 spring.kafka.bootstrap-servers=${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 app.kafka.trip-location-log-topic=${KAFKA_TRIP_LOCATION_LOG_TOPIC:trip-location-log-batch}
 
-oauth.google.client-id=${GOOGLE_CLIENT_ID}
+oauth.google.client-ids=${GOOGLE_CLIENT_IDS:${GOOGLE_CLIENT_ID:}}
 oauth.google.jwk-set-uri=${GOOGLE_JWK_SET_URI:https://www.googleapis.com/oauth2/v3/certs}
 
 aws.access-key-id=${AWS_ACCESS_KEY_ID}

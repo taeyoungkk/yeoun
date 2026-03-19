@@ -21,7 +21,7 @@ public class S3PhotoStorageService implements PhotoStorageService {
 
     public S3PhotoStorageService(
             S3Client s3Client,
-            @Value("${aws.s3.bucket}") String bucket
+            @Value("${AWS_S3_BUCKET:${aws.s3.bucket}}") String bucket
     ) {
         this.s3Client = s3Client;
         this.bucket = bucket;

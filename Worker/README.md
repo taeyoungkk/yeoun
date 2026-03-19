@@ -1,18 +1,23 @@
 # Yeoun Worker
 
-`Worker`는 `EC2-2`에서 실행되는 AI/비동기 처리용 애플리케이션입니다.
-현재 구조에서는 node2 nginx 뒤에서 실행되며, Kafka 기반 비동기 처리와 HTTP 직접 호출 두 방식을 모두 지원할 수 있게 설계되어 있습니다.
-현재 이 폴더에 우선 구현된 기능은 영수증 OCR/멀티모달 처리 파이프라인입니다.
+`Worker`는 `EC2-2`에서 실행되는 비동기 처리 애플리케이션입니다.
+현재 Worker는 Kafka 기반으로 영수증 OCR, 여행 사진 처리, 여행 GPS batch 처리 기능을 담당합니다.
 
-## 역할
+## 현재 지원 기능
 
-- 백엔드가 전달한 비동기 작업을 처리
-- 현재는 영수증 이미지 분석 및 OCR/멀티모달 추출 기능 제공
-- Kafka request topic을 소비하고 result topic으로 결과를 발행
-- 실패 시 retry / DLQ 흐름 처리
-- 백엔드가 저장할 수 있는 형태의 JSON 결과 반환
+- 영수증 OCR Kafka 처리
+- 여행 사진 메타데이터/썸네일 Kafka 처리
+- 여행 GPS batch Kafka consumer
+- 여행 GPS raw 로그 Postgres 저장
+- `(trip_id, user_id, client_log_uuid)` 기준 idempotency 처리
+- GPS 처리 실패 시 retry / DLQ 발행
+- GPS payload 검증 실패 시 즉시 DLQ 발행
+- GPS 1차 전처리 파이프라인 실행
+- 정렬, near-duplicate 제거, accuracy 필터, jump outlier 제거
+- trip processing status 갱신
+- 후속 GPS 파이프라인 진입점 분리
 
-## 현재 폴더 구조
+## 디렉터리 구조
 
 ```text
 Worker/
@@ -23,141 +28,147 @@ Worker/
       health.py
       receipt.py
     schemas/
+      location.py
+      photo.py
       receipt.py
     services/
+      location_followup_pipeline.py
+      location_log_writer.py
+      location_pipeline.py
+      location_preprocessor.py
+      photo_loader.py
+      photo_metadata.py
+      photo_thumbnail.py
       receipt_ocr.py
+      trip_processing_status.py
     consumer/
+      location_consumer.py
+      photo_consumer.py
       receipt_consumer.py
   requirements.txt
   .env.example
   Dockerfile
 ```
 
-### 파일/폴더 설명
+## 주요 파일
 
 - `app/main.py`
-  - FastAPI 애플리케이션 진입점
-  - 서버 시작 시 Kafka consumer를 함께 올릴지 결정
+  - FastAPI 엔트리포인트
+  - 설정값에 따라 receipt/photo/location consumer를 시작하고 종료
 
 - `app/config.py`
-  - Worker에서 사용하는 환경변수를 읽고 설정 객체로 관리
-  - Kafka, Gemini, 포트 관련 설정을 여기서 정의
+  - Worker 환경변수 로더
+  - Kafka, DB, Gemini, 이미지 URL, S3 관련 설정 관리
 
-- `app/routers/health.py`
-  - 헬스체크용 엔드포인트 제공
-  - 배포 후 컨테이너 상태 확인에 사용
+- `app/schemas/location.py`
+  - 여행 GPS batch request/result/DLQ 메시지 스키마
 
-- `app/routers/receipt.py`
-  - 영수증 OCR HTTP 요청을 받는 라우터
-  - Kafka 없이 직접 OCR 테스트할 때 사용 가능
+- `app/services/location_log_writer.py`
+  - Kafka로 수신한 GPS raw 로그를 `location_logs_raw`에 저장
+  - `(trip_id, user_id, client_log_uuid)` 기준으로 중복 저장 방지
 
-- `app/schemas/receipt.py`
-  - 영수증 OCR 요청/응답 모델 정의
-  - Kafka request/result/dlq 메시지 스키마도 함께 정의
+- `app/services/location_pipeline.py`
+  - GPS batch 처리 진입점
+  - `PROCESSING -> READY/FAILED` 상태 전이 관리
+  - raw 저장 후 1차 전처리 및 후속 파이프라인까지 연결
 
-- `app/services/receipt_ocr.py`
-  - 실제 영수증 분석 로직 담당
-  - 이미지 다운로드 후 Gemini API를 호출하고 결과를 구조화
+- `app/services/location_preprocessor.py`
+  - recordedAt 기준 정렬
+  - near-duplicate 제거
+  - accuracy threshold 초과 포인트 제거
+  - 비정상 jump/outlier 제거
 
-- `app/consumer/receipt_consumer.py`
-  - Kafka에서 영수증 OCR 요청 메시지를 소비
-  - OCR 처리 후 result topic 발행, 실패 시 retry/DLQ 처리
+- `app/services/trip_processing_status.py`
+  - `trip_processing_statuses` 테이블 갱신
+  - `PROCESSING`, `READY`, `FAILED` 상태 전이 처리
 
-## 실행 방식
+- `app/services/location_followup_pipeline.py`
+  - clean GPS 영속화, stay detection, route/place 생성 전의 후속 진입점
+  - 현재는 placeholder 로깅만 수행
 
-### 1. HTTP 직접 실행
+- `app/consumer/location_consumer.py`
+  - `trip-location-log-batch` / retry 토픽 consume
+  - 처리 성공 시 result topic 발행
+  - 처리 실패 시 retry 또는 DLQ 발행
+  - payload 검증 실패 시 즉시 DLQ 발행
 
-Kafka 없이 Worker OCR 동작만 확인할 때 사용합니다.
+## GPS 처리 흐름
+
+1. Backend가 `trip-location-log-batch` 토픽으로 GPS batch 메시지 발행
+2. Worker의 `location_consumer`가 메시지 consume
+3. `location_pipeline`이 raw 저장 파이프라인 실행
+4. `location_pipeline`이 trip processing status를 `PROCESSING`으로 갱신
+5. `location_log_writer`가 `location_logs_raw` 테이블에 저장
+6. `location_preprocessor`가 1차 clean 파이프라인 실행
+7. `location_followup_pipeline`이 후속 처리 진입점 실행
+8. 성공 시 trip processing status를 `READY`로 갱신하고 result topic 발행
+9. 실패 시 trip processing status를 `FAILED`로 갱신하고 retry 또는 DLQ topic으로 발행
+
+## Kafka 토픽
+
+### 영수증 OCR
+
+- Request: `receipt-ocr-request`
+- Result: `receipt-ocr-result`
+- Retry: `receipt-ocr-retry`
+- DLQ: `receipt-ocr-dlq`
+
+### 여행 사진 처리
+
+- Request: `photo-processing-request`
+- Result: `photo-processing-result`
+- Retry: `photo-processing-retry`
+- DLQ: `photo-processing-dlq`
+
+### 여행 GPS batch 처리
+
+- Request: `trip-location-log-batch`
+- Result: `trip-location-log-result`
+- Retry: `trip-location-log-retry`
+- DLQ: `trip-location-log-dlq`
+
+## 환경변수
+
+주요 항목:
+
+- `KAFKA_BOOTSTRAP_SERVERS`
+- `KAFKA_MAX_RETRY_ATTEMPTS`
+- `KAFKA_LOCATION_ENABLED`
+- `KAFKA_LOCATION_REQUEST_TOPIC`
+- `KAFKA_LOCATION_RESULT_TOPIC`
+- `KAFKA_LOCATION_RETRY_TOPIC`
+- `KAFKA_LOCATION_DLQ_TOPIC`
+- `KAFKA_LOCATION_CONSUMER_GROUP`
+- `WORKER_DATABASE_URL`
+- `GPS_ACCURACY_THRESHOLD_M`
+- `GPS_JUMP_SPEED_THRESHOLD_MPS`
+- `IMAGE_BASE_URL`
+- `AWS_S3_BUCKET`
+- `GEMINI_MODEL`
+
+자세한 값은 `.env.example`을 참고합니다.
+
+## 실행 방법
+
+### HTTP 서버 실행
 
 ```bash
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-이 경우 `.env`에서 `KAFKA_ENABLED=false`로 두고 테스트할 수 있습니다.
+### Kafka consumer 활성화
 
-### 2. Kafka 비동기 실행
+`.env`에서 기능 플래그를 `true`로 설정합니다.
 
-실제 목표 구조입니다.
+- `KAFKA_ENABLED=true`
+- `KAFKA_PHOTO_ENABLED=true`
+- `KAFKA_LOCATION_ENABLED=true`
 
-- 백엔드가 `receipt-ocr-request` 토픽에 메시지 발행
-- Worker가 메시지를 consume
-- OCR 처리 후 `receipt-ocr-result` 토픽에 결과 발행
-- 실패 시 retry 또는 `receipt-ocr-dlq`로 이동
+## 다음 단계
 
-이 경우 `.env`에서 `KAFKA_ENABLED=true`로 두고 Kafka 연결 정보를 맞춰야 합니다.
+여행 GPS 쪽 다음 단계는 아래 순서로 이어집니다.
 
-## 주요 엔드포인트
-
-- `GET /`
-- `GET /health`
-- `POST /api/v1/ocr/receipts/extract`
-
-## HTTP 요청 예시
-
-```json
-{
-  "receiptId": "7e0df1f0-25e8-4ae2-b3f4-a7c7d07e8b35",
-  "tripId": "c0a1c6f2-a25b-4b1d-9312-3cb1e4f1ce0f",
-  "imageUrl": "https://example.com/receipts/receipt-001.jpg",
-  "currencyCode": "KRW",
-  "locale": "ko-KR"
-}
-```
-
-주의:
-- `imageUrl`은 Worker가 직접 다운로드할 수 있는 주소여야 합니다.
-- `localhost` 기반 URL은 Worker가 다른 머신에서 실행될 경우 사용할 수 없습니다.
-- 운영 기준으로는 S3 또는 외부 저장소 URL을 사용하는 방식이 적합합니다.
-
-## Kafka 메시지 기준
-
-### request topic
-
-- 토픽명: `receipt-ocr-request`
-- 주요 필드:
-  - `receiptId`
-  - `tripId`
-  - `imageUrl`
-  - `currencyCode`
-  - `locale`
-  - `requestedAt`
-  - `attempt`
-
-### result topic
-
-- 토픽명: `receipt-ocr-result`
-- 성공 시:
-  - `status=COMPLETED`
-  - `merchantName`
-  - `paidAt`
-  - `totalAmount`
-  - `taxAmount`
-  - `lineItems`
-  - `rawText`
-- 실패 시:
-  - `status=FAILED`
-  - `errorCode`
-  - `errorMessage`
-
-### dlq topic
-
-- 토픽명: `receipt-ocr-dlq`
-- 최대 재시도 초과 메시지를 저장
-
-## 환경변수
-
-실제 Docker compose 실행 시에는 `Infra/docker/node2/.env`가 더 중요합니다.
-`Worker/.env.example`는 Worker 단독 실행 시 참고용 예시 파일로 보면 됩니다.
-
-## 현재 구현 상태
-
-- Gemini 2.5 Flash 기반 영수증 추출 코드 구현됨
-- Kafka request/result/retry/dlq 구조 반영됨
-- manual commit 기반 consumer 처리 반영됨
-
-아직 필요한 것:
-
-- 백엔드의 request producer
-- 백엔드의 result consumer
-- 이미지 저장소 연동
-- 프론트의 OCR 상태 조회 및 수정 UI 연동
+1. clean GPS 영속화
+2. stay detection
+3. route / place 생성
+4. timeline / photo 매칭 연결

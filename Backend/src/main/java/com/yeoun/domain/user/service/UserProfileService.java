@@ -5,6 +5,7 @@ import com.yeoun.domain.auth.repository.RefreshTokenRedisRepository;
 import com.yeoun.domain.auth.service.LocalLoginService;
 import com.yeoun.domain.user.dto.request.ChangePasswordRequest;
 import com.yeoun.domain.user.dto.request.UpdateMeRequest;
+import com.yeoun.domain.user.dto.response.AvailabilityCheckResponse;
 import com.yeoun.domain.user.entity.AuthProvider;
 import com.yeoun.domain.user.dto.response.MeResponse;
 import com.yeoun.domain.user.entity.User;
@@ -15,6 +16,7 @@ import com.yeoun.domain.user.repository.UserRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import com.yeoun.global.security.jwt.JwtTokenProvider;
+import com.yeoun.global.util.EmailNormalizer;
 import com.yeoun.global.util.PasswordPolicyValidator;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,12 +24,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @Transactional(readOnly = true)
 public class UserProfileService {
 
     private static final String TOKEN_TYPE = "Bearer";
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
     private final UserRepository userRepository;
     private final UserAuthAccountRepository userAuthAccountRepository;
@@ -55,6 +60,16 @@ public class UserProfileService {
     public MeResponse getMe(UUID userId) {
         User user = getUserOrThrow(userId);
         return toMeResponse(user);
+    }
+
+    public AvailabilityCheckResponse checkNicknameAvailability(String rawNickname) {
+        String nickname = normalizeAndValidateNickname(rawNickname);
+        return new AvailabilityCheckResponse(!userRepository.existsByNickname(nickname));
+    }
+
+    public AvailabilityCheckResponse checkEmailAvailability(String rawEmail) {
+        String normalizedEmail = normalizeAndValidateEmail(rawEmail);
+        return new AvailabilityCheckResponse(!userRepository.existsByEmail(normalizedEmail));
     }
 
     @Transactional
@@ -129,10 +144,7 @@ public class UserProfileService {
             return user.getNickname();
         }
 
-        String nickname = requestedNickname.trim();
-        if (nickname.isEmpty()) {
-            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Nickname cannot be blank.");
-        }
+        String nickname = normalizeAndValidateNickname(requestedNickname);
 
         if (!nickname.equals(user.getNickname()) && userRepository.existsByNickname(nickname)) {
             throw new BaseException(ErrorCode.NICKNAME_ALREADY_EXISTS);
@@ -158,5 +170,27 @@ public class UserProfileService {
                 user.getRole(),
                 user.getStatus()
         );
+    }
+
+    private String normalizeAndValidateNickname(String rawNickname) {
+        if (rawNickname == null) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Nickname is required.");
+        }
+
+        String nickname = rawNickname.trim();
+        if (nickname.isEmpty()) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Nickname cannot be blank.");
+        }
+        return nickname;
+    }
+
+    private String normalizeAndValidateEmail(String rawEmail) {
+        String normalizedEmail = EmailNormalizer.normalize(rawEmail);
+        if (normalizedEmail == null
+                || normalizedEmail.isBlank()
+                || !EMAIL_PATTERN.matcher(normalizedEmail).matches()) {
+            throw new BaseException(ErrorCode.INVALID_EMAIL_FORMAT);
+        }
+        return normalizedEmail;
     }
 }
