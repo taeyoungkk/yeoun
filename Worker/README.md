@@ -1,18 +1,21 @@
 # Yeoun Worker
 
-`Worker`는 `EC2-2`에서 실행되는 AI/비동기 처리용 애플리케이션입니다.
-현재 구조에서는 node2 nginx 뒤에서 실행되며, Kafka 기반 비동기 처리와 HTTP 직접 호출 두 방식을 모두 지원할 수 있게 설계되어 있습니다.
-현재 이 폴더에 우선 구현된 기능은 영수증 OCR/멀티모달 처리 파이프라인입니다.
+`Worker`는 `EC2-2`에서 실행되는 AI 및 비동기 처리 전용 애플리케이션입니다.
+현재 구조에서는 node2 nginx 뒤에서 실행되며, Kafka 기반 백그라운드 작업과 직접 HTTP 호출을 모두 지원하도록 설계되어 있습니다.
+
+현재 구현된 파이프라인:
+
+- 영수증 OCR 파이프라인
+- 여행 사진 처리 파이프라인 초안
 
 ## 역할
 
-- 백엔드가 전달한 비동기 작업을 처리
-- 현재는 영수증 이미지 분석 및 OCR/멀티모달 추출 기능 제공
-- Kafka request topic을 소비하고 result topic으로 결과를 발행
-- 실패 시 retry / DLQ 흐름 처리
-- 백엔드가 저장할 수 있는 형태의 JSON 결과 반환
+- 백엔드가 전달한 비동기 작업을 소비하고 처리
+- 이미지 기반 작업을 Worker 노드에서 전담 수행
+- 백엔드가 저장할 수 있는 구조화된 JSON 결과 생성
+- 실패 시 retry 및 DLQ 흐름 처리
 
-## 현재 폴더 구조
+## 폴더 구조
 
 ```text
 Worker/
@@ -23,76 +26,99 @@ Worker/
       health.py
       receipt.py
     schemas/
+      photo.py
       receipt.py
     services/
+      photo_loader.py
+      photo_metadata.py
+      photo_thumbnail.py
       receipt_ocr.py
     consumer/
+      photo_consumer.py
       receipt_consumer.py
   requirements.txt
   .env.example
   Dockerfile
 ```
 
-### 파일/폴더 설명
+## 파일 설명
 
 - `app/main.py`
-  - FastAPI 애플리케이션 진입점
-  - 서버 시작 시 Kafka consumer를 함께 올릴지 결정
+  - FastAPI 진입점
+  - 환경변수 설정에 따라 Kafka consumer를 조건부로 시작
 
 - `app/config.py`
-  - Worker에서 사용하는 환경변수를 읽고 설정 객체로 관리
-  - Kafka, Gemini, 포트 관련 설정을 여기서 정의
+  - Worker 설정을 한 곳에서 관리
+  - Kafka, Gemini, 이미지 원본 URL, 썸네일 생성 옵션 정의
 
 - `app/routers/health.py`
-  - 헬스체크용 엔드포인트 제공
-  - 배포 후 컨테이너 상태 확인에 사용
+  - 헬스체크 엔드포인트 제공
 
 - `app/routers/receipt.py`
-  - 영수증 OCR HTTP 요청을 받는 라우터
-  - Kafka 없이 직접 OCR 테스트할 때 사용 가능
+  - 영수증 OCR HTTP 테스트용 엔드포인트
 
 - `app/schemas/receipt.py`
-  - 영수증 OCR 요청/응답 모델 정의
-  - Kafka request/result/dlq 메시지 스키마도 함께 정의
+  - 영수증 OCR request/response 모델
+  - 영수증 Kafka request/result/dlq 메시지 스키마
+
+- `app/schemas/photo.py`
+  - 여행 사진 처리 request/result/dlq 메시지 스키마
+  - 타임라인 생성을 위한 촬영 시각, 좌표, 썸네일 key 관련 필드 포함
 
 - `app/services/receipt_ocr.py`
-  - 실제 영수증 분석 로직 담당
-  - 이미지 다운로드 후 Gemini API를 호출하고 결과를 구조화
+  - 영수증 이미지를 다운로드하고 Gemini OCR 호출
+
+- `app/services/photo_loader.py`
+  - 여행 사진 원본 다운로드
+  - `imageUrl`이 있으면 우선 사용하고, 없으면 `IMAGE_BASE_URL + storageKey` 로 원본 URL 구성
+  - 다운로드한 파일이 실제 이미지인지 검증
+
+- `app/services/photo_metadata.py`
+  - 여행 사진 EXIF 메타데이터 추출
+  - 촬영 시각과 GPS 좌표를 타임라인 생성에 맞게 정규화
+
+- `app/services/photo_thumbnail.py`
+  - 여행 사진 썸네일 생성 및 S3 업로드
+  - EXIF orientation 반영 후 리사이즈 수행
 
 - `app/consumer/receipt_consumer.py`
-  - Kafka에서 영수증 OCR 요청 메시지를 소비
-  - OCR 처리 후 result topic 발행, 실패 시 retry/DLQ 처리
+  - 영수증 OCR Kafka 메시지 소비
+  - result, retry, dlq 메시지 발행
+
+- `app/consumer/photo_consumer.py`
+  - 여행 사진 처리 consumer/producer 뼈대
+  - 현재는 request 검증, 원본 다운로드, EXIF 추출/정규화, 썸네일 생성/S3 업로드까지 수행
 
 ## 실행 방식
 
-### 1. HTTP 직접 실행
+### 1. HTTP 직접 테스트
 
-Kafka 없이 Worker OCR 동작만 확인할 때 사용합니다.
+Kafka 없이 영수증 OCR HTTP 흐름만 확인할 때 사용합니다.
 
 ```bash
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-이 경우 `.env`에서 `KAFKA_ENABLED=false`로 두고 테스트할 수 있습니다.
+이 경우 `KAFKA_ENABLED=false` 로 설정하면 됩니다.
 
-### 2. Kafka 비동기 실행
+### 2. Kafka 비동기 Worker
 
-실제 목표 구조입니다.
+운영 기준 흐름:
 
-- 백엔드가 `receipt-ocr-request` 토픽에 메시지 발행
-- Worker가 메시지를 consume
-- OCR 처리 후 `receipt-ocr-result` 토픽에 결과 발행
-- 실패 시 retry 또는 `receipt-ocr-dlq`로 이동
+- 백엔드가 `receipt-ocr-request` 또는 `photo-processing-request` 발행
+- Worker가 메시지 consume
+- Worker가 작업 처리
+- Worker가 result 또는 retry/DLQ 메시지 발행
 
-이 경우 `.env`에서 `KAFKA_ENABLED=true`로 두고 Kafka 연결 정보를 맞춰야 합니다.
+이 방식에서는 Kafka 연결 정보와 각 consumer 활성화 여부를 맞춰야 합니다.
 
-## 주요 엔드포인트
+## 엔드포인트
 
 - `GET /`
 - `GET /health`
 - `POST /api/v1/ocr/receipts/extract`
 
-## HTTP 요청 예시
+## 영수증 OCR 요청 예시
 
 ```json
 {
@@ -105,59 +131,68 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 주의:
-- `imageUrl`은 Worker가 직접 다운로드할 수 있는 주소여야 합니다.
-- `localhost` 기반 URL은 Worker가 다른 머신에서 실행될 경우 사용할 수 없습니다.
-- 운영 기준으로는 S3 또는 외부 저장소 URL을 사용하는 방식이 적합합니다.
 
-## Kafka 메시지 기준
+- `imageUrl`은 Worker 서버에서 접근 가능해야 합니다.
+- `localhost` URL은 Worker가 다른 머신에서 실행되면 사용할 수 없습니다.
+- 운영에서는 공개 URL 또는 presigned URL 사용이 적절합니다.
 
-### request topic
+## Kafka 토픽
 
-- 토픽명: `receipt-ocr-request`
-- 주요 필드:
-  - `receiptId`
-  - `tripId`
-  - `imageUrl`
-  - `currencyCode`
-  - `locale`
-  - `requestedAt`
-  - `attempt`
+### 영수증 OCR
 
-### result topic
+- Request: `receipt-ocr-request`
+- Result: `receipt-ocr-result`
+- Retry: `receipt-ocr-retry`
+- DLQ: `receipt-ocr-dlq`
 
-- 토픽명: `receipt-ocr-result`
-- 성공 시:
-  - `status=COMPLETED`
-  - `merchantName`
-  - `paidAt`
-  - `totalAmount`
-  - `taxAmount`
-  - `lineItems`
-  - `rawText`
-- 실패 시:
-  - `status=FAILED`
-  - `errorCode`
-  - `errorMessage`
+### 여행 사진 처리
 
-### dlq topic
+- Request: `photo-processing-request`
+- Result: `photo-processing-result`
+- Retry: `photo-processing-retry`
+- DLQ: `photo-processing-dlq`
 
-- 토픽명: `receipt-ocr-dlq`
-- 최대 재시도 초과 메시지를 저장
+현재 구현 범위:
 
-## 환경변수
+- request/result/dlq 메시지 스키마 정의
+- consumer/producer 뼈대 추가
+- 원본 이미지 다운로드 및 이미지 로딩 구현
+- EXIF 촬영 시각 / GPS 추출 및 정규화 구현
+- 썸네일 생성 및 S3 업로드 구현
 
-실제 Docker compose 실행 시에는 `Infra/docker/node2/.env`가 더 중요합니다.
-`Worker/.env.example`는 Worker 단독 실행 시 참고용 예시 파일로 보면 됩니다.
+## 주요 환경변수
+
+- `KAFKA_PHOTO_ENABLED=false`
+- `KAFKA_PHOTO_REQUEST_TOPIC=photo-processing-request`
+- `KAFKA_PHOTO_RESULT_TOPIC=photo-processing-result`
+- `KAFKA_PHOTO_RETRY_TOPIC=photo-processing-retry`
+- `KAFKA_PHOTO_DLQ_TOPIC=photo-processing-dlq`
+- `KAFKA_PHOTO_CONSUMER_GROUP=yeoun-worker-photo`
+- `IMAGE_BASE_URL=http://localhost/images`
+- `PHOTO_THUMBNAIL_FORMAT=JPEG`
+- `PHOTO_THUMBNAIL_MAX_SIZE=512`
+- `PHOTO_THUMBNAIL_QUALITY=85`
+- `AWS_REGION=ap-northeast-2`
+- `AWS_S3_BUCKET=your_bucket_name`
+- `AWS_ACCESS_KEY_ID=your_access_key`
+- `AWS_SECRET_ACCESS_KEY=your_secret_key`
+- `AWS_S3_THUMBNAIL_PREFIX=thumbnails`
+- `AWS_S3_PUBLIC_BASE_URL=https://your-bucket.s3.ap-northeast-2.amazonaws.com`
 
 ## 현재 구현 상태
 
-- Gemini 2.5 Flash 기반 영수증 추출 코드 구현됨
-- Kafka request/result/retry/dlq 구조 반영됨
-- manual commit 기반 consumer 처리 반영됨
+구현됨:
+
+- Gemini 2.5 Flash 기반 영수증 OCR 파이프라인
+- 영수증 Kafka request/result/retry/dlq 흐름
+- 여행 사진 Kafka 스키마 및 consumer/producer 뼈대
+- 여행 사진 원본 다운로드 및 이미지 로더
+- 여행 사진 EXIF 메타데이터 추출 및 시간/위치 정규화
+- 여행 사진 썸네일 생성 및 S3 업로드
 
 아직 필요한 것:
 
-- 백엔드의 request producer
-- 백엔드의 result consumer
-- 이미지 저장소 연동
-- 프론트의 OCR 상태 조회 및 수정 UI 연동
+- 백엔드의 여행 사진 request producer
+- 백엔드의 여행 사진 result consumer
+- 여행 사진 처리 결과 메시지 발행
+- 여행 사진 retry/DLQ 처리
