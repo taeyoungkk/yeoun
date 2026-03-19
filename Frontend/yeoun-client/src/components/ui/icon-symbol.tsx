@@ -20,6 +20,8 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'plus': 'add',
   'play.fill': 'play-arrow',
+  'stop.fill': 'stop',
+  'pause.fill': 'pause',
 } as IconMapping;
 
 /**
