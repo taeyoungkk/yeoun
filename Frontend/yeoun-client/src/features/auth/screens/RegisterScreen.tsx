@@ -1,3 +1,5 @@
+import { Ionicons } from "@expo/vector-icons";
+import axios from "axios";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
@@ -13,29 +15,25 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 
+import { sendEmailCode, signupApi, verifyEmailCode } from "@/src/api/auth";
 import { FormField } from "@/src/components/ui/form-field";
 import { PasswordToggle } from "@/src/components/ui/password-toggle";
-import { sendEmailCode, verifyEmailCode, signupApi } from "@/src/api/auth";
 import { useAuthStore } from "@/src/store/auth.store";
 import { useUserStore } from "@/src/store";
 
 interface RegisterForm {
   email: string;
   nickname: string;
-  phone: string;
   password: string;
   passwordConfirm: string;
 }
 
-// Password requirement checkers
 const hasLength = (pw: string) => pw.length >= 8 && pw.length <= 20;
 const hasNumber = (pw: string) => /\d/.test(pw);
 const hasSpecial = (pw: string) =>
   /[!@#$%^&*(),.?":{}|<>_\-+=~`[\]\\;'/]/.test(pw);
 
-// Nickname requirement checkers
 const hasNicknameLength = (n: string) => n.length >= 2 && n.length <= 20;
 const hasNicknameChars = (n: string) =>
   n.length > 0 && /^[가-힣a-zA-Z0-9]+$/.test(n);
@@ -51,10 +49,13 @@ export const RegisterScreen = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [nicknameStatus, setNicknameStatus] = useState<NicknameStatus>("idle");
   const [emailStatus, setEmailStatus] = useState<EmailStatus>("idle");
+  const [emailErrorMessage, setEmailErrorMessage] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationError, setVerificationError] = useState("");
-  const [timer, setTimer] = useState(300); // 5 minutes in seconds
+  const [timer, setTimer] = useState(300);
   const [isTimerActive, setIsTimerActive] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [registerError, setRegisterError] = useState("");
 
   const {
     control,
@@ -65,7 +66,6 @@ export const RegisterScreen = () => {
     defaultValues: {
       email: "",
       nickname: "",
-      phone: "",
       password: "",
       passwordConfirm: "",
     },
@@ -80,9 +80,12 @@ export const RegisterScreen = () => {
   const passwordsMatch =
     passwordConfirm.length > 0 && password === passwordConfirm;
 
-  // Timer effect
+  const setTokens = useAuthStore((state) => state.setTokens);
+  const setProfile = useUserStore((state) => state.setProfile);
+
   useEffect(() => {
-    let interval: any;
+    let interval: ReturnType<typeof setInterval> | undefined;
+
     if (isTimerActive && timer > 0) {
       interval = setInterval(() => {
         setTimer((prev) => prev - 1);
@@ -90,7 +93,10 @@ export const RegisterScreen = () => {
     } else if (timer === 0) {
       setIsTimerActive(false);
     }
-    return () => clearInterval(interval);
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [isTimerActive, timer]);
 
   const formatTime = (seconds: number) => {
@@ -99,25 +105,50 @@ export const RegisterScreen = () => {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Simulate duplicate email check & send code
   const checkEmailAndSendCode = async () => {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
 
     setEmailStatus("checking");
+    setEmailErrorMessage("");
+
     try {
-      // In a real app, you might have separate check and send endpoints
-      // For now, we'll try to send the code directly
-      // If it fails with "already exists", we handle it
-      await sendEmailCode(email);
+      const response = await sendEmailCode(email);
+
+      if (!response.success) {
+        setEmailStatus("idle");
+        setEmailErrorMessage(
+          response.message || "이메일 확인 중 오류가 발생했습니다.",
+        );
+        return;
+      }
+
       setEmailStatus("available");
-    } catch (error: any) {
-      // Assuming error handling logic here for taken email
-      setEmailStatus("taken");
+    } catch (error) {
+      const responseStatus = axios.isAxiosError(error)
+        ? error.response?.status
+        : undefined;
+      const responseMessage = axios.isAxiosError(error)
+        ? error.response?.data?.message
+        : undefined;
+      const isDuplicateEmail =
+        responseStatus === 409 ||
+        /already|duplicate|exists|중복|이미 사용/i.test(responseMessage ?? "");
+
+      if (isDuplicateEmail) {
+        setEmailStatus("taken");
+        return;
+      }
+
+      setEmailStatus("idle");
+      setEmailErrorMessage(
+        responseMessage || "이메일 확인 중 오류가 발생했습니다.",
+      );
     }
   };
 
   const handleNextFromEmail = () => {
     if (emailStatus !== "available") return;
+
     setCurrentStep("VERIFY");
     setTimer(300);
     setIsTimerActive(true);
@@ -125,9 +156,19 @@ export const RegisterScreen = () => {
 
   const handleVerifyCode = async () => {
     if (verificationCode.length !== 6) return;
+
     setVerificationError("");
+
     try {
-      await verifyEmailCode(email, verificationCode);
+      const response = await verifyEmailCode(email, verificationCode);
+
+      if (!response.success) {
+        setVerificationError(
+          response.message || "인증코드가 올바르지 않습니다.",
+        );
+        return;
+      }
+
       setCurrentStep("INFO");
       setIsTimerActive(false);
     } catch (error) {
@@ -136,33 +177,44 @@ export const RegisterScreen = () => {
   };
 
   const handleResendCode = async () => {
-    setTimer(300);
-    setIsTimerActive(true);
     setVerificationCode("");
     setVerificationError("");
-    await sendEmailCode(email);
+
+    try {
+      const response = await sendEmailCode(email);
+
+      if (!response.success) {
+        setVerificationError(
+          response.message || "인증코드 재전송에 실패했습니다.",
+        );
+        setIsTimerActive(false);
+        return;
+      }
+
+      setTimer(300);
+      setIsTimerActive(true);
+    } catch (error) {
+      setVerificationError("인증코드 재전송에 실패했습니다.");
+      setIsTimerActive(false);
+    }
   };
 
-  // Simulate duplicate nickname check (replace with real API call)
   const checkNickname = async () => {
     if (!nickname || nickname.length < 2) return;
+
     setNicknameStatus("checking");
-    await new Promise((r) => setTimeout(r, 800)); // TODO: replace with real API
-    // Mock: nicknames containing "test" are taken
+    await new Promise((resolve) => setTimeout(resolve, 800));
     setNicknameStatus(
       nickname.toLowerCase().includes("test") ? "taken" : "available",
     );
   };
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [registerError, setRegisterError] = useState("");
-  const setTokens = useAuthStore((state) => state.setTokens);
-  const setProfile = useUserStore((state) => state.setProfile);
-
   const onSubmit = async (data: RegisterForm) => {
     if (nicknameStatus !== "available") return;
+
     setIsSubmitting(true);
     setRegisterError("");
+
     try {
       const response = await signupApi({
         email: data.email,
@@ -173,22 +225,20 @@ export const RegisterScreen = () => {
       if (response.success && response.data) {
         const { tokens, user } = response.data;
         setTokens(tokens.accessToken, tokens.refreshToken);
-        
-        // Populate user store with basic info
         setProfile({
           userId: user.userId,
           email: user.email,
           nickname: user.nickname,
           profileImageUrl: null,
-          timezone: 'Asia/Seoul',
-          role: 'USER',
-          status: 'ACTIVE',
+          timezone: "Asia/Seoul",
+          role: "USER",
+          status: "ACTIVE",
         });
-
         router.replace("/(tabs)");
-      } else {
-        setRegisterError(response.message || "회원가입에 실패했습니다.");
+        return;
       }
+
+      setRegisterError(response.message || "회원가입에 실패했습니다.");
     } catch (error) {
       setRegisterError("회원가입 중 오류가 발생했습니다.");
     } finally {
@@ -204,26 +254,34 @@ export const RegisterScreen = () => {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 60, paddingBottom: 40 }}
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingHorizontal: 24,
+            paddingTop: 60,
+            paddingBottom: 40,
+          }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Title */}
           <Text className="font-pretendard-bold text-[30px] leading-[39px] text-center text-secondary mb-10">
             {currentStep === "VERIFY" ? "인증코드 입력" : "회원가입"}
           </Text>
 
           {currentStep === "EMAIL" && (
             <>
-              {/* Email Step */}
               <View className="flex-row items-center mb-1.5">
-                <Text className="font-pretendard-semibold text-[14px] text-[#333333]">이메일</Text>
+                <Text className="font-pretendard-semibold text-[14px] text-[#333333]">
+                  이메일
+                </Text>
                 {emailStatus === "available" && (
                   <View className="border border-primary rounded-full px-2.5 py-0.5 ml-2">
-                    <Text className="text-[10px] color-primary font-pretendard-semibold">확인완료</Text>
+                    <Text className="text-[10px] color-primary font-pretendard-semibold">
+                      확인완료
+                    </Text>
                   </View>
                 )}
               </View>
+
               <View className="flex-row items-start gap-2">
                 <View className="flex-1">
                   <Controller
@@ -245,6 +303,7 @@ export const RegisterScreen = () => {
                         onChangeText={(v) => {
                           onChange(v);
                           setEmailStatus("idle");
+                          setEmailErrorMessage("");
                         }}
                         value={value}
                         error={errors.email?.message}
@@ -252,30 +311,47 @@ export const RegisterScreen = () => {
                     )}
                   />
                 </View>
+
                 <TouchableOpacity
                   className={`bg-primary rounded-[10px] px-3.5 py-3.5 items-center justify-center min-w-[72px] ${
-                    (emailStatus === "checking" || emailStatus === "available") ? "bg-gray-300" : ""
+                    emailStatus === "checking" || emailStatus === "available"
+                      ? "bg-gray-300"
+                      : ""
                   }`}
                   onPress={checkEmailAndSendCode}
-                  disabled={emailStatus === "checking" || emailStatus === "available"}
+                  disabled={
+                    emailStatus === "checking" || emailStatus === "available"
+                  }
                 >
                   {emailStatus === "checking" ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <Text className="font-pretendard-semibold text-[12px] text-white">중복 확인</Text>
+                    <Text className="font-pretendard-semibold text-[12px] text-white">
+                      중복 확인
+                    </Text>
                   )}
                 </TouchableOpacity>
               </View>
+
               <Text className="font-pretendard text-[11px] text-[#ABABAB] mt-2 mb-1">
                 * 이메일 중복 확인 후 인증번호를 전송할 수 있습니다.
               </Text>
 
               {emailStatus === "available" && (
-                <Text className="font-pretendard text-[12px] text-primary mt-2">사용 가능한 이메일입니다.</Text>
+                <Text className="font-pretendard text-[12px] text-primary mt-2">
+                  사용 가능한 이메일입니다.
+                </Text>
               )}
               {emailStatus === "taken" && (
-                <Text className="font-pretendard text-[12px] text-[#FF5252] mt-2">이미 존재하는 이메일입니다.</Text>
+                <Text className="font-pretendard text-[12px] text-[#FF5252] mt-2">
+                  이미 존재하는 이메일입니다.
+                </Text>
               )}
+              {emailErrorMessage ? (
+                <Text className="font-pretendard text-[12px] text-[#FF5252] mt-2">
+                  {emailErrorMessage}
+                </Text>
+              ) : null}
 
               <TouchableOpacity
                 className={`bg-primary rounded-[15px] py-[18px] items-center mt-10 ${
@@ -285,24 +361,40 @@ export const RegisterScreen = () => {
                 disabled={emailStatus !== "available"}
               >
                 <View className="flex-row items-center gap-2">
-                  <Text className="font-pretendard-semibold text-[16px] text-white">다음</Text>
+                  <Text className="font-pretendard-semibold text-[16px] text-white">
+                    다음
+                  </Text>
                   <Ionicons name="arrow-forward" size={18} color="#fff" />
                 </View>
               </TouchableOpacity>
-              <Text className="font-pretendard text-[12px] text-[#ABABAB] text-center mt-3">다음 누르면 이메일로 인증코드 보내기.</Text>
+
+              <TouchableOpacity
+                onPress={() => router.replace("/(auth)/login")}
+                className="mt-6 items-center"
+              >
+                <Text className="font-pretendard text-[14px] text-[#ABABAB]">
+                  이미 계정이 있으신가요?{" "}
+                  <Text className="text-primary font-pretendard-semibold">
+                    로그인
+                  </Text>
+                </Text>
+              </TouchableOpacity>
             </>
           )}
 
           {currentStep === "VERIFY" && (
             <>
-              {/* Verify Step */}
               <Text className="font-pretendard text-[14px] text-[#8E8E8E] text-center mb-12">
                 {email}으로 인증코드를 전송했습니다.
               </Text>
 
               <View className="flex-row items-center mb-1.5">
-                <Text className="font-pretendard-semibold text-[14px] text-[#333333]">인증 코드 입력</Text>
-                <Text className="font-pretendard text-[12px] text-[#CBCBCB] ml-2">• 남은 시간: {formatTime(timer)}</Text>
+                <Text className="font-pretendard-semibold text-[14px] text-[#333333]">
+                  인증 코드 입력
+                </Text>
+                <Text className="font-pretendard text-[12px] text-[#CBCBCB] ml-2">
+                  • 남은 시간: {formatTime(timer)}
+                </Text>
               </View>
 
               <View className="flex-row justify-between mv-5 relative">
@@ -313,10 +405,12 @@ export const RegisterScreen = () => {
                       verificationError ? "border-[#FF5252]" : ""
                     }`}
                   >
-                    <Text className="text-[24px] font-pretendard-semibold text-primary">{verificationCode[i] || ""}</Text>
+                    <Text className="text-[24px] font-pretendard-semibold text-primary">
+                      {verificationCode[i] || ""}
+                    </Text>
                   </View>
                 ))}
-                {/* Hidden TextInput to capture code */}
+
                 <TextInput
                   value={verificationCode}
                   onChangeText={(v) => {
@@ -333,14 +427,20 @@ export const RegisterScreen = () => {
               </View>
 
               <View className="flex-row justify-start mt-2">
-                <Text className="text-[12px] text-[#ABABAB]">이메일을 받지 못하셨나요? </Text>
+                <Text className="text-[12px] text-[#ABABAB]">
+                  이메일을 받지 못하셨나요?{" "}
+                </Text>
                 <TouchableOpacity onPress={handleResendCode}>
-                  <Text className="text-[12px] text-primary font-pretendard-bold underline">재전송</Text>
+                  <Text className="text-[12px] text-primary font-pretendard-bold underline">
+                    재전송
+                  </Text>
                 </TouchableOpacity>
               </View>
 
               {verificationError ? (
-                <Text className="font-pretendard text-[12px] text-[#FF5252] text-center mt-5">{verificationError}</Text>
+                <Text className="font-pretendard text-[12px] text-[#FF5252] text-center mt-5">
+                  {verificationError}
+                </Text>
               ) : null}
 
               <TouchableOpacity
@@ -351,7 +451,9 @@ export const RegisterScreen = () => {
                 disabled={verificationCode.length !== 6}
               >
                 <View className="flex-row items-center gap-2">
-                  <Text className="font-pretendard-semibold text-[16px] text-white">다음</Text>
+                  <Text className="font-pretendard-semibold text-[16px] text-white">
+                    다음
+                  </Text>
                   <Ionicons name="arrow-forward" size={18} color="#fff" />
                 </View>
               </TouchableOpacity>
@@ -361,35 +463,31 @@ export const RegisterScreen = () => {
                 onPress={() => setCurrentStep("EMAIL")}
               >
                 <View className="flex-row items-center gap-2">
-                  <Text className="font-pretendard-semibold text-[16px] text-primary">이전</Text>
+                  <Text className="font-pretendard-semibold text-[16px] text-primary">
+                    이전
+                  </Text>
                   <Ionicons name="arrow-back" size={18} color="#344966" />
                 </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => router.replace("/(auth)/login")}
-                className="mt-6 items-center"
-              >
-                <Text className="font-pretendard text-[14px] text-[#ABABAB]">
-                  이미 계정이 있으신가요? <Text className="text-primary font-pretendard-semibold">로그인</Text>
-                </Text>
               </TouchableOpacity>
             </>
           )}
 
           {currentStep === "INFO" && (
             <>
-              {/* Registration Info Step (Original Fields) */}
-              <Text className="font-pretendard text-[14px] text-[#8E8E8E] text-center mb-8">기본 정보를 입력해주세요</Text>
+              <Text className="font-pretendard text-[14px] text-[#8E8E8E] text-center mb-8">
+                기본 정보를 입력해주세요
+              </Text>
 
-              {/* Nickname */}
               <View className="flex-row items-center mb-1.5">
-                <Text className="font-pretendard-semibold text-[14px] text-[#333333]">닉네임</Text>
+                <Text className="font-pretendard-semibold text-[14px] text-[#333333]">
+                  닉네임
+                </Text>
                 <Text className="font-pretendard text-[10px] text-[#ABABAB] ml-1">
                   {" "}
                   * 한글, 영문, 숫자만 가능 (특수문자 금지), 2~20자
                 </Text>
               </View>
+
               <Controller
                 control={control}
                 name="nickname"
@@ -397,7 +495,8 @@ export const RegisterScreen = () => {
                   required: "닉네임을 입력해주세요",
                   pattern: {
                     value: /^[가-힣a-zA-Z0-9]{2,20}$/,
-                    message: "2~20자, 한글/영문/숫자만 가능합니다 (특수문자 금지)",
+                    message:
+                      "2~20자, 한글/영문/숫자만 가능합니다 (특수문자 금지)",
                   },
                 }}
                 render={({ field: { onChange, onBlur, value } }) => (
@@ -416,6 +515,7 @@ export const RegisterScreen = () => {
                           error={errors.nickname?.message}
                         />
                       </View>
+
                       <TouchableOpacity
                         className={`bg-primary rounded-[10px] px-3.5 py-3.5 items-center justify-center min-w-[72px] ${
                           nicknameStatus === "checking" ? "bg-gray-300" : ""
@@ -426,25 +526,21 @@ export const RegisterScreen = () => {
                         {nicknameStatus === "checking" ? (
                           <ActivityIndicator size="small" color="#fff" />
                         ) : (
-                          <Text className="font-pretendard-semibold text-[12px] text-white">중복 확인</Text>
+                          <Text className="font-pretendard-semibold text-[12px] text-white">
+                            중복 확인
+                          </Text>
                         )}
                       </TouchableOpacity>
                     </View>
-                    {/* Nickname requirement dots */}
+
                     <View className="flex-row flex-wrap -mt-2 mb-4 px-1">
-                      <Requirement
-                        met={hasNicknameLength(value)}
-                        label="2~20자 사용"
-                      />
-                      <Requirement
-                        met={hasNicknameChars(value)}
-                        label="한글/영문/숫자만"
-                      />
+                      <Requirement met={hasNicknameLength(value)} label="2~20자 사용" />
+                      <Requirement met={hasNicknameChars(value)} label="한글/영문/숫자만" />
                     </View>
-                    {/* Duplicate check status message */}
+
                     {nicknameStatus === "available" && (
                       <Text className="font-pretendard text-[12px] font-pretendard-medium -mt-2 mb-3 px-1 text-primary">
-                        사용가능한 닉네임입니다.
+                        사용 가능한 닉네임입니다.
                       </Text>
                     )}
                     {nicknameStatus === "taken" && (
@@ -456,9 +552,10 @@ export const RegisterScreen = () => {
                 )}
               />
 
+              <Text className="font-pretendard-semibold text-[14px] text-[#333333] mb-1.5 mt-4">
+                비밀번호
+              </Text>
 
-              {/* Password */}
-              <Text className="font-pretendard-semibold text-[14px] text-[#333333] mb-1.5 mt-4">비밀번호</Text>
               <Controller
                 control={control}
                 name="password"
@@ -475,11 +572,11 @@ export const RegisterScreen = () => {
                       rightElement={
                         <PasswordToggle
                           visible={showPassword}
-                          onToggle={() => setShowPassword((v) => !v)}
+                          onToggle={() => setShowPassword((prev) => !prev)}
                         />
                       }
                     />
-                    {/* Password requirement indicators */}
+
                     <View className="flex-row flex-wrap -mt-2 mb-4 px-1">
                       <Requirement met={hasLength(value)} label="8-20자 사용" />
                       <Requirement met={hasNumber(value)} label="숫자 사용" />
@@ -489,7 +586,6 @@ export const RegisterScreen = () => {
                 )}
               />
 
-              {/* Password Confirm */}
               <Controller
                 control={control}
                 name="passwordConfirm"
@@ -506,11 +602,11 @@ export const RegisterScreen = () => {
                       rightElement={
                         <PasswordToggle
                           visible={showConfirm}
-                          onToggle={() => setShowConfirm((v) => !v)}
+                          onToggle={() => setShowConfirm((prev) => !prev)}
                         />
                       }
                     />
-                    {/* Match indicator — shows one message only when user has typed something */}
+
                     {passwordConfirm.length > 0 && (
                       <View className="flex-row -mt-2 mb-2 px-1">
                         <Requirement
@@ -527,17 +623,17 @@ export const RegisterScreen = () => {
                 )}
               />
 
-              {/* Register Error message */}
               {registerError ? (
                 <Text className="text-[#FF5252] text-[13px] text-center mt-4 mb-2">
                   {registerError}
                 </Text>
               ) : null}
 
-              {/* Submit */}
               <TouchableOpacity
                 className={`bg-primary rounded-[15px] py-[18px] items-center mt-4 ${
-                  nicknameStatus !== "available" || isSubmitting ? "bg-[#8FA3B8]" : ""
+                  nicknameStatus !== "available" || isSubmitting
+                    ? "bg-[#8FA3B8]"
+                    : ""
                 }`}
                 onPress={handleSubmit(onSubmit)}
                 disabled={isSubmitting || nicknameStatus !== "available"}
@@ -546,7 +642,9 @@ export const RegisterScreen = () => {
                 {isSubmitting ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <Text className="font-pretendard-semibold text-[16px] text-white">완료</Text>
+                  <Text className="font-pretendard-semibold text-[16px] text-white">
+                    완료
+                  </Text>
                 )}
               </TouchableOpacity>
             </>
@@ -557,7 +655,6 @@ export const RegisterScreen = () => {
   );
 };
 
-// ── Requirement bullet component ─────────────────────────────────────────────
 function Requirement({ met, label }: { met: boolean; label: string }) {
   return (
     <View className="flex-row items-center mr-4">
