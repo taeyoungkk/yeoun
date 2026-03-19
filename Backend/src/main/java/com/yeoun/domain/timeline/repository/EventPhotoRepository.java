@@ -9,6 +9,8 @@ import java.util.UUID;
 public interface EventPhotoRepository extends JpaRepository<EventPhoto, UUID> {
     List<EventPhoto> findByEventIdOrderBySortOrderAsc(UUID eventId);
 
+    List<EventPhoto> findByEventIdInOrderByEventIdAscSortOrderAsc(List<UUID> eventIds);
+
     void deleteByEventId(UUID eventId);
 
     long countByEventId(UUID eventId);

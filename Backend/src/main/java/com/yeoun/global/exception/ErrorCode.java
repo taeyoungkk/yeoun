@@ -42,6 +42,8 @@ public enum ErrorCode {
     TRIP_PROCESSING_STATUS_NOT_FOUND(HttpStatus.NOT_FOUND, "Trip processing status not found."),
     TRIP_INVITE_NOT_ALLOWED(HttpStatus.CONFLICT, "Invites are not allowed for this trip status."),
     TRIP_INVITE_ACCEPT_NOT_ALLOWED(HttpStatus.CONFLICT, "This invite cannot be accepted."),
+    TIMELINE_DAY_NOT_FOUND(HttpStatus.NOT_FOUND, "Timeline day not found."),
+    EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "Event not found."),
     PHOTO_NOT_FOUND(HttpStatus.NOT_FOUND, "Photo not found."),
     PHOTO_FORBIDDEN(HttpStatus.FORBIDDEN, "You do not have permission for this photo."),
     PHOTO_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to upload photo."),
