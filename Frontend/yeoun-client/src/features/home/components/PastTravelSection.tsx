@@ -124,11 +124,10 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
                                 title={trip.title}
                                 location="대한민국"
                                 date={`${trip.startDate} ~ ${trip.endDate}`}
-                                imageUrl={trip.tripId.includes('mock') ? 
-                                    (trip.tripId === 'mock-1' ? require('@/assets/images/trip_placeholder_1.png') : require('@/assets/images/trip_placeholder_2.png')) 
-                                    : undefined}
-                                isFavorite={likedTripIds.includes(trip.tripId)}
-                                onPressHeart={() => toggleFavorite(trip.tripId)}
+                                photos={trip.tripId === 'mock-1' ? 
+                                    [require('@/assets/images/trip_placeholder_1.png'), require('@/assets/images/trip_placeholder_2.png'), require('@/assets/images/trip_placeholder_3.png'), require('@/assets/images/base.png')] : 
+                                    [require('@/assets/images/trip_placeholder_2.png'), require('@/assets/images/trip_placeholder_3.png'), require('@/assets/images/trip_placeholder_1.png')]}
+                                onPress={() => router.push({ pathname: '/trip/report', params: { tripId: trip.tripId } })}
                             />
                         ))}
                     </View>

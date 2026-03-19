@@ -3,7 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import * as WebBrowser from "expo-web-browser";
-import * as Google from "expo-auth-session/providers/google";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import {
   ActivityIndicator,
   Image,
@@ -48,24 +48,25 @@ export const LoginScreen = () => {
   });
 
   // Google OAuth Hook
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    // TRICK: Use the iOS Client ID even for Android to allow custom URI schemes
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  });
-
   useEffect(() => {
-    if (response?.type === "success") {
-      const { id_token } = response.params;
-      handleGoogleLogin(id_token);
-    }
-  }, [response]);
+    GoogleSignin.configure({
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      offlineAccess: true, // If you need a refresh token or server side access
+    });
+  }, []);
 
-  const handleGoogleLogin = async (idToken: string) => {
+  const handleGoogleLogin = async () => {
     setIsLoading(true);
     setLoginError("");
     try {
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      const idToken = userInfo.data?.idToken;
+
+      if (!idToken) {
+        throw new Error("No idToken received from Google.");
+      }
+
       const apiResponse = await googleAuthApi(idToken);
       if (apiResponse.success && apiResponse.data) {
         const { tokens, user } = apiResponse.data;
@@ -86,7 +87,7 @@ export const LoginScreen = () => {
       } else {
         setLoginError(apiResponse.message || "구글 로그인에 실패했습니다.");
       }
-    } catch (error) {
+    } catch (error: any) {
       setLoginError("구글 로그인 중 오류가 발생했습니다.");
       console.error("Google Login Error:", error);
     } finally {
@@ -259,9 +260,9 @@ export const LoginScreen = () => {
 
           {/* Google button */}
           <TouchableOpacity
-            style={[styles.googleButton, (!request || isLoading) && { opacity: 0.5 }]}
-            onPress={() => promptAsync()}
-            disabled={!request || isLoading}
+            style={[styles.googleButton, isLoading && { opacity: 0.5 }]}
+            onPress={handleGoogleLogin}
+            disabled={isLoading}
             accessibilityLabel="구글 로그인"
           >
             <View style={styles.googleInner}>

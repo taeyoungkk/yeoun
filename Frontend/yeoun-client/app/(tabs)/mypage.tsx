@@ -80,6 +80,7 @@ export default function MyPageScreen() {
           trips={favoriteTripsDisplay} 
           onViewMore={() => router.push('/trips/liked')} 
           onToggleFavorite={(id) => handleToggleFavorite(id)}
+          onPressTrip={(id) => router.push({ pathname: '/trip/report', params: { tripId: id } })}
         />
 
         <TripList 
@@ -87,6 +88,7 @@ export default function MyPageScreen() {
           trips={pastTripsDisplay} 
           onViewMore={() => router.push('/trips/past')} 
           onToggleFavorite={(id) => handleToggleFavorite(id)}
+          onPressTrip={(id) => router.push({ pathname: '/trip/report', params: { tripId: id } })}
         />
         
         <TravelMap />

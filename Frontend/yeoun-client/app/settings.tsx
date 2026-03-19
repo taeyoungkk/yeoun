@@ -102,10 +102,14 @@ export default function SettingsScreen() {
     try {
       // 1. 로그아웃 API 호출
       await logoutApi();
-    } catch (error) {
-      console.log('Logout error:', error);
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        console.log('Session already invalidated (401). Proceeding with local logout.');
+      } else {
+        console.log('Logout error:', error);
+      }
     } finally {
-      // 2. 인증 토큰 제거
+      // 2. 인증 토큰 제거 (accessToken 변경 -> RootLayout의 useEffect가 감지 -> 리다이렉트)
       useAuthStore.getState().clearTokens();
       // 3. 사용자 프로필 정보 제거
       useUserStore.getState().clearProfile();
@@ -211,21 +215,27 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* 로그아웃 버튼 (더 차분한 스타일) */}
-        <TouchableOpacity 
-          onPress={handleLogout}
-          className="mt-4 flex-row items-center justify-center p-4"
-        >
-          <Text className="text-[16px] font-medium text-[#8E8E8E] underline">로그아웃</Text>
-        </TouchableOpacity>
+        {/* 계정 관리 섹션 */}
+        <View className="mt-4">
+          <TouchableOpacity 
+            onPress={handleLogout}
+            className="w-full bg-white rounded-[32px] p-5 flex-row items-center justify-between shadow-sm border border-white"
+          >
+            <View className="flex-row items-center gap-3">
+              <View className="w-10 h-10 rounded-full bg-[#F3F6EB] items-center justify-center">
+                <Ionicons name="log-out-outline" size={22} color="#344966" />
+              </View>
+              <Text className="text-lg font-bold text-[#344966]">로그아웃</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#D1D1D1" />
+          </TouchableOpacity>
+        </View>
 
-        {/* 회원 탈퇴 버튼 (밝은 빨간색, 강조된 스타일) */}
         <TouchableOpacity 
           onPress={handleWithdraw}
-          className="mt-2 flex-row items-center justify-center bg-[#FF5252] rounded-3xl p-5"
+          className="mt-8 items-center py-4"
         >
-          <Ionicons name="trash-outline" size={24} color="#FFFFFF" />
-          <Text className="text-lg font-bold text-white ml-2">회원 탈퇴</Text>
+          <Text className="text-[13px] text-[#FF5252] font-pretendard-medium opacity-50 underline">회원 탈퇴하기</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

@@ -20,6 +20,7 @@ import { PasswordToggle } from "@/src/components/ui/password-toggle";
 import { sendEmailCode, verifyEmailCode, signupApi } from "@/src/api/auth";
 import { useAuthStore } from "@/src/store/auth.store";
 import { useUserStore } from "@/src/store";
+import axios from "axios";
 
 interface RegisterForm {
   email: string;
@@ -51,6 +52,8 @@ export const RegisterScreen = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [nicknameStatus, setNicknameStatus] = useState<NicknameStatus>("idle");
   const [emailStatus, setEmailStatus] = useState<EmailStatus>("idle");
+  const [emailErrorMessage, setEmailErrorMessage] = useState("");
+  const [nicknameErrorMessage, setNicknameErrorMessage] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationError, setVerificationError] = useState("");
   const [timer, setTimer] = useState(300); // 5 minutes in seconds
@@ -104,15 +107,29 @@ export const RegisterScreen = () => {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
 
     setEmailStatus("checking");
+    setEmailErrorMessage("");
     try {
-      // In a real app, you might have separate check and send endpoints
-      // For now, we'll try to send the code directly
-      // If it fails with "already exists", we handle it
-      await sendEmailCode(email);
-      setEmailStatus("available");
+      const response = await sendEmailCode(email);
+      if (response.success) {
+        setEmailStatus("available");
+      } else {
+        setEmailStatus("taken");
+        setEmailErrorMessage(response.message || "이미 존재하는 이메일입니다.");
+      }
     } catch (error: any) {
-      // Assuming error handling logic here for taken email
-      setEmailStatus("taken");
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 409) {
+          setEmailStatus("taken");
+          setEmailErrorMessage("이미 존재하는 이메일입니다.");
+        } else {
+          setEmailStatus("idle");
+          const msg = error.response?.data?.message || "시스템 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+          setEmailErrorMessage(msg);
+        }
+      } else {
+        setEmailStatus("idle");
+        setEmailErrorMessage("네트워크 오류가 발생했습니다.");
+      }
     }
   };
 
@@ -245,9 +262,10 @@ export const RegisterScreen = () => {
                         onChangeText={(v) => {
                           onChange(v);
                           setEmailStatus("idle");
+                          setEmailErrorMessage("");
                         }}
                         value={value}
-                        error={errors.email?.message}
+                        error={errors.email?.message || emailErrorMessage}
                       />
                     )}
                   />
@@ -272,9 +290,6 @@ export const RegisterScreen = () => {
 
               {emailStatus === "available" && (
                 <Text className="font-pretendard text-[12px] text-primary mt-2">사용 가능한 이메일입니다.</Text>
-              )}
-              {emailStatus === "taken" && (
-                <Text className="font-pretendard text-[12px] text-[#FF5252] mt-2">이미 존재하는 이메일입니다.</Text>
               )}
 
               <TouchableOpacity

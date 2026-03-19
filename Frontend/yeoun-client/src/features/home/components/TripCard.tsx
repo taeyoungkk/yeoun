@@ -1,37 +1,43 @@
 import { IconSymbol } from '@/src/components/ui/icon-symbol';
-import { Image } from 'expo-image';
 import React from 'react';
 import { Text, View, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { TripPhotoGrid } from './TripPhotoGrid';
 
 interface TripCardProps {
     title: string;
     location: string;
     date: string;
     imageUrl?: any;
+    photos?: any[];
     isFavorite?: boolean;
+    onPress?: () => void;
     onPressHeart?: () => void;
 }
 
-export const TripCard = ({ title, location, date, imageUrl, isFavorite, onPressHeart }: TripCardProps) => {
+export const TripCard = ({ title, location, date, imageUrl, photos, isFavorite, onPress, onPressHeart }: TripCardProps) => {
+    // Determine what to show in the image area
+    const displayPhotos = photos || (imageUrl ? [imageUrl] : []);
+    
     return (
-        <View className="w-full flex-row bg-[#DAE5DB] rounded-[32px] p-4 gap-4 items-center">
+        <Pressable 
+            onPress={onPress}
+            className="w-full flex-row bg-[#DAE5DB] rounded-[32px] p-4 gap-4 items-center"
+        >
             <View className="relative">
-                <Image
-                    source={imageUrl || require('@/assets/images/base.png')}
-                    className="w-[115px] h-[134px] rounded-[24px]"
-                    contentFit="cover"
-                />
-                <Pressable 
-                    onPress={onPressHeart}
-                    className="absolute top-2 right-2 bg-white/60 rounded-full p-1.5"
-                >
-                    <Ionicons 
-                        name={isFavorite ? "heart" : "heart-outline"} 
-                        size={18} 
-                        color={isFavorite ? "#E74C3C" : "#828F9C"} 
-                    />
-                </Pressable>
+                <TripPhotoGrid photos={displayPhotos} />
+                {onPressHeart && (
+                    <Pressable 
+                        onPress={onPressHeart}
+                        className="absolute top-2 right-2 bg-white/60 rounded-full p-1.5"
+                    >
+                        <Ionicons 
+                            name={isFavorite ? "heart" : "heart-outline"} 
+                            size={18} 
+                            color={isFavorite ? "#E74C3C" : "#828F9C"} 
+                        />
+                    </Pressable>
+                )}
             </View>
             <View className="flex-1 justify-center gap-2">
                 <Text className="text-black text-sm font-pretendard-bold">{title}</Text>
@@ -44,6 +50,6 @@ export const TripCard = ({ title, location, date, imageUrl, isFavorite, onPressH
                     <Text className="text-[#828F9C] text-[10px] font-pretendard-medium">{date}</Text>
                 </View>
             </View>
-        </View>
+        </Pressable>
     );
 };

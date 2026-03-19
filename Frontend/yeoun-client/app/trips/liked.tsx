@@ -44,6 +44,7 @@ export default function LikedTripsScreen() {
           <TripCard
             data={item}
             style={styles.gridCard}
+            onPress={() => router.push({ pathname: '/trip/report', params: { tripId: item.id } })}
             onPressHeart={() => toggleFavorite(item.id)}
           />
         )}
