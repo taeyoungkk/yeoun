@@ -34,39 +34,40 @@ const API_MOCKS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_API_MOCKS === 'true';
 
 export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionProps) => {
     const activeTrip = useTripStore((state) => state.activeTrip);
+    const { pastTrips, setPastTrips, likedTripIds, toggleFavorite } = useTripStore();
     const router = useRouter();
-    const [pastTrips, setPastTrips] = useState<TripListItem[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(pastTrips.length === 0);
 
     useEffect(() => {
         const fetchPastTrips = async () => {
             try {
                 const response = await getTripsApi();
                 if (response.success && response.data.items.length > 0) {
-                    const filtered = response.data.items
-                        .filter((item: TripListItem) => item.tripId !== activeTrip?.tripId)
-                        .slice(0, 3);
-                    setPastTrips(filtered);
-                } else if (API_MOCKS_ENABLED) {
-                    // Fallback to mock data ONLY if mocks are enabled
+                    setPastTrips(response.data.items);
+                } else if (API_MOCKS_ENABLED && pastTrips.length === 0) {
+                    // Fallback to mock data ONLY if mocks are enabled and we don't have data yet
                     setPastTrips(MOCK_PAST_TRIPS);
-                } else {
-                    setPastTrips([]);
                 }
             } catch (error) {
                 console.error('Failed to fetch past trips:', error);
-                if (API_MOCKS_ENABLED) {
+                if (API_MOCKS_ENABLED && pastTrips.length === 0) {
                     setPastTrips(MOCK_PAST_TRIPS);
-                } else {
-                    setPastTrips([]);
                 }
             } finally {
                 setIsLoading(false);
             }
         };
 
-        fetchPastTrips();
-    }, [activeTrip?.tripId]);
+        if (pastTrips.length === 0) {
+            fetchPastTrips();
+        } else {
+            setIsLoading(false);
+        }
+    }, [activeTrip?.tripId, pastTrips.length, setPastTrips]);
+
+    const displayTrips = pastTrips
+        .filter((item: TripListItem) => item.tripId !== activeTrip?.tripId)
+        .slice(0, 3);
 
     const handlePressCurrentTrip = () => {
         router.push('/trip/recording');
@@ -115,15 +116,19 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
                 
                 {isLoading ? (
                     <ActivityIndicator size="large" color="#DE7254" />
-                ) : pastTrips.length > 0 ? (
+                ) : displayTrips.length > 0 ? (
                     <View className="gap-6">
-                        {pastTrips.map((trip) => (
+                        {displayTrips.map((trip) => (
                             <TripCard
                                 key={trip.tripId}
                                 title={trip.title}
                                 location="대한민국"
                                 date={`${trip.startDate} ~ ${trip.endDate}`}
-                                imageUrl={trip.tripId.includes('mock') ? require('@/assets/images/trip_placeholder_2.png') : undefined}
+                                imageUrl={trip.tripId.includes('mock') ? 
+                                    (trip.tripId === 'mock-1' ? require('@/assets/images/trip_placeholder_1.png') : require('@/assets/images/trip_placeholder_2.png')) 
+                                    : undefined}
+                                isFavorite={likedTripIds.includes(trip.tripId)}
+                                onPressHeart={() => toggleFavorite(trip.tripId)}
                             />
                         ))}
                     </View>

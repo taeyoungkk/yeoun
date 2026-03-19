@@ -1,5 +1,4 @@
-import React from 'react';
-import { View, Text, StyleSheet, ImageBackground, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ImageBackground, Pressable, ViewStyle, StyleProp } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 export interface TripData {
@@ -15,11 +14,12 @@ interface Props {
   data: TripData;
   onPress?: () => void;
   onPressHeart?: () => void;
+  style?: StyleProp<ViewStyle>;
 }
 
-export function TripCard({ data, onPress, onPressHeart }: Props) {
+export function TripCard({ data, onPress, onPressHeart, style }: Props) {
   return (
-    <Pressable onPress={onPress}>
+    <Pressable onPress={onPress} style={style}>
       <ImageBackground 
         source={data.imageSource} 
         style={styles.card}
@@ -53,9 +53,8 @@ export function TripCard({ data, onPress, onPressHeart }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    width: 170,
-    height: 240,
-    marginRight: 16,
+    width: '100%',
+    height: '100%',
     justifyContent: 'space-between',
   },
   image: {

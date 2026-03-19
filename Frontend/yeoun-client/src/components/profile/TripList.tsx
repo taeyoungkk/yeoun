@@ -30,6 +30,7 @@ export function TripList({ title, trips, onViewMore, onToggleFavorite }: Props) 
           <TripCard 
             key={trip.id} 
             data={trip} 
+            style={{ width: 170, height: 240, marginRight: 16 }}
             onPress={() => console.log('Trip pressed:', trip.id)} 
             onPressHeart={() => onToggleFavorite?.(trip.id)}
           />
