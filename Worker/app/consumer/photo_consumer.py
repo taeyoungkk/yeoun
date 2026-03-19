@@ -8,6 +8,7 @@ from app.config import Settings
 from app.schemas.photo import PhotoProcessingDlqMessage, PhotoProcessingRequest, PhotoProcessingResultMessage
 from app.services.photo_loader import PhotoLoaderService
 from app.services.photo_metadata import PhotoMetadataService
+from app.services.photo_thumbnail import PhotoThumbnailService
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class PhotoConsumer:
         self.settings = settings
         self.loader = PhotoLoaderService(settings)
         self.metadata_service = PhotoMetadataService()
+        self.thumbnail_service = PhotoThumbnailService(settings)
         self._consumer: Any = None
         self._producer: Any = None
         self._task: asyncio.Task | None = None
@@ -75,11 +77,13 @@ class PhotoConsumer:
         payload = PhotoProcessingRequest.model_validate(message.value)
         loaded_photo = await self.loader.download_and_load(payload)
         extracted = self.metadata_service.extract_and_normalize(payload, loaded_photo)
+        thumbnail = self.thumbnail_service.generate_and_store(payload, loaded_photo)
         logger.info(
             (
                 "Loaded photo processing source photoId=%s tripId=%s attempt=%s "
                 "source=%s format=%s mimeType=%s size=%sx%s mode=%s "
-                "extractedTakenAt=%s normalizedTakenAt=%s extractedCoordinates=%s normalizedCoordinates=%s"
+                "extractedTakenAt=%s normalizedTakenAt=%s extractedCoordinates=%s normalizedCoordinates=%s "
+                "thumbnailKey=%s thumbnailSize=%sx%s thumbnailBytes=%s"
             ),
             payload.photo_id,
             payload.trip_id,
@@ -102,6 +106,10 @@ class PhotoConsumer:
                 if extracted.normalized_coordinates
                 else None
             ),
+            thumbnail.thumbnail_key,
+            thumbnail.width,
+            thumbnail.height,
+            thumbnail.file_size_bytes,
         )
         await self._consumer.commit()
 

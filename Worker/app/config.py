@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     kafka_max_retry_attempts: int = Field(default=3, alias="KAFKA_MAX_RETRY_ATTEMPTS")
 
     image_base_url: str = Field(default="http://localhost/images", alias="IMAGE_BASE_URL")
+    photo_thumbnail_output_dir: str = Field(default="storage/thumbnails", alias="PHOTO_THUMBNAIL_OUTPUT_DIR")
+    photo_thumbnail_format: str = Field(default="JPEG", alias="PHOTO_THUMBNAIL_FORMAT")
+    photo_thumbnail_max_size: int = Field(default=512, alias="PHOTO_THUMBNAIL_MAX_SIZE")
+    photo_thumbnail_quality: int = Field(default=85, alias="PHOTO_THUMBNAIL_QUALITY")
     gms_api_key: str | None = Field(default=None, alias="GMS_API_KEY")
     gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     gemini_base_url: str = Field(
