@@ -34,22 +34,22 @@ type ScreenMode = 'form' | 'invite';
 type PickerMode = 'month' | 'year' | null;
 type NoticeModalType = 'missing' | 'start' | null;
 
-const DUMMY_NICKNAME = '지우';
+const DUMMY_NICKNAME = '\uC9C0\uC6B0\uB2D8';
 const DUMMY_INVITE_LINK = 'https://yeoun.app/invite/trip-demo-2026';
-const WEEK_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+const WEEK_LABELS = ['\uC77C', '\uC6D4', '\uD654', '\uC218', '\uBAA9', '\uAE08', '\uD1A0'];
 const MONTH_LABELS = [
-  '1월',
-  '2월',
-  '3월',
-  '4월',
-  '5월',
-  '6월',
-  '7월',
-  '8월',
-  '9월',
-  '10월',
-  '11월',
-  '12월',
+  '\u0031\uC6D4',
+  '\u0032\uC6D4',
+  '\u0033\uC6D4',
+  '\u0034\uC6D4',
+  '\u0035\uC6D4',
+  '\u0036\uC6D4',
+  '\u0037\uC6D4',
+  '\u0038\uC6D4',
+  '\u0039\uC6D4',
+  '\u0031\u0030\uC6D4',
+  '\u0031\u0031\uC6D4',
+  '\u0031\u0032\uC6D4',
 ];
 const SEARCH_CANDIDATES: InviteCandidate[] = [
   { id: 101, name: '김세현', nickname: 'sehyeon' },
@@ -101,6 +101,7 @@ function getCalendarDays(baseDate: Date) {
 function FieldNoticeModal({
   visible,
   type,
+  isEditing,
   tripName,
   dateLabel,
   memberCount,
@@ -110,6 +111,7 @@ function FieldNoticeModal({
 }: {
   visible: boolean;
   type: NoticeModalType;
+  isEditing: boolean;
   tripName: string;
   dateLabel?: string;
   memberCount: number;
@@ -133,9 +135,9 @@ function FieldNoticeModal({
 
           {type === 'missing' ? (
             <>
-              <Text style={styles.modalTitle}>입력이 더 필요해요</Text>
+              <Text style={styles.modalTitle}>{'\uC785\uB825 \uC815\uBCF4\uB97C \uD655\uC778\uD574\uC8FC\uC138\uC694'}</Text>
               <Text style={styles.modalDescription}>
-                여행을 시작하려면 아래 항목을 먼저 선택해 주세요.
+                {'\uC5EC\uD589\uC744 \uC2DC\uC791\uD558\uB824\uBA74 \uC544\uB798 \uD56D\uBAA9\uC744 \uBAA8\uB450 \uC785\uB825\uD574\uC57C \uD569\uB2C8\uB2E4.'}
               </Text>
 
               <View style={styles.modalTagWrap}>
@@ -147,28 +149,32 @@ function FieldNoticeModal({
               </View>
 
               <TouchableOpacity style={styles.modalPrimaryButton} onPress={onClose} activeOpacity={0.88}>
-                <Text style={styles.modalPrimaryButtonText}>확인했어요</Text>
+                <Text style={styles.modalPrimaryButtonText}>{'\uD655\uC778'}</Text>
               </TouchableOpacity>
             </>
           ) : (
             <>
-              <Text style={styles.modalTitle}>여행 기록을 시작합니다</Text>
+              <Text style={styles.modalTitle}>
+                {isEditing ? '\uC5EC\uD589 \uC815\uBCF4 \uC218\uC815' : '\uC9C0\uC6B0\uB2D8, \uC5EC\uD589\uC744 \uC2DC\uC791\uD558\uC2DC\uB098\uC694?'}
+              </Text>
               <Text style={styles.modalDescription}>
-                아래 설정으로 여행 기록 페이지로 이동할게요.
+                {isEditing
+                  ? '\uC785\uB825\uD55C \uC5EC\uD589 \uC815\uBCF4\uB97C \uBC18\uC601\uD558\uACE0 \uAE30\uB85D \uC911\uC774\uB358 \uD398\uC774\uC9C0\uB85C \uB3CC\uC544\uAC11\uB2C8\uB2E4.'
+                  : '\uC785\uB825\uD55C \uC815\uBCF4\uB97C \uD655\uC778\uD558\uACE0 \uC5EC\uD589 \uAE30\uB85D\uC744 \uC2DC\uC791\uD569\uB2C8\uB2E4.'}
               </Text>
 
               <View style={styles.summaryCard}>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>여행 이름</Text>
+                  <Text style={styles.summaryLabel}>{'\uC5EC\uD589 \uC774\uB984'}</Text>
                   <Text style={styles.summaryValue}>{tripName}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>여행 날짜</Text>
+                  <Text style={styles.summaryLabel}>{'\uC5EC\uD589 \uB0A0\uC9DC'}</Text>
                   <Text style={styles.summaryValue}>{dateLabel}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>인원</Text>
-                  <Text style={styles.summaryValue}>{memberCount}명</Text>
+                  <Text style={styles.summaryLabel}>{'\uC778\uC6D0'}</Text>
+                  <Text style={styles.summaryValue}>{`${memberCount}\uBA85`}</Text>
                 </View>
               </View>
 
@@ -178,7 +184,7 @@ function FieldNoticeModal({
                   onPress={onClose}
                   activeOpacity={0.88}
                 >
-                  <Text style={styles.modalSecondaryButtonText}>취소</Text>
+                  <Text style={styles.modalSecondaryButtonText}>{'\uC774\uC804'}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -186,7 +192,9 @@ function FieldNoticeModal({
                   onPress={onConfirm}
                   activeOpacity={0.88}
                 >
-                  <Text style={styles.modalPrimaryButtonText}>시작하기</Text>
+                  <Text style={styles.modalPrimaryButtonText}>
+                    {isEditing ? '\uC218\uC815\uC644\uB8CC' : '\uAE30\uB85D \uC2DC\uC791'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -200,8 +208,10 @@ function FieldNoticeModal({
 export default function TripStartScreen() {
   const router = useRouter();
   const startTrip = useTripStore((state) => state.startTrip);
+  const updateCurrentTrip = useTripStore((state) => state.updateCurrentTrip);
   const setActiveTrip = useTripStore((state) => state.setActiveTrip);
   const currentTrip = useTripStore((state) => state.currentTrip);
+  const isTripActive = useTripStore((state) => state.isTripActive);
   
   const [tripName, setTripName] = useState(currentTrip?.tripName ?? '');
   const [calendarVisible, setCalendarVisible] = useState(false);
@@ -273,6 +283,7 @@ export default function TripStartScreen() {
     }),
     [currentTrip?.destination, currentTrip?.origin, currentTrip?.tripId, endDate, memberCount, startDate, tripName]
   );
+  const isEditingActiveTrip = Boolean(currentTrip?.tripId && isTripActive);
 
   const handlePickDay = (date: Date) => {
     if (!startDate || endDate) {
@@ -374,7 +385,9 @@ export default function TripStartScreen() {
           status: 'ACTIVE',
         };
 
-        Alert.alert('서버 응답 오류', `${createResponse.message}\n\n서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
+        Alert.alert('서버 응답 오류', `${createResponse.message}
+
+서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
           { text: '취소', style: 'cancel' },
           { 
             text: '테스트 시작', 
@@ -397,7 +410,9 @@ export default function TripStartScreen() {
           status: 'ACTIVE',
         };
 
-       Alert.alert('서버 연결 실패', `서버와 연결할 수 없습니다.\n\n서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
+       Alert.alert('서버 연결 실패', `서버와 연결할 수 없습니다.
+
+서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
         { text: '취소', style: 'cancel' },
         { 
           text: '테스트 시작', 
@@ -412,6 +427,12 @@ export default function TripStartScreen() {
 
   const handleStartTripImmediateNavigation = async () => {
     setNoticeModalType(null);
+    if (isEditingActiveTrip) {
+      updateCurrentTrip(tripDraft);
+      router.replace('/trip/recording');
+      return;
+    }
+
     startTrip(tripDraft);
     router.replace('/trip/recording');
 
@@ -449,19 +470,19 @@ export default function TripStartScreen() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <TripStartHeader nickname={DUMMY_NICKNAME} />
+        <TripStartHeader nickname={DUMMY_NICKNAME} isEditing={isEditingActiveTrip} />
 
         <View style={styles.formStack}>
           <TripStartInputField
             icon="edit"
-            placeholder="여행 이름"
+            placeholder={'\uC5EC\uD589 \uC774\uB984'}
             value={tripName}
             onChangeText={setTripName}
           />
 
           <TripStartField
             icon="calendar-today"
-            label="날짜 선택"
+            label={'\uC5EC\uD589 \uB0A0\uC9DC'}
             value={dateLabel}
             onPress={() => {
               setPickerMode(null);
@@ -501,7 +522,7 @@ export default function TripStartScreen() {
 
           <TripStartField
             icon="groups-2"
-            label="인원"
+            label={'\uC778\uC6D0'}
             centerSlot={
               <TripMemberCounter
                 count={memberCount}
@@ -513,8 +534,8 @@ export default function TripStartScreen() {
 
           <TripStartField
             icon="group-add"
-            label="여행 멤버 초대"
-            value="여행 멤버 초대"
+            label={'\uC5EC\uD589 \uBA64\uBC84 \uCD08\uB300'}
+            value={'\uC5EC\uD589 \uBA64\uBC84 \uCD08\uB300'}
             onPress={() => setScreenMode('invite')}
             rightSlot={<MaterialIcons name="chevron-right" size={22} color="#151A17" />}
           />
@@ -526,7 +547,7 @@ export default function TripStartScreen() {
             onPress={() => router.back()}
             activeOpacity={0.88}
           >
-            <Text style={styles.secondaryButtonText}>이전</Text>
+            <Text style={styles.secondaryButtonText}>{'\uC774\uC804'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -534,7 +555,7 @@ export default function TripStartScreen() {
             onPress={handlePressNext}
             activeOpacity={0.88}
           >
-            <Text style={styles.primaryButtonText}>다음</Text>
+            <Text style={styles.primaryButtonText}>{isEditingActiveTrip ? '\uC218\uC815\uC644\uB8CC' : '\uB2E4\uC74C'}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -542,6 +563,7 @@ export default function TripStartScreen() {
       <FieldNoticeModal
         visible={noticeModalType !== null}
         type={noticeModalType}
+        isEditing={isEditingActiveTrip}
         tripName={tripName.trim()}
         dateLabel={dateLabel}
         memberCount={memberCount}

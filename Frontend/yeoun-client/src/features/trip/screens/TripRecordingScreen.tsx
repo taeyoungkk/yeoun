@@ -47,13 +47,14 @@ const MAP_SIDE_MARGIN = 16;
 const MAP_TOP_OFFSET = 112;
 const PANEL_TOP_OFFSET = 118;
 
-type DayFilter = 'all' | 'day1' | 'day2' | 'day3';
+type DayKey = `day${number}`;
+type DayFilter = 'all' | DayKey;
 type TimelineEventType = 'location' | 'photo' | 'payment';
 type Coordinate = [number, number];
 type MapFilterKey = 'showPhotoPins' | 'showPaymentPins';
 
 type TripDay = {
-  id: Exclude<DayFilter, 'all'>;
+  id: DayKey;
   label: string;
   dateLabel: string;
   distanceKm: number;
@@ -61,11 +62,8 @@ type TripDay = {
   route: Coordinate[];
 };
 
-const TRIP_DAYS: TripDay[] = [
+const TRIP_DAY_TEMPLATES: Omit<TripDay, 'id' | 'label' | 'dateLabel'>[] = [
   {
-    id: 'day1',
-    label: 'Day 1',
-    dateLabel: '03.11',
     distanceKm: 12.8,
     summary: '서울 도심을 걸으며 사진과 결제를 함께 기록한 날이에요.',
     route: [
@@ -77,9 +75,6 @@ const TRIP_DAYS: TripDay[] = [
     ],
   },
   {
-    id: 'day2',
-    label: 'Day 2',
-    dateLabel: '03.12',
     distanceKm: 9.4,
     summary: '성수 일대에서 머문 장소와 이동 흐름이 또렷했던 구간이에요.',
     route: [
@@ -91,9 +86,6 @@ const TRIP_DAYS: TripDay[] = [
     ],
   },
   {
-    id: 'day3',
-    label: 'Day 3',
-    dateLabel: '03.13',
     distanceKm: 14.2,
     summary: '한강 근처를 따라 이동하며 결제와 방문 기록이 쌓인 하루예요.',
     route: [
@@ -136,8 +128,50 @@ function getBounds(route: Coordinate[]) {
   };
 }
 
-function getFilteredDays(activeFilter: DayFilter) {
-  return activeFilter === 'all' ? TRIP_DAYS : TRIP_DAYS.filter((day) => day.id === activeFilter);
+function formatDayTabLabel(date: Date) {
+  return `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function buildTripDays(startDate?: string, endDate?: string): TripDay[] {
+  const start = startDate ? new Date(startDate) : null;
+  const end = endDate ? new Date(endDate) : null;
+
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return TRIP_DAY_TEMPLATES.map((template, index) => ({
+      id: `day${index + 1}`,
+      label: `DAY ${index + 1}`,
+      dateLabel: formatDayTabLabel(new Date(2025, 2, 11 + index)),
+      ...template,
+    }));
+  }
+
+  const normalizedStart = new Date(start);
+  const normalizedEnd = new Date(end);
+  normalizedStart.setHours(0, 0, 0, 0);
+  normalizedEnd.setHours(0, 0, 0, 0);
+
+  const diffDays =
+    Math.max(
+      1,
+      Math.floor((normalizedEnd.getTime() - normalizedStart.getTime()) / (24 * 60 * 60 * 1000)) + 1,
+    );
+
+  return Array.from({ length: diffDays }, (_, index) => {
+    const targetDate = new Date(normalizedStart);
+    targetDate.setDate(normalizedStart.getDate() + index);
+    const template = TRIP_DAY_TEMPLATES[Math.min(index, TRIP_DAY_TEMPLATES.length - 1)];
+
+    return {
+      id: `day${index + 1}`,
+      label: `DAY ${index + 1}`,
+      dateLabel: formatDayTabLabel(targetDate),
+      ...template,
+    };
+  });
+}
+
+function getFilteredDays(activeFilter: DayFilter, tripDays: TripDay[]) {
+  return activeFilter === 'all' ? tripDays : tripDays.filter((day) => day.id === activeFilter);
 }
 
 export default function TripRecordingScreen() {
@@ -186,7 +220,11 @@ export default function TripRecordingScreen() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [liveRoute, setLiveRoute] = useState<Coordinate[]>([]);
 
-  const filteredDays = useMemo(() => getFilteredDays(activeFilter), [activeFilter]);
+  const tripDays = useMemo(
+    () => buildTripDays(currentTrip?.startDate, currentTrip?.endDate),
+    [currentTrip?.endDate, currentTrip?.startDate],
+  );
+  const filteredDays = useMemo(() => getFilteredDays(activeFilter, tripDays), [activeFilter, tripDays]);
   const filteredEvents = useMemo(
     () => tripEvents.filter((event) => activeFilter === 'all' || event.day === activeFilter),
     [activeFilter, tripEvents]
@@ -313,6 +351,12 @@ export default function TripRecordingScreen() {
       setSelectedEventId(null);
     }
   }, [filteredEvents, selectedEventId]);
+
+  useEffect(() => {
+    if (activeFilter !== 'all' && !tripDays.some((day) => day.id === activeFilter)) {
+      setActiveFilter('all');
+    }
+  }, [activeFilter, tripDays]);
 
   useEffect(() => {
     // Subscribe to real-time location updates for instant map updates
@@ -1107,7 +1151,7 @@ export default function TripRecordingScreen() {
             <Pressable style={[styles.dayTab, activeFilter === 'all' && styles.dayTabActive]} onPress={() => setActiveFilter('all')}>
               <Text style={[styles.dayTabText, activeFilter === 'all' && styles.dayTabTextActive]}>전체</Text>
             </Pressable>
-            {TRIP_DAYS.map((day) => {
+            {tripDays.map((day) => {
               const isActive = activeFilter === day.id;
               return (
                 <Pressable key={day.id} style={[styles.dayTab, isActive && styles.dayTabActive]} onPress={() => setActiveFilter(day.id)}>

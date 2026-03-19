@@ -18,6 +18,7 @@ interface TripState {
   currentTrip: CurrentTrip | null;
   activeTrip: TripDetail | null;
   startTrip: (trip: CurrentTrip) => void;
+  updateCurrentTrip: (trip: CurrentTrip) => void;
   setActiveTrip: (trip: TripDetail) => void;
   endTrip: () => void;
   clearTrip: () => void;
@@ -34,6 +35,12 @@ export const useTripStore = create<TripState>((set) => ({
       currentTripId: trip.tripId,
       currentTrip: trip,
     }),
+  updateCurrentTrip: (trip) =>
+    set((state) => ({
+      isTripActive: state.isTripActive,
+      currentTripId: trip.tripId,
+      currentTrip: trip,
+    })),
   setActiveTrip: (trip) =>
     set({
       activeTrip: trip,
