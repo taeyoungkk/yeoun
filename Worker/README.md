@@ -10,6 +10,8 @@
 - 여행 GPS batch Kafka consumer
 - 여행 GPS raw 로그 Postgres 저장
 - `(trip_id, user_id, client_log_uuid)` 기준 idempotency 처리
+- GPS 처리 실패 시 retry / DLQ 발행
+- GPS payload 검증 실패 시 즉시 DLQ 발행
 
 ## 디렉터리 구조
 
@@ -65,7 +67,8 @@ Worker/
 - `app/consumer/location_consumer.py`
   - `trip-location-log-batch` / retry 토픽 consume
   - 처리 성공 시 result topic 발행
-  - 실패 시 retry 또는 DLQ 발행
+  - 처리 실패 시 retry 또는 DLQ 발행
+  - payload 검증 실패 시 즉시 DLQ 발행
 
 ## GPS 처리 흐름
 
