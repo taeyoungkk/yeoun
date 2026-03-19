@@ -7,6 +7,7 @@ from typing import Any
 from app.config import Settings
 from app.schemas.photo import PhotoProcessingDlqMessage, PhotoProcessingRequest, PhotoProcessingResultMessage
 from app.services.photo_loader import PhotoLoaderService
+from app.services.photo_metadata import PhotoMetadataService
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class PhotoConsumer:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.loader = PhotoLoaderService(settings)
+        self.metadata_service = PhotoMetadataService()
         self._consumer: Any = None
         self._producer: Any = None
         self._task: asyncio.Task | None = None
@@ -72,10 +74,12 @@ class PhotoConsumer:
     async def _process_message(self, message: Any) -> None:
         payload = PhotoProcessingRequest.model_validate(message.value)
         loaded_photo = await self.loader.download_and_load(payload)
+        extracted = self.metadata_service.extract_and_normalize(payload, loaded_photo)
         logger.info(
             (
                 "Loaded photo processing source photoId=%s tripId=%s attempt=%s "
-                "source=%s format=%s mimeType=%s size=%sx%s mode=%s"
+                "source=%s format=%s mimeType=%s size=%sx%s mode=%s "
+                "extractedTakenAt=%s normalizedTakenAt=%s extractedCoordinates=%s normalizedCoordinates=%s"
             ),
             payload.photo_id,
             payload.trip_id,
@@ -86,6 +90,18 @@ class PhotoConsumer:
             loaded_photo.width,
             loaded_photo.height,
             loaded_photo.mode,
+            extracted.extracted_taken_at.isoformat() if extracted.extracted_taken_at else None,
+            extracted.normalized_taken_at.isoformat() if extracted.normalized_taken_at else None,
+            (
+                f"{extracted.extracted_coordinates.latitude},{extracted.extracted_coordinates.longitude}"
+                if extracted.extracted_coordinates
+                else None
+            ),
+            (
+                f"{extracted.normalized_coordinates.latitude},{extracted.normalized_coordinates.longitude}"
+                if extracted.normalized_coordinates
+                else None
+            ),
         )
         await self._consumer.commit()
 
