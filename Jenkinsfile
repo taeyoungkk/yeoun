@@ -220,7 +220,7 @@ EOT
           }
           try {
             sshagent(credentials: ['ec2-node1-ssh']) {
-              sh "ssh -o StrictHostKeyChecking=no \"${env.NODE1_HOST}\" \"cd '${PROJECT_PATH}' && git pull origin develop && sed -i 's|^API_IMAGE=.*|API_IMAGE=${env.API_IMAGE}|' Infra/docker/node1/.env && bash Infra/scripts/deploy-node1.sh\""
+              sh "ssh -o StrictHostKeyChecking=no \"${env.NODE1_HOST}\" \"cd '${PROJECT_PATH}' && sed -i 's|^API_IMAGE=.*|API_IMAGE=${env.API_IMAGE}|' Infra/docker/node1/.env && bash Infra/scripts/deploy-node1.sh\""
             }
           } catch (Exception err) {
             if (env.PREVIOUS_API_IMAGE?.trim()) {
