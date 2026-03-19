@@ -9,5 +9,9 @@ import java.util.UUID;
 public interface EventRepository extends JpaRepository<Event, UUID> {
     List<Event> findByTimelineDayIdOrderByStartAtAscEndAtAscCreatedAtAsc(UUID timelineDayId);
 
+    List<Event> findByTimelineDayIdAndHiddenFalseOrderByStartAtAscEndAtAscCreatedAtAsc(UUID timelineDayId);
+
     long countByTimelineDayId(UUID timelineDayId);
+
+    long countByTimelineDayIdAndHiddenFalse(UUID timelineDayId);
 }

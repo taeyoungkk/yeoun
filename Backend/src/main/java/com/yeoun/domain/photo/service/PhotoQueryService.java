@@ -67,7 +67,6 @@ public class PhotoQueryService {
                 photo.getPhotoId(),
                 photo.getOwnerUserId(),
                 photo.getTripId(),
-                photo.getEventId(),
                 photo.getStorageKey(),
                 photo.getThumbnailKey(),
                 photo.getFileName(),
@@ -143,7 +142,6 @@ public class PhotoQueryService {
                 photo.getPhotoId(),
                 photo.getThumbnailKey(),
                 photo.getTakenAt(),
-                photo.getEventId(),
                 photo.isExcluded()
         );
     }

@@ -70,6 +70,7 @@ public class TimelineQueryService {
         Trip trip = getAccessibleTrip(tripId, requesterUserId);
 
         List<TimelineDayListItemResponse> items = timelineDayRepository.findByTripIdOrderByDayDateAsc(trip.getTripId()).stream()
+                .filter(timelineDay -> timelineDay.getEventCount() > 0 || timelineDay.getPhotoCount() > 0)
                 .map(timelineDay -> new TimelineDayListItemResponse(
                         timelineDay.getTimelineDayId(),
                         timelineDay.getDayDate(),
@@ -90,7 +91,7 @@ public class TimelineQueryService {
 
         getAccessibleTrip(timelineDay.getTripId(), requesterUserId);
 
-        List<Event> events = eventRepository.findByTimelineDayIdOrderByStartAtAscEndAtAscCreatedAtAsc(timelineDayId);
+        List<Event> events = eventRepository.findByTimelineDayIdAndHiddenFalseOrderByStartAtAscEndAtAscCreatedAtAsc(timelineDayId);
         Map<UUID, List<EventPhotoResponse>> photoResponsesByEventId = buildEventPhotoResponses(events.stream()
                 .map(Event::getEventId)
                 .toList());

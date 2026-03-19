@@ -98,4 +98,9 @@ public class Event {
         this.hidden = hidden;
         this.updatedAt = now;
     }
+
+    public void moveToTimelineDay(UUID timelineDayId, Instant now) {
+        this.timelineDayId = timelineDayId;
+        this.updatedAt = now;
+    }
 }

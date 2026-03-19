@@ -11,7 +11,6 @@ import com.yeoun.domain.timeline.dto.response.EventUpdateResponse;
 import com.yeoun.domain.timeline.entity.Event;
 import com.yeoun.domain.timeline.entity.EventPhoto;
 import com.yeoun.domain.timeline.entity.TimelineDay;
-import com.yeoun.domain.timeline.repository.EventMemoRepository;
 import com.yeoun.domain.timeline.repository.EventPhotoRepository;
 import com.yeoun.domain.timeline.repository.EventRepository;
 import com.yeoun.domain.timeline.repository.TimelineDayRepository;
@@ -26,6 +25,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -37,9 +39,10 @@ import java.util.UUID;
 @Transactional
 public class EventCommandService {
 
+    private static final ZoneId DEFAULT_ZONE_ID = ZoneId.of("Asia/Seoul");
+
     private final EventRepository eventRepository;
     private final EventPhotoRepository eventPhotoRepository;
-    private final EventMemoRepository eventMemoRepository;
     private final TimelineDayRepository timelineDayRepository;
     private final PhotoRepository photoRepository;
     private final TripRepository tripRepository;
@@ -48,7 +51,6 @@ public class EventCommandService {
     public EventCommandService(
             EventRepository eventRepository,
             EventPhotoRepository eventPhotoRepository,
-            EventMemoRepository eventMemoRepository,
             TimelineDayRepository timelineDayRepository,
             PhotoRepository photoRepository,
             TripRepository tripRepository,
@@ -56,7 +58,6 @@ public class EventCommandService {
     ) {
         this.eventRepository = eventRepository;
         this.eventPhotoRepository = eventPhotoRepository;
-        this.eventMemoRepository = eventMemoRepository;
         this.timelineDayRepository = timelineDayRepository;
         this.photoRepository = photoRepository;
         this.tripRepository = tripRepository;
@@ -65,6 +66,8 @@ public class EventCommandService {
 
     public EventUpdateResponse updateEvent(UUID requesterUserId, UUID eventId, EventUpdateRequest request) {
         Event event = getEditableEvent(eventId, requesterUserId);
+        Instant originalStartAt = event.getStartAt();
+        UUID originalTimelineDayId = event.getTimelineDayId();
 
         Instant startAt = request.startAt() == null ? event.getStartAt() : request.startAt();
         Instant endAt = request.endAt() == null ? event.getEndAt() : request.endAt();
@@ -88,6 +91,12 @@ public class EventCommandService {
                 request.hidden() == null ? event.isHidden() : request.hidden(),
                 now
         );
+
+        UUID newTimelineDayId = moveEventIfDayChanged(event, originalStartAt, now);
+        recalculateTimelineDayCounts(originalTimelineDayId, now);
+        if (!originalTimelineDayId.equals(newTimelineDayId)) {
+            recalculateTimelineDayCounts(newTimelineDayId, now);
+        }
 
         return new EventUpdateResponse(
                 event.getEventId(),
@@ -115,13 +124,12 @@ public class EventCommandService {
         if (photos.size() != photoIds.size()) {
             throw new BaseException(ErrorCode.PHOTO_NOT_FOUND);
         }
+
+        Map<UUID, Photo> photoById = new HashMap<>();
         for (Photo photo : photos) {
             if (!photo.getTripId().equals(event.getTripId())) {
                 throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "All photos must belong to the same trip as the event.");
             }
-        }
-        Map<UUID, Photo> photoById = new HashMap<>();
-        for (Photo photo : photos) {
             photoById.put(photo.getPhotoId(), photo);
         }
 
@@ -129,13 +137,14 @@ public class EventCommandService {
         eventPhotoRepository.flush();
 
         Instant now = Instant.now();
-        List<EventPhotoResponse> responses = new java.util.ArrayList<>();
+        List<EventPhotoResponse> responses = new ArrayList<>();
         for (int i = 0; i < request.photos().size(); i++) {
             EventPhotoReplaceItemRequest item = request.photos().get(i);
             Photo photo = photoById.get(item.photoId());
             if (photo == null) {
                 throw new BaseException(ErrorCode.PHOTO_NOT_FOUND);
             }
+
             int sortOrder = i + 1;
             EventPhoto eventPhoto = EventPhoto.builder()
                     .eventPhotoId(UUID.randomUUID())
@@ -146,6 +155,7 @@ public class EventCommandService {
                     .createdAt(now)
                     .build();
             eventPhotoRepository.save(eventPhoto);
+
             responses.add(new EventPhotoResponse(
                     eventPhoto.getEventPhotoId(),
                     photo.getPhotoId(),
@@ -173,6 +183,33 @@ public class EventCommandService {
         );
 
         return new EventPhotoReplaceResponse(eventId, responses, event.getUpdatedAt());
+    }
+
+    private UUID moveEventIfDayChanged(Event event, Instant originalStartAt, Instant now) {
+        LocalDate originalDay = resolveDayDate(originalStartAt);
+        LocalDate newDay = resolveDayDate(event.getStartAt());
+        if (originalDay.equals(newDay)) {
+            return event.getTimelineDayId();
+        }
+
+        TimelineDay targetTimelineDay = timelineDayRepository.findByTripIdAndDayDate(event.getTripId(), newDay)
+                .orElseGet(() -> timelineDayRepository.save(TimelineDay.builder()
+                        .timelineDayId(UUID.randomUUID())
+                        .tripId(event.getTripId())
+                        .dayDate(newDay)
+                        .summaryText(null)
+                        .distanceM(null)
+                        .photoCount(0)
+                        .eventCount(0)
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build()));
+        event.moveToTimelineDay(targetTimelineDay.getTimelineDayId(), now);
+        return targetTimelineDay.getTimelineDayId();
+    }
+
+    private LocalDate resolveDayDate(Instant instant) {
+        return instant.atZone(DEFAULT_ZONE_ID).toLocalDate();
     }
 
     private Event getEditableEvent(UUID eventId, UUID requesterUserId) {
@@ -213,10 +250,18 @@ public class EventCommandService {
         TimelineDay timelineDay = timelineDayRepository.findById(timelineDayId)
                 .orElseThrow(() -> new BaseException(ErrorCode.TIMELINE_DAY_NOT_FOUND));
 
-        List<Event> events = eventRepository.findByTimelineDayIdOrderByStartAtAscEndAtAscCreatedAtAsc(timelineDayId);
-        long eventCount = events.size();
-        long photoCount = eventPhotoRepository.findByEventIdInOrderByEventIdAscSortOrderAsc(
-                        events.stream().map(Event::getEventId).toList())
+        long totalEventCount = eventRepository.countByTimelineDayId(timelineDayId);
+        if (totalEventCount == 0) {
+            timelineDayRepository.delete(timelineDay);
+            return;
+        }
+
+        List<Event> visibleEvents = eventRepository.findByTimelineDayIdAndHiddenFalseOrderByStartAtAscEndAtAscCreatedAtAsc(timelineDayId);
+        long visibleEventCount = visibleEvents.size();
+        long visiblePhotoCount = visibleEvents.isEmpty()
+                ? 0
+                : eventPhotoRepository.findByEventIdInOrderByEventIdAscSortOrderAsc(
+                        visibleEvents.stream().map(Event::getEventId).toList())
                 .stream()
                 .map(EventPhoto::getPhotoId)
                 .distinct()
@@ -225,8 +270,8 @@ public class EventCommandService {
         timelineDay.updateSummary(
                 timelineDay.getSummaryText(),
                 timelineDay.getDistanceM(),
-                Math.toIntExact(photoCount),
-                Math.toIntExact(eventCount),
+                Math.toIntExact(visiblePhotoCount),
+                Math.toIntExact(visibleEventCount),
                 now
         );
     }

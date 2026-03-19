@@ -14,4 +14,6 @@ public interface EventPhotoRepository extends JpaRepository<EventPhoto, UUID> {
     void deleteByEventId(UUID eventId);
 
     long countByEventId(UUID eventId);
+
+    long countByEventIdIn(List<UUID> eventIds);
 }
