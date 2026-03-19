@@ -214,6 +214,9 @@ EOT
           }
           try {
             sshagent(credentials: ['ec2-node1-ssh']) {
+              // 💡 [핵심] 윈도우 줄바꿈(\r) 찌꺼기를 리눅스 방식(\n)으로 말끔히 청소!
+              sh "sed -i 's/\\\\r\\$//' Infra/scripts/*.sh"
+              
               // 1. 젠킨스가 가진 최신 Infra 폴더(배포 스크립트 모음)만 EC2 서버로 전송합니다.
               sh "scp -o StrictHostKeyChecking=no -r Infra \"${env.NODE1_HOST}:${PROJECT_PATH}/\""
               
@@ -242,6 +245,9 @@ EOT
           }
           try {
             sshagent(credentials: ['ec2-node2-ssh']) {
+              // 💡 [핵심] 윈도우 줄바꿈(\r) 찌꺼기를 리눅스 방식(\n)으로 말끔히 청소!
+              sh "sed -i 's/\\\\r\\$//' Infra/scripts/*.sh"
+              
               // 1. 젠킨스가 가진 최신 Infra 폴더(배포 스크립트 모음)만 EC2 서버로 전송합니다.
               sh "scp -o StrictHostKeyChecking=no -r Infra \"${env.NODE2_HOST}:${PROJECT_PATH}/\""
               
