@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover
 class LocationConsumer:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.pipeline = LocationPipelineService()
+        self.pipeline = LocationPipelineService(settings)
         self._consumer: Any = None
         self._producer: Any = None
         self._task: asyncio.Task | None = None

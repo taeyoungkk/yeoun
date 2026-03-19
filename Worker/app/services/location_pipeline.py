@@ -1,4 +1,6 @@
+from app.config import Settings
 from app.schemas.location import LocationLogBatchStoredEvent
+from app.services.location_log_writer import LocationLogRawWriter
 
 
 class LocationPipelineService:
@@ -9,13 +11,8 @@ class LocationPipelineService:
     preprocessing.
     """
 
-    async def ingest_batch(self, payload: LocationLogBatchStoredEvent) -> dict[str, int]:
-        accepted_count = len(payload.logs)
-        duplicate_count = 0
-        stored_count = accepted_count
+    def __init__(self, settings: Settings):
+        self.writer = LocationLogRawWriter(settings)
 
-        return {
-            "accepted_count": accepted_count,
-            "duplicate_count": duplicate_count,
-            "stored_count": stored_count,
-        }
+    async def ingest_batch(self, payload: LocationLogBatchStoredEvent) -> dict[str, int]:
+        return self.writer.save_batch(payload)

@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     kafka_location_consumer_group: str = Field(default="yeoun-worker-location", alias="KAFKA_LOCATION_CONSUMER_GROUP")
     kafka_auto_offset_reset: str = Field(default="earliest", alias="KAFKA_AUTO_OFFSET_RESET")
     kafka_max_retry_attempts: int = Field(default=3, alias="KAFKA_MAX_RETRY_ATTEMPTS")
+    worker_database_url: str | None = Field(default=None, alias="WORKER_DATABASE_URL")
 
     image_base_url: str = Field(default="http://localhost/images", alias="IMAGE_BASE_URL")
     photo_thumbnail_format: str = Field(default="JPEG", alias="PHOTO_THUMBNAIL_FORMAT")
