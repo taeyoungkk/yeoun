@@ -34,9 +34,34 @@ const API_MOCKS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_API_MOCKS === 'true';
 
 export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionProps) => {
     const activeTrip = useTripStore((state) => state.activeTrip);
+    const currentTrip = useTripStore((state) => state.currentTrip);
     const { pastTrips, setPastTrips, likedTripIds, toggleFavorite } = useTripStore();
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(pastTrips.length === 0);
+
+    const currentTripCard = React.useMemo(() => {
+        if (activeTrip) {
+            return {
+                title: activeTrip.title,
+                location: `${activeTrip.country}, ${activeTrip.region}`,
+                date: `${activeTrip.startDate} ~ ${activeTrip.endDate}`,
+                participants: activeTrip.participants,
+                imageUrl: activeTrip.imageUrl,
+                region: activeTrip.region,
+            };
+        }
+        if (currentTrip) {
+            return {
+                title: currentTrip.title || "기록 중인 여행", 
+                location: currentTrip.location || "위치 알 수 없음",
+                date: currentTrip.date || "날짜 알 수 없음",
+                participants: currentTrip.participants || 1,
+                imageUrl: currentTrip.imageUrl || null,
+                region: currentTrip.region || "지역 알 수 없음",
+            };
+        }
+        return null;
+    }, [activeTrip, currentTrip]);
 
     useEffect(() => {
         const fetchPastTrips = async () => {
@@ -63,10 +88,10 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
         } else {
             setIsLoading(false);
         }
-    }, [activeTrip?.tripId, pastTrips.length, setPastTrips]);
+    }, [activeTrip?.tripId, currentTrip?.tripId, pastTrips.length, setPastTrips]);
 
     const displayTrips = pastTrips
-        .filter((item: TripListItem) => item.tripId !== activeTrip?.tripId)
+        .filter((item: TripListItem) => item.tripId !== activeTrip?.tripId && item.tripId !== currentTrip?.tripId)
         .slice(0, 3);
 
     const handlePressCurrentTrip = () => {
@@ -96,14 +121,14 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
                 </Text>
             </View>
 
-            {activeTrip && (
+            {currentTripCard && (
                 <View className="w-full mb-10">
                     <CurrentTripCard
-                        title={activeTrip.title}
-                        location={`${activeTrip.country}, ${activeTrip.region}`}
-                        date={`${activeTrip.startDate} ~ ${activeTrip.endDate}`}
-                        participants={activeTrip.participants}
-                        imageUrl={activeTrip.imageUrl}
+                        title={currentTripCard.title}
+                        location={currentTripCard.location}
+                        date={currentTripCard.date}
+                        participants={currentTripCard.participants}
+                        imageUrl={currentTripCard.imageUrl}
                         onPress={handlePressCurrentTrip}
                     />
                 </View>
