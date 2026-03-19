@@ -2,12 +2,15 @@ package com.yeoun.domain.photo.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yeoun.domain.photo.dto.request.PhotoMemoUpsertRequest;
 import com.yeoun.domain.photo.dto.request.PhotoSyncRequest;
 import com.yeoun.domain.photo.dto.request.PhotoUpdateRequest;
 import com.yeoun.domain.photo.dto.response.PhotoDetailResponse;
+import com.yeoun.domain.photo.dto.response.PhotoMemoResponse;
 import com.yeoun.domain.photo.dto.response.PhotoSyncResponse;
 import com.yeoun.domain.photo.dto.response.PhotoUpdateResponse;
 import com.yeoun.domain.photo.dto.response.TripPhotoListResponse;
+import com.yeoun.domain.photo.service.PhotoMemoService;
 import com.yeoun.domain.photo.service.PhotoQueryService;
 import com.yeoun.domain.photo.service.PhotoSyncService;
 import com.yeoun.global.exception.BaseException;
@@ -23,10 +26,12 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Valid;
 import jakarta.validation.Validator;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -43,17 +48,20 @@ import java.util.stream.Collectors;
 @SecurityRequirement(name = "bearerAuth")
 public class PhotoController {
 
+    private final PhotoMemoService photoMemoService;
     private final PhotoQueryService photoQueryService;
     private final PhotoSyncService photoSyncService;
     private final ObjectMapper objectMapper;
     private final Validator validator;
 
     public PhotoController(
+            PhotoMemoService photoMemoService,
             PhotoQueryService photoQueryService,
             PhotoSyncService photoSyncService,
             ObjectMapper objectMapper,
             Validator validator
     ) {
+        this.photoMemoService = photoMemoService;
         this.photoQueryService = photoQueryService;
         this.photoSyncService = photoSyncService;
         this.objectMapper = objectMapper;
@@ -78,6 +86,37 @@ public class PhotoController {
     ) {
         PhotoDetailResponse response = photoQueryService.getPhotoDetail(principal.userId(), photoId);
         return ApiResponse.ok(response);
+    }
+
+    @PutMapping("/photos/{photoId}/memo")
+    @Operation(summary = "사진 메모 작성/수정", description = "현재 로그인한 사용자의 사진 메모를 작성하거나 수정합니다.")
+    public ApiResponse<PhotoMemoResponse> upsertPhotoMemo(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("photoId") UUID photoId,
+            @Valid @RequestBody PhotoMemoUpsertRequest request
+    ) {
+        PhotoMemoResponse response = photoMemoService.upsertPhotoMemo(principal.userId(), photoId, request);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/photos/{photoId}/memo")
+    @Operation(summary = "사진 메모 조회", description = "현재 로그인한 사용자의 사진 메모를 조회합니다.")
+    public ApiResponse<PhotoMemoResponse> getPhotoMemo(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("photoId") UUID photoId
+    ) {
+        PhotoMemoResponse response = photoMemoService.getPhotoMemo(principal.userId(), photoId);
+        return ApiResponse.ok(response);
+    }
+
+    @DeleteMapping("/photos/{photoId}/memo")
+    @Operation(summary = "사진 메모 삭제", description = "현재 로그인한 사용자의 사진 메모를 삭제합니다.")
+    public ApiResponse<Void> deletePhotoMemo(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("photoId") UUID photoId
+    ) {
+        photoMemoService.deletePhotoMemo(principal.userId(), photoId);
+        return ApiResponse.ok();
     }
 
     @PatchMapping("/photos/{photoId}")
