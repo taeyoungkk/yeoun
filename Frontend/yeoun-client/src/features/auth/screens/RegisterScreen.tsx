@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import axios from "axios";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
@@ -16,7 +15,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { sendEmailCode, signupApi, verifyEmailCode } from "@/src/api/auth";
+import {
+  checkEmailAvailability,
+  checkNicknameAvailability,
+  sendEmailCode,
+  signupApi,
+  verifyEmailCode,
+} from "@/src/api/auth";
 import { FormField } from "@/src/components/ui/form-field";
 import { PasswordToggle } from "@/src/components/ui/password-toggle";
 import { useAuthStore } from "@/src/store/auth.store";
@@ -55,6 +60,7 @@ export const RegisterScreen = () => {
   const [timer, setTimer] = useState(300);
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
   const [registerError, setRegisterError] = useState("");
 
   const {
@@ -105,14 +111,14 @@ export const RegisterScreen = () => {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const checkEmailAndSendCode = async () => {
+  const checkEmail = async () => {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
 
     setEmailStatus("checking");
     setEmailErrorMessage("");
 
     try {
-      const response = await sendEmailCode(email);
+      const response = await checkEmailAvailability(email);
 
       if (!response.success) {
         setEmailStatus("idle");
@@ -122,36 +128,45 @@ export const RegisterScreen = () => {
         return;
       }
 
-      setEmailStatus("available");
-    } catch (error) {
-      const responseStatus = axios.isAxiosError(error)
-        ? error.response?.status
-        : undefined;
-      const responseMessage = axios.isAxiosError(error)
-        ? error.response?.data?.message
-        : undefined;
-      const isDuplicateEmail =
-        responseStatus === 409 ||
-        /already|duplicate|exists|중복|이미 사용/i.test(responseMessage ?? "");
-
-      if (isDuplicateEmail) {
-        setEmailStatus("taken");
-        return;
-      }
-
+      setEmailStatus(response.data.available ? "available" : "taken");
+    } catch (error: any) {
       setEmailStatus("idle");
       setEmailErrorMessage(
-        responseMessage || "이메일 확인 중 오류가 발생했습니다.",
+        error?.response?.data?.message || "이메일 확인 중 오류가 발생했습니다.",
       );
     }
   };
 
-  const handleNextFromEmail = () => {
-    if (emailStatus !== "available") return;
+  const handleNextFromEmail = async () => {
+    if (emailStatus !== "available" || isSendingCode) return;
 
-    setCurrentStep("VERIFY");
-    setTimer(300);
-    setIsTimerActive(true);
+    setIsSendingCode(true);
+    setEmailErrorMessage("");
+
+    try {
+      const response = await sendEmailCode(email);
+
+      if (!response.success || !response.data?.sent) {
+        setEmailErrorMessage(
+          response.message ||
+            response.data?.message ||
+            "인증코드 전송에 실패했습니다.",
+        );
+        return;
+      }
+
+      setCurrentStep("VERIFY");
+      setVerificationCode("");
+      setVerificationError("");
+      setTimer(300);
+      setIsTimerActive(true);
+    } catch (error: any) {
+      setEmailErrorMessage(
+        error?.response?.data?.message || "인증코드 전송에 실패했습니다.",
+      );
+    } finally {
+      setIsSendingCode(false);
+    }
   };
 
   const handleVerifyCode = async () => {
@@ -162,17 +177,21 @@ export const RegisterScreen = () => {
     try {
       const response = await verifyEmailCode(email, verificationCode);
 
-      if (!response.success) {
+      if (!response.success || !response.data?.verified) {
         setVerificationError(
-          response.message || "인증코드가 올바르지 않습니다.",
+          response.message ||
+            response.data?.message ||
+            "인증코드가 올바르지 않습니다.",
         );
         return;
       }
 
       setCurrentStep("INFO");
       setIsTimerActive(false);
-    } catch (error) {
-      setVerificationError("인증코드가 올바르지 않습니다.");
+    } catch (error: any) {
+      setVerificationError(
+        error?.response?.data?.message || "인증코드가 올바르지 않습니다.",
+      );
     }
   };
 
@@ -183,9 +202,11 @@ export const RegisterScreen = () => {
     try {
       const response = await sendEmailCode(email);
 
-      if (!response.success) {
+      if (!response.success || !response.data?.sent) {
         setVerificationError(
-          response.message || "인증코드 재전송에 실패했습니다.",
+          response.message ||
+            response.data?.message ||
+            "인증코드 재전송에 실패했습니다.",
         );
         setIsTimerActive(false);
         return;
@@ -193,8 +214,10 @@ export const RegisterScreen = () => {
 
       setTimer(300);
       setIsTimerActive(true);
-    } catch (error) {
-      setVerificationError("인증코드 재전송에 실패했습니다.");
+    } catch (error: any) {
+      setVerificationError(
+        error?.response?.data?.message || "인증코드 재전송에 실패했습니다.",
+      );
       setIsTimerActive(false);
     }
   };
@@ -203,10 +226,19 @@ export const RegisterScreen = () => {
     if (!nickname || nickname.length < 2) return;
 
     setNicknameStatus("checking");
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    setNicknameStatus(
-      nickname.toLowerCase().includes("test") ? "taken" : "available",
-    );
+
+    try {
+      const response = await checkNicknameAvailability(nickname);
+
+      if (!response.success) {
+        setNicknameStatus("idle");
+        return;
+      }
+
+      setNicknameStatus(response.data.available ? "available" : "taken");
+    } catch (error) {
+      setNicknameStatus("idle");
+    }
   };
 
   const onSubmit = async (data: RegisterForm) => {
@@ -318,7 +350,7 @@ export const RegisterScreen = () => {
                       ? "bg-gray-300"
                       : ""
                   }`}
-                  onPress={checkEmailAndSendCode}
+                  onPress={checkEmail}
                   disabled={
                     emailStatus === "checking" || emailStatus === "available"
                   }
@@ -334,7 +366,7 @@ export const RegisterScreen = () => {
               </View>
 
               <Text className="font-pretendard text-[11px] text-[#ABABAB] mt-2 mb-1">
-                * 이메일 중복 확인 후 인증번호를 전송할 수 있습니다.
+                * 이메일 중복 확인 후 다음 단계에서 인증코드를 전송합니다.
               </Text>
 
               {emailStatus === "available" && (
@@ -342,11 +374,13 @@ export const RegisterScreen = () => {
                   사용 가능한 이메일입니다.
                 </Text>
               )}
+
               {emailStatus === "taken" && (
                 <Text className="font-pretendard text-[12px] text-[#FF5252] mt-2">
                   이미 존재하는 이메일입니다.
                 </Text>
               )}
+
               {emailErrorMessage ? (
                 <Text className="font-pretendard text-[12px] text-[#FF5252] mt-2">
                   {emailErrorMessage}
@@ -355,17 +389,23 @@ export const RegisterScreen = () => {
 
               <TouchableOpacity
                 className={`bg-primary rounded-[15px] py-[18px] items-center mt-10 ${
-                  emailStatus !== "available" ? "bg-[#8FA3B8]" : ""
+                  emailStatus !== "available" || isSendingCode
+                    ? "bg-[#8FA3B8]"
+                    : ""
                 }`}
                 onPress={handleNextFromEmail}
-                disabled={emailStatus !== "available"}
+                disabled={emailStatus !== "available" || isSendingCode}
               >
-                <View className="flex-row items-center gap-2">
-                  <Text className="font-pretendard-semibold text-[16px] text-white">
-                    다음
-                  </Text>
-                  <Ionicons name="arrow-forward" size={18} color="#fff" />
-                </View>
+                {isSendingCode ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <View className="flex-row items-center gap-2">
+                    <Text className="font-pretendard-semibold text-[16px] text-white">
+                      다음
+                    </Text>
+                    <Ionicons name="arrow-forward" size={18} color="#fff" />
+                  </View>
+                )}
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -543,6 +583,7 @@ export const RegisterScreen = () => {
                         사용 가능한 닉네임입니다.
                       </Text>
                     )}
+
                     {nicknameStatus === "taken" && (
                       <Text className="font-pretendard text-[12px] font-pretendard-medium -mt-2 mb-3 px-1 text-[#FF5252]">
                         이미 존재하는 닉네임입니다.
