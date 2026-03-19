@@ -1,9 +1,17 @@
 package com.yeoun.domain.timeline.controller;
 
+import com.yeoun.domain.timeline.dto.request.EventPhotoReplaceRequest;
+import com.yeoun.domain.timeline.dto.request.EventUpdateRequest;
+import com.yeoun.domain.timeline.dto.request.EventMemoUpsertRequest;
 import com.yeoun.domain.timeline.dto.response.EventDetailResponse;
+import com.yeoun.domain.timeline.dto.response.EventMemoUpsertResponse;
+import com.yeoun.domain.timeline.dto.response.EventPhotoReplaceResponse;
+import com.yeoun.domain.timeline.dto.response.EventUpdateResponse;
 import com.yeoun.domain.timeline.dto.response.TimelineBuildJobResponse;
 import com.yeoun.domain.timeline.dto.response.TimelineDayDetailResponse;
 import com.yeoun.domain.timeline.dto.response.TimelineDayListResponse;
+import com.yeoun.domain.timeline.service.EventCommandService;
+import com.yeoun.domain.timeline.service.EventMemoService;
 import com.yeoun.domain.timeline.service.TimelineBuildService;
 import com.yeoun.domain.timeline.service.TimelineQueryService;
 import com.yeoun.global.response.ApiResponse;
@@ -13,9 +21,13 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -29,10 +41,19 @@ public class TimelineController {
 
     private final TimelineQueryService timelineQueryService;
     private final TimelineBuildService timelineBuildService;
+    private final EventCommandService eventCommandService;
+    private final EventMemoService eventMemoService;
 
-    public TimelineController(TimelineQueryService timelineQueryService, TimelineBuildService timelineBuildService) {
+    public TimelineController(
+            TimelineQueryService timelineQueryService,
+            TimelineBuildService timelineBuildService,
+            EventCommandService eventCommandService,
+            EventMemoService eventMemoService
+    ) {
         this.timelineQueryService = timelineQueryService;
         this.timelineBuildService = timelineBuildService;
+        this.eventCommandService = eventCommandService;
+        this.eventMemoService = eventMemoService;
     }
 
     @PostMapping("/trips/{tripId}/timeline-build-jobs")
@@ -72,6 +93,39 @@ public class TimelineController {
             @PathVariable("eventId") UUID eventId
     ) {
         EventDetailResponse response = timelineQueryService.getEventDetail(principal.userId(), eventId);
+        return ApiResponse.ok(response);
+    }
+
+    @PatchMapping("/events/{eventId}")
+    @Operation(summary = "이벤트 수정", description = "이벤트 제목, 장소, 시간, 숨김 여부를 수정합니다.")
+    public ApiResponse<EventUpdateResponse> updateEvent(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("eventId") UUID eventId,
+            @Valid @RequestBody EventUpdateRequest request
+    ) {
+        EventUpdateResponse response = eventCommandService.updateEvent(principal.userId(), eventId, request);
+        return ApiResponse.ok(response);
+    }
+
+    @PutMapping("/events/{eventId}/photos")
+    @Operation(summary = "이벤트 사진 연결 전체 반영", description = "이벤트에 연결된 사진 목록을 전체 교체합니다.")
+    public ApiResponse<EventPhotoReplaceResponse> replaceEventPhotos(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("eventId") UUID eventId,
+            @Valid @RequestBody EventPhotoReplaceRequest request
+    ) {
+        EventPhotoReplaceResponse response = eventCommandService.replaceEventPhotos(principal.userId(), eventId, request);
+        return ApiResponse.ok(response);
+    }
+
+    @PutMapping("/events/{eventId}/memo")
+    @Operation(summary = "이벤트 메모 작성/수정", description = "현재 로그인한 사용자의 이벤트 메모를 작성하거나 수정합니다.")
+    public ApiResponse<EventMemoUpsertResponse> upsertEventMemo(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("eventId") UUID eventId,
+            @Valid @RequestBody EventMemoUpsertRequest request
+    ) {
+        EventMemoUpsertResponse response = eventMemoService.upsertEventMemo(principal.userId(), eventId, request);
         return ApiResponse.ok(response);
     }
 }
