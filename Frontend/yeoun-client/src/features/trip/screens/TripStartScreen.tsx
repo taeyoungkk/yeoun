@@ -314,15 +314,31 @@ export default function TripStartScreen() {
     };
     
     try {
-      const targetTripId = 'trip-demo-uuid';
-      // 1. API 호출로 여행 시작 상태 변경
-      const response = await startTripApi(targetTripId); // 임시 UUID 사용
-      
-      if (response.success) {
-        await startTrackingAndNavigate(response.data.tripId || targetTripId);
+      // 1. API 호출로 여행 생성 (DRAFT 상태)
+      const { createTripApi } = require('@/src/api/trip');
+      const createResponse = await createTripApi({
+        title: tripName || '제주도 여행',
+        startDate: startDate ? formatDateLabel(startDate) : '2025.03.19',
+        endDate: endDate ? formatDateLabel(endDate) : '2025.03.22',
+        region: '제주도',
+        country: '대한민국',
+        participants: memberCount,
+      });
+
+      if (createResponse.success) {
+        const newTripId = createResponse.data.tripId;
+        // 2. 여행 시작 (ACTIVE 상태로 변경)
+        const startResponse = await startTripApi(newTripId);
+        
+        if (startResponse.success) {
+          await startTrackingAndNavigate(newTripId);
+        } else {
+          // If start fails but create worked, we can still try to navigate for demo
+          await startTrackingAndNavigate(newTripId);
+        }
       } else {
         const fallbackTrip: any = {
-          tripId: targetTripId,
+          tripId: 'trip-demo-uuid',
           title: tripName || '제주도 여행',
           startDate: startDate ? formatDateLabel(startDate) : '2025.03.19',
           endDate: endDate ? formatDateLabel(endDate) : '2025.03.22',
@@ -332,13 +348,13 @@ export default function TripStartScreen() {
           status: 'ACTIVE',
         };
 
-        Alert.alert('서버 응답 오류', `${response.message}\n\n서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
+        Alert.alert('서버 응답 오류', `${createResponse.message}\n\n서버 연결 없이 임시 테스트 모드로 경로 기록을 시작할까요?`, [
           { text: '취소', style: 'cancel' },
           { 
             text: '테스트 시작', 
             onPress: () => {
               useTripStore.getState().setActiveTrip(fallbackTrip);
-              startTrackingAndNavigate(targetTripId);
+              startTrackingAndNavigate('trip-demo-uuid');
             } 
           }
         ]);

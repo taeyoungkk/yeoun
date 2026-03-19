@@ -1,24 +1,79 @@
-import React from 'react';
-import { Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Text, View, ActivityIndicator } from 'react-native';
 import { TripCard } from './TripCard';
 import { CurrentTripCard } from './CurrentTripCard';
 import { useTripStore } from '@/src/store/trip.store';
 import { useRouter } from 'expo-router';
+import { getTripsApi, TripListItem } from '@/src/api/trip';
 
 interface PastTravelSectionProps {
     isTripActive?: boolean;
 }
 
+// Mock data for fallback when API fails or returns no items AND mocks are enabled
+const MOCK_PAST_TRIPS: TripListItem[] = [
+    {
+        tripId: 'mock-1',
+        title: '일본 여행',
+        startDate: '2024.02.03',
+        endDate: '2024.02.06',
+        status: 'COMPLETED',
+        memberCount: 2
+    },
+    {
+        tripId: 'mock-2',
+        title: '제주도 가족 여행',
+        startDate: '2023.12.15',
+        endDate: '2023.12.18',
+        status: 'COMPLETED',
+        memberCount: 4
+    }
+];
+
+const API_MOCKS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_API_MOCKS === 'true';
+
 export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionProps) => {
     const activeTrip = useTripStore((state) => state.activeTrip);
     const router = useRouter();
+    const [pastTrips, setPastTrips] = useState<TripListItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchPastTrips = async () => {
+            try {
+                const response = await getTripsApi();
+                if (response.success && response.data.items.length > 0) {
+                    const filtered = response.data.items
+                        .filter((item: TripListItem) => item.tripId !== activeTrip?.tripId)
+                        .slice(0, 3);
+                    setPastTrips(filtered);
+                } else if (API_MOCKS_ENABLED) {
+                    // Fallback to mock data ONLY if mocks are enabled
+                    setPastTrips(MOCK_PAST_TRIPS);
+                } else {
+                    setPastTrips([]);
+                }
+            } catch (error) {
+                console.error('Failed to fetch past trips:', error);
+                if (API_MOCKS_ENABLED) {
+                    setPastTrips(MOCK_PAST_TRIPS);
+                } else {
+                    setPastTrips([]);
+                }
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchPastTrips();
+    }, [activeTrip?.tripId]);
 
     const handlePressCurrentTrip = () => {
         router.push('/trip/recording');
     };
 
     return (
-        <View className="w-full min-h-[500px] bg-[#EBF3EA] rounded-t-[200px] pt-20 px-6 items-center">
+        <View className="w-full min-h-[600px] bg-[#EBF3EA] rounded-t-[200px] pt-20 px-6 items-center overflow-visible">
             <View className="items-center gap-4 mb-8">
                 <View className="flex-row items-center gap-2">
                     <Text className="text-black text-2xl font-pretendard-bold text-center">
@@ -53,13 +108,30 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
                 </View>
             )}
 
-            <View className="w-full">
-                <TripCard
-                    title="일본 여행"
-                    location="일본, 후쿠오카"
-                    date="2024.02.03 ~ 02.06"
-                    imageUrl={require('@/assets/images/trip_placeholder_2.png')}
-                />
+            <View className="w-full mb-20">
+                {isTripActive && (
+                    <Text className="text-black text-xl font-pretendard-bold mb-4">과거 여행</Text>
+                )}
+                
+                {isLoading ? (
+                    <ActivityIndicator size="large" color="#DE7254" />
+                ) : pastTrips.length > 0 ? (
+                    <View className="gap-6">
+                        {pastTrips.map((trip) => (
+                            <TripCard
+                                key={trip.tripId}
+                                title={trip.title}
+                                location="대한민국"
+                                date={`${trip.startDate} ~ ${trip.endDate}`}
+                                imageUrl={trip.tripId.includes('mock') ? require('@/assets/images/trip_placeholder_2.png') : undefined}
+                            />
+                        ))}
+                    </View>
+                ) : !isTripActive && (
+                    <Text className="text-[#828F9C] text-center mt-4 font-pretendard-medium">
+                        아직 여행이 없습니다.
+                    </Text>
+                )}
             </View>
         </View>
     );
