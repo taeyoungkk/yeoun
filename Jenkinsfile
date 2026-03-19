@@ -214,6 +214,9 @@ EOT
           }
           try {
             sshagent(credentials: ['ec2-node1-ssh']) {
+              // 1. 젠킨스가 가진 최신 Infra 폴더(배포 스크립트 모음)만 EC2 서버로 전송합니다.
+              sh "scp -o StrictHostKeyChecking=no -r Infra \"${env.NODE1_HOST}:${PROJECT_PATH}/\""
+              
               sh "ssh -o StrictHostKeyChecking=no \"${env.NODE1_HOST}\" \"cd '${PROJECT_PATH}' && sed -i 's|^API_IMAGE=.*|API_IMAGE=${env.API_IMAGE}|' Infra/docker/node1/.env && bash Infra/scripts/deploy-node1.sh\""
             }
           } catch (Exception err) {
@@ -239,6 +242,9 @@ EOT
           }
           try {
             sshagent(credentials: ['ec2-node2-ssh']) {
+              // 1. 젠킨스가 가진 최신 Infra 폴더(배포 스크립트 모음)만 EC2 서버로 전송합니다.
+              sh "scp -o StrictHostKeyChecking=no -r Infra \"${env.NODE2_HOST}:${PROJECT_PATH}/\""
+              
               sh "ssh -o StrictHostKeyChecking=no \"${env.NODE2_HOST}\" \"cd '${PROJECT_PATH}' && sed -i 's|^WORKER_IMAGE=.*|WORKER_IMAGE=${env.WORKER_IMAGE}|' Infra/docker/node2/.env && bash Infra/scripts/deploy-node2.sh\""
             }
           } catch (Exception err) {
