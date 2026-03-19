@@ -1,14 +1,11 @@
-//test
 pipeline {
   agent any
-
+ 
   parameters {
     string(name: 'DOCKERHUB_NAMESPACE', defaultValue: '', description: 'Docker Hub namespace. Leave blank to use Jenkins env var.')
   }
 
   environment {
-    // 하드코딩된 패스워드, IP HOST 등은 보안상 모두 삭제! 
-    // Jenkins 웹의 Global Environment Variables 및 Credentials를 참조합니다.
     PROJECT_PATH = '/opt/yeoun'
 
     // ============================================================
@@ -26,80 +23,40 @@ pipeline {
     disableConcurrentBuilds()
   }
 
-  // Jenkins Declarative Pipeline 최신 버전에 맞춰 속성 블록을 삭제합니다.
-  // 에러 원인: 설치된 플러그인이 gitlab 트리거를 지원하지 않거나, 문법 버전이 맞지 않음.
-  // 해결: 푸시 및 MR 트리거는 Jenkins UI(구성 - 빌드 유발 - Generic Webhook Trigger 등)에서 직접 설정하세요.
-
   stages {
     stage('Checkout & Detect Context') {
       steps {
         checkout scm
         script {
-          // ======================          // ------------------------------------------------------------
-          // GitLab Webhook Plugin 변수 매핑 보완 (디버깅 결과 반영)
-          // ------------------------------------------------------------
-          def pick = { List<String> keys ->
-            for (k in keys) {
-              def v = null
-              // env에서 먼저 찾기 (안전함)
-              v = env.getProperty(k)
-              
-              // 없으면 params에서 찾기 (Groovy Sandbox Map 에러 우회: 객체에 키가 존재하는지 먼저 명시적 체크 후 접근)
-              if (v == null && params != null && params.containsKey(k)) {
-                  v = params.get(k)
-              }
-
-              if (v != null && v.toString().trim() && !v.toString().contains('/usr/share/jenkins')) {
-                return v.toString().trim()
-              }
-            }
-            return ''
-          }
-
-          // 1. 이벤트 종류 매핑 (로그에 웹훅 변수 자체가 없으므로 기본적으로 Push 취급)
-          env.EVENT_KIND = pick(['gitlabActionType','OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
-          if (env.CHANGE_ID || env.EVENT_KIND.toLowerCase().contains('merge')) {
-              env.EVENT_KIND = 'merge_request'
-          } else {
-              env.EVENT_KIND = 'push'
-          }
-
-          // 2. 실행자(액터) 매핑 (Git 로그에서 가장 최근 커밋 작성자 이름 추출)
-          env.ACTOR = pick([
-            'gitlabUserName','gitlabUserUsername',
-            'CHANGE_AUTHOR',
-            'MR_USER_NAME','MR_USER_USERNAME',
-            'PUSH_USER_NAME','PUSH_USER_USERNAME',
-            'user_name','user_username',
-            'GITLAB_USER_NAME','GITLAB_USER_USERNAME'
-          ]).trim()
-          if (!env.ACTOR) {
-             try {
-                env.ACTOR = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
-             } catch(Exception e) {
-                env.ACTOR = 'unknown' 
-             }
-          }
-
-          // 3. 브랜치명 추출 (GIT_BRANCH 가 origin/INFRA/... 형태로 잡힘)
-          def refRaw = pick(['GIT_BRANCH','gitlabBranch','gitBranch','GIT_LOCAL_BRANCH','BRANCH_NAME','CHANGE_BRANCH','refChanges_0_refId'])
-          env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').replace('origin/', '').trim()
+          // 💡 GitLab Plugin 기본 환경변수를 활용하여 복잡한 로직 제거
           
-          env.MR_SOURCE = pick(['gitlabSourceBranch','CHANGE_BRANCH','MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch']).trim()
-          env.MR_TARGET = pick(['gitlabTargetBranch','CHANGE_TARGET','MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch']).trim()
+          // 1. 이벤트 종류 판단
+          // 'gitlabActionType'이 MERGE이거나, MR 제목 변수(gitlabMergeRequestTitle)가 존재하면 Merge Request 이벤트로 간주합니다.
+          env.EVENT_KIND = (env.gitlabActionType == 'MERGE' || env.gitlabMergeRequestTitle != null) ? 'merge_request' : 'push'
+          
+          // 2. 실행자(액터) 추출
+          // GitLab Webhook이 보내주는 유저 이름(gitlabUserName)을 최우선으로 쓰되, 누락된 경우(수동 빌드 등) Git 로그의 최신 커밋 작성자 이름으로 폴백합니다.
+          env.ACTOR = env.gitlabUserName ?: sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
+
+          // 3. 브랜치명 및 타겟 추출
+          if (env.EVENT_KIND == 'merge_request') {
+              // MR 이벤트의 경우 source(출발지)와 target(도착지) 브랜치가 명확하게 웹훅 변수로 들어옵니다.
+              env.PUSH_BRANCH = env.gitlabSourceBranch
+              env.MR_TARGET = env.gitlabTargetBranch
+              // 타겟이 develop 브랜치인지 boolean 문자열('true'/'false')로 저장하여 이후 Deploy 스테이지 조건문에 활용합니다.
+              env.IS_DEVELOP = (env.gitlabTargetBranch == 'develop').toString()
+          } else {
+              // Push나 수동 빌드의 경우: gitlabBranch -> BRANCH_NAME -> GIT_BRANCH(origin/ 제외) 순으로 안전하게 찾습니다.
+              env.PUSH_BRANCH = env.gitlabBranch ?: env.BRANCH_NAME ?: (env.GIT_BRANCH ? env.GIT_BRANCH.replace('origin/', '') : sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim())
+              env.MR_TARGET = ''
+              env.IS_DEVELOP = (env.PUSH_BRANCH == 'develop').toString()
+          }
 
           env.GIT_SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
-
-          def branchName = env.PUSH_BRANCH
-          if (!branchName || branchName == 'HEAD') {
-             try {
-                 branchName = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).replace('origin/', '').trim()
-             } catch(Exception e) { branchName = 'unknown' }
-          }
-          env.IS_DEVELOP = (branchName == 'develop' || branchName.endsWith('/develop')).toString()
           env.DOCKERHUB_NAMESPACE_EFFECTIVE = ((params.DOCKERHUB_NAMESPACE?.trim()) ? params.DOCKERHUB_NAMESPACE.trim() : (env.DOCKERHUB_NAMESPACE ?: '').trim()).toLowerCase()
 
+          // 변경된 파일 감지 (API / Worker 분리 빌드용)
           def diffOutput = sh(
             script: '''
               if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
@@ -115,20 +72,17 @@ pipeline {
           env.CHANGED_API = changedFiles.any { it == 'Jenkinsfile' || it.startsWith('Backend/') || it.startsWith('Infra/docker/node1/') || it == 'Infra/scripts/common.sh' || it == 'Infra/scripts/check-env.sh' || it == 'Infra/scripts/deploy-node1.sh' || it == 'Infra/scripts/rollback-node1.sh' }.toString()
           env.CHANGED_WORKER = changedFiles.any { it == 'Jenkinsfile' || it.startsWith('Worker/') || it.startsWith('Infra/docker/node2/') || it == 'Infra/scripts/common.sh' || it == 'Infra/scripts/check-env.sh' || it == 'Infra/scripts/deploy-node2.sh' || it == 'Infra/scripts/rollback-node2.sh' }.toString()
 
-          echo "Event Kind: ${env.EVENT_KIND}"
-          echo "Branch: ${branchName}"
-          echo "CHANGED_API: ${env.CHANGED_API}"
-          echo "CHANGED_WORKER: ${env.CHANGED_WORKER}"
+          echo "✅ Event Kind: ${env.EVENT_KIND}"
+          echo "✅ Branch: ${env.PUSH_BRANCH}"
+          echo "✅ CHANGED_API: ${env.CHANGED_API}"
+          echo "✅ CHANGED_WORKER: ${env.CHANGED_WORKER}"
         }
       }
     }
 
     stage('Backend Test (MR only)') {
-      when {
-        expression { env.EVENT_KIND == 'merge_request' && env.CHANGED_API == 'true' && fileExists('Backend/pom.xml') }
-      }
+      when { expression { env.EVENT_KIND == 'merge_request' && env.CHANGED_API == 'true' && fileExists('Backend/pom.xml') } }
       steps {
-        // Jenkins Credentials 플러그인을 사용하여 보안에 민감한 패스워드를 런타임에 주입받음
         withCredentials([
           string(credentialsId: 'ci-postgres-db', variable: 'CI_POSTGRES_DB'),
           string(credentialsId: 'ci-postgres-user', variable: 'CI_POSTGRES_USER'),
@@ -142,7 +96,7 @@ pipeline {
               docker rm -f "${CI_REDIS_CONTAINER}" >/dev/null 2>&1 || true
               docker rm -f "${CI_POSTGRES_CONTAINER}" >/dev/null 2>&1 || true
 
-              # 1. 임시 PostgreSQL(PostGIS) 컨테이너 구동
+              # 1. 임시 DB 컨테이너 실행
               docker pull "${CI_POSTGRES_IMAGE}" >/dev/null 2>&1 || true
               docker run -d --name "${CI_POSTGRES_CONTAINER}" \
                 -e POSTGRES_DB="${CI_POSTGRES_DB}" \
@@ -153,7 +107,6 @@ pipeline {
 
               POSTGRES_IP="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CI_POSTGRES_CONTAINER}")"
               
-              # PostgreSQL 구동 대기 Health Check
               for i in $(seq 1 90); do
                 if docker exec "${CI_POSTGRES_CONTAINER}" pg_isready -U "${CI_POSTGRES_USER}" -d "${CI_POSTGRES_DB}" --quiet >/dev/null 2>&1; then
                   break
@@ -161,13 +114,12 @@ pipeline {
                 sleep 1
               done
 
-              # 2. 임시 Redis 컨테이너 구동
+              # 2. 임시 Redis 컨테이너 실행
               docker pull "${CI_REDIS_IMAGE}" >/dev/null 2>&1 || true
               docker run -d --name "${CI_REDIS_CONTAINER}" "${CI_REDIS_IMAGE}" redis-server --appendonly yes >/dev/null
 
               REDIS_IP="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CI_REDIS_CONTAINER}")"
               
-              # Redis 구동 대기 Health Check
               for i in $(seq 1 30); do
                 if docker exec "${CI_REDIS_CONTAINER}" redis-cli ping 2>/dev/null | grep -q PONG; then
                   break
@@ -177,7 +129,7 @@ pipeline {
 
               chmod +x mvnw || true
               
-              # 3. .env.example 기준 테스트 환경 변수(.env) 더미 생성
+              # 3. 테스트용 .env 더미 생성 (APP_INVITE_BASE_URL 포함)
               cat <<EOT > .env
 DB_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
 FLYWAY_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
@@ -195,11 +147,12 @@ MAIL_PASSWORD=dummy
 MAIL_FROM=dummy@gmail.com
 GOOGLE_CLIENT_ID=dummy.apps.googleusercontent.com
 GOOGLE_JWK_SET_URI=https://www.googleapis.com/oauth2/v3/certs
+APP_INVITE_BASE_URL=http://localhost:8080
 EOT
 
-              # 주입받은 패스워드 변수들(.env)을 활성화하기 위해 로컬 템플릿을 ci 프로파일용으로 복사
               cp src/main/resources/application-local.properties.example src/main/resources/application-ci.properties || true
 
+              # 4. 테스트 실행
               ./mvnw -q clean test \
                 -Dspring.profiles.active=ci \
                 2>&1 | tee -a "../../${CI_TEST_LOG}"
@@ -222,9 +175,7 @@ EOT
       when { expression { env.EVENT_KIND != 'merge_request' && env.CHANGED_API == 'true' && fileExists('Backend/Dockerfile') } }
       steps {
         script {
-          if (!env.DOCKERHUB_NAMESPACE_EFFECTIVE?.trim()) {
-            error('DOCKERHUB_NAMESPACE is not set in Jenkins Global Environment Variable.')
-          }
+          if (!env.DOCKERHUB_NAMESPACE_EFFECTIVE?.trim()) error('DOCKERHUB_NAMESPACE is not set.')
           env.API_IMAGE = "${env.DOCKERHUB_NAMESPACE_EFFECTIVE}/yeoun-api:${env.IMAGE_TAG}"
         }
         dir('Backend') { sh 'docker build -t "$API_IMAGE" .' }
@@ -259,11 +210,9 @@ EOT
       steps {
         script {
           if (!env.NODE1_HOST) error("NODE1_HOST Global Environment Variable is missing.")
-          
           env.PREVIOUS_API_IMAGE = sshagent(credentials: ['ec2-node1-ssh']) {
             sh(script: "ssh -o StrictHostKeyChecking=no \"${env.NODE1_HOST}\" \"grep '^API_IMAGE=' '${PROJECT_PATH}/Infra/docker/node1/.env' | cut -d= -f2-\"", returnStdout: true).trim()
           }
-
           try {
             sshagent(credentials: ['ec2-node1-ssh']) {
               sh "ssh -o StrictHostKeyChecking=no \"${env.NODE1_HOST}\" \"cd '${PROJECT_PATH}' && sed -i 's|^API_IMAGE=.*|API_IMAGE=${env.API_IMAGE}|' Infra/docker/node1/.env && bash Infra/scripts/deploy-node1.sh\""
@@ -285,12 +234,10 @@ EOT
       when { expression { env.EVENT_KIND != 'merge_request' && env.IS_DEVELOP == 'true' && env.WORKER_IMAGE?.trim() } }
       steps {
         script {
-          if (!env.NODE2_HOST) error("NODE2_HOST Global Environment Variable is missing.")
-
+          if (!env.NODE2_HOST) error("NODE2_HOST missing.")
           env.PREVIOUS_WORKER_IMAGE = sshagent(credentials: ['ec2-node2-ssh']) {
             sh(script: "ssh -o StrictHostKeyChecking=no \"${env.NODE2_HOST}\" \"grep '^WORKER_IMAGE=' '${PROJECT_PATH}/Infra/docker/node2/.env' | cut -d= -f2-\"", returnStdout: true).trim()
           }
-
           try {
             sshagent(credentials: ['ec2-node2-ssh']) {
               sh "ssh -o StrictHostKeyChecking=no \"${env.NODE2_HOST}\" \"cd '${PROJECT_PATH}' && sed -i 's|^WORKER_IMAGE=.*|WORKER_IMAGE=${env.WORKER_IMAGE}|' Infra/docker/node2/.env && bash Infra/scripts/deploy-node2.sh\""
@@ -309,54 +256,36 @@ EOT
     }
   }
 
+  // 💡 알림(Post) 블록: Jenkins Sandbox 에러 없이 깔끔한 JSON 변환
   post {
     always {
       script {
-        def branchName = env.PUSH_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).replace('origin/', '').trim()
-        if (branchName == 'HEAD') {
-             try {
-                 branchName = sh(script: "git branch -a --contains HEAD | grep -v 'HEAD' | head -n 1 || echo 'unknown'", returnStdout: true).replace('*', '').replace('remotes/origin/', '').trim()
-             } catch(Exception e) { branchName = 'unknown' }
-        }
-        
         def success = (currentBuild.currentResult == 'SUCCESS')
         def kind = env.EVENT_KIND ?: 'push'
-        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: 'unknown') : (branchName ?: 'unknown')
-        def target = env.MR_TARGET ?: ''
+        def branch = env.PUSH_BRANCH ?: 'unknown'
+        def actor = env.ACTOR ?: 'unknown'
+        def buildUrl = env.BUILD_URL ?: 'url-not-found'
         
-        def jobName = (env.JOB_NAME ?: '').trim()
-        def buildNo = (env.BUILD_NUMBER ?: '').trim()
-        def jobPath = jobName ? jobName.split('/').collect { "job/${it}" }.join('/') : ''
-        def buildUrl = jobPath && env.JENKINS_URL ? "${env.JENKINS_URL}${jobPath}/${buildNo}/" : (env.BUILD_URL ?: 'url-not-found')
+        def title = success ? "✅ **[S14P21B105] Jenkins 파이프라인 성공!**" : "❌ **[S14P21B105] Jenkins 파이프라인 에러 발생**"
+        
+        // 마크다운 텍스트 조립
+        // """ (멀티라인 스트링)을 사용하여 가독성 좋고 직관적으로 텍스트를 구성합니다.
+        def payloadText = """${title}
+- **이벤트:** `${kind}`
+- **실행자:** `${actor}`
+- **브랜치:** `${branch}` ${env.MR_TARGET ? "(Target: ${env.MR_TARGET})" : ""}
+- **로그확인:** [Build Log 보러가기](${buildUrl})"""
 
-        def title = success ? ":white_check_mark: [S14P21B105] Jenkins 파이프라인 무사고 통과!" : ":x: [S14P21B105] Jenkins 파이프라인 에러 발생"
-        def icon  = success ? ":rocket:" : ":warning:"
-        
-        def lines = []
-        if (kind)    lines << "**이벤트:** `${kind}`"
-        if (env.ACTOR) lines << "**실행자:** `${env.ACTOR}`"
-        
-        // MR 이벤트여도 sourceBranch가 없으면 일단 잡히는 branchName으로 폴백
-        def finalBranch = branch
-        if (finalBranch == 'unknown' && branchName && branchName != 'unknown') {
-            finalBranch = branchName
-        }
-        if (finalBranch) lines << "**브랜치:** `${finalBranch}`"
-        if (target)  lines << "**타겟:** `${target}`"
-        if (buildUrl) lines << "**Jenkins:** [Build Log](${buildUrl})"
+        // 줄바꿈과 따옴표를 JSON 규격에 맞게 안전하게 치환 (이스케이프 깨짐 방지)
+        // (Windows 환경 등에서 발생할 수 있는 \r 캐리지 리턴도 안전하게 제거합니다)
+        def safeText = payloadText.replace('"', '\\"').replace('\r', '').replace('\n', '\\n')
 
-        def payloadText = title + "\\n" + lines.join("\\n")
-        
-        // 쌍따옴표 문자열 안에서 JSON 이스케이프가 풀리지 않도록 직접 문자열 조립
-        def payload = """
-        {
+        def payloadJson = """{
           "username": "Jenkins Operator",
-          "icon_emoji": "${icon}",
-          "text": "${payloadText}"
-        }
-        """
+          "text": "${safeText}"
+        }"""
 
-        writeFile file: 'mm_payload.json', text: payload
+        writeFile file: 'mm_payload.json', text: payloadJson
 
         withCredentials([string(credentialsId: 'mattermost-webhook-url', variable: 'MM_URL')]) {
           sh '''#!/usr/bin/env bash
