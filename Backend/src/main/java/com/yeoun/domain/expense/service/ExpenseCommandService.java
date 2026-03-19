@@ -35,6 +35,8 @@ import java.util.UUID;
 @Transactional
 public class ExpenseCommandService {
 
+    private static final String SUPPORTED_CURRENCY_CODE = "KRW";
+
     private final ExpenseRepository expenseRepository;
     private final ExpenseSplitRepository expenseSplitRepository;
     private final TripRepository tripRepository;
@@ -71,7 +73,7 @@ public class ExpenseCommandService {
                 .paymentImportId(null)
                 .merchantName(normalizeRequiredText(request.merchantName()))
                 .category(request.category())
-                .currencyCode(normalizeRequiredText(request.currencyCode()).toUpperCase())
+                .currencyCode(normalizeCurrencyCode(request.currencyCode()))
                 .totalAmount(totalAmount)
                 .paidAt(request.paidAt())
                 .memo(normalizeOptionalText(request.memo()))
@@ -114,7 +116,7 @@ public class ExpenseCommandService {
                 : normalizeRequiredText(request.merchantName());
         String currencyCode = request.currencyCode() == null
                 ? expense.getCurrencyCode()
-                : normalizeRequiredText(request.currencyCode()).toUpperCase();
+                : normalizeCurrencyCode(request.currencyCode());
         BigDecimal totalAmount = request.totalAmount() == null
                 ? expense.getTotalAmount()
                 : validateAndNormalizeAmount(request.totalAmount());
@@ -198,10 +200,14 @@ public class ExpenseCommandService {
     ) {
         Set<UUID> currentParticipantIds = new LinkedHashSet<>(tripMemberRepository.findCurrentUserIdsByTripId(tripId));
 
-        if (!currentParticipantIds.contains(requesterUserId)
-                || !currentParticipantIds.contains(payerUserId)
-                || !currentParticipantIds.containsAll(participantUserIds)) {
-            throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
+        if (!currentParticipantIds.contains(requesterUserId)) {
+            throw new BaseException(ErrorCode.EXPENSE_CREATOR_NOT_IN_TRIP);
+        }
+        if (!currentParticipantIds.contains(payerUserId)) {
+            throw new BaseException(ErrorCode.EXPENSE_PAYER_NOT_IN_TRIP);
+        }
+        if (!currentParticipantIds.containsAll(participantUserIds)) {
+            throw new BaseException(ErrorCode.EXPENSE_PARTICIPANT_NOT_IN_TRIP);
         }
     }
 
@@ -235,6 +241,14 @@ public class ExpenseCommandService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String normalizeCurrencyCode(String value) {
+        String normalized = normalizeRequiredText(value).toUpperCase();
+        if (!SUPPORTED_CURRENCY_CODE.equals(normalized)) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Only KRW is supported for now.");
+        }
+        return normalized;
     }
 
     private BigDecimal validateAndNormalizeAmount(BigDecimal amount) {
