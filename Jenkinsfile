@@ -1,6 +1,6 @@
 pipeline {
   agent any
-
+ 
   parameters {
     string(name: 'DOCKERHUB_NAMESPACE', defaultValue: '', description: 'Docker Hub namespace. Leave blank to use Jenkins env var.')
   }
