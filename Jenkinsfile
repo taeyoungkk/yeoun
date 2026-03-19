@@ -152,6 +152,11 @@ EOT
 
               cp src/main/resources/application-local.properties.example src/main/resources/application-ci.properties || true
 
+              # 젠킨스 터미널을 위해 .env 파일의 변수들을 bash 환경 변수로 내보냅니다 (export)
+              set -a
+              source .env
+              set +a
+
               # 4. 테스트 실행
               ./mvnw -q clean test \
                 -Dspring.profiles.active=ci \
@@ -215,7 +220,7 @@ EOT
           }
           try {
             sshagent(credentials: ['ec2-node1-ssh']) {
-              sh "ssh -o StrictHostKeyChecking=no \"${env.NODE1_HOST}\" \"cd '${PROJECT_PATH}' && sed -i 's|^API_IMAGE=.*|API_IMAGE=${env.API_IMAGE}|' Infra/docker/node1/.env && bash Infra/scripts/deploy-node1.sh\""
+              sh "ssh -o StrictHostKeyChecking=no \"${env.NODE1_HOST}\" \"cd '${PROJECT_PATH}' && git pull origin develop && sed -i 's|^API_IMAGE=.*|API_IMAGE=${env.API_IMAGE}|' Infra/docker/node1/.env && bash Infra/scripts/deploy-node1.sh\""
             }
           } catch (Exception err) {
             if (env.PREVIOUS_API_IMAGE?.trim()) {
