@@ -53,6 +53,7 @@ class LocationLogBatchResultMessage(BaseModel):
     stored_count: int = Field(alias="storedCount", ge=0)
     attempt: int = Field(default=0, ge=0)
     preprocessed_count: int = Field(alias="preprocessedCount", default=0, ge=0)
+    stay_segment_count: int = Field(alias="staySegmentCount", default=0, ge=0)
     filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", default=0, ge=0)
     filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", default=0, ge=0)
     filtered_jump_count: int = Field(alias="filteredJumpCount", default=0, ge=0)
@@ -83,6 +84,7 @@ class LocationPreprocessSummary(BaseModel):
     stored_count: int = Field(alias="storedCount", ge=0)
     clean_persisted_count: int = Field(alias="cleanPersistedCount", default=0, ge=0)
     preprocessed_count: int = Field(alias="preprocessedCount", ge=0)
+    stay_segment_count: int = Field(alias="staySegmentCount", default=0, ge=0)
     filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", ge=0)
     filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", ge=0)
     filtered_jump_count: int = Field(alias="filteredJumpCount", ge=0)
@@ -91,3 +93,18 @@ class LocationPreprocessSummary(BaseModel):
 class LocationPreprocessResult(BaseModel):
     clean_logs: list[LocationCleanLog] = Field(default_factory=list, alias="cleanLogs")
     summary: LocationPreprocessSummary
+
+
+class LocationStaySegment(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    segment_id: str = Field(alias="segmentId")
+    trip_id: str = Field(alias="tripId")
+    user_id: str = Field(alias="userId")
+    started_at: datetime = Field(alias="startedAt")
+    ended_at: datetime = Field(alias="endedAt")
+    duration_seconds: int = Field(alias="durationSeconds", ge=0)
+    center_latitude: Decimal = Field(alias="centerLatitude")
+    center_longitude: Decimal = Field(alias="centerLongitude")
+    point_count: int = Field(alias="pointCount", ge=1)
+    source: str

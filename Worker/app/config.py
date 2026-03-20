@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     worker_database_url: str | None = Field(default=None, alias="WORKER_DATABASE_URL")
     gps_accuracy_threshold_m: float = Field(default=100.0, alias="GPS_ACCURACY_THRESHOLD_M")
     gps_jump_speed_threshold_mps: float = Field(default=60.0, alias="GPS_JUMP_SPEED_THRESHOLD_MPS")
+    gps_stay_radius_m: float = Field(default=60.0, alias="GPS_STAY_RADIUS_M")
+    gps_stay_min_duration_seconds: int = Field(default=300, alias="GPS_STAY_MIN_DURATION_SECONDS")
 
     image_base_url: str = Field(default="http://localhost/images", alias="IMAGE_BASE_URL")
     photo_thumbnail_format: str = Field(default="JPEG", alias="PHOTO_THUMBNAIL_FORMAT")

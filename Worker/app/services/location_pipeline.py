@@ -20,7 +20,7 @@ class LocationPipelineService:
         self.clean_writer = LocationLogCleanWriter(settings)
         self.preprocessor = LocationPreprocessor(settings)
         self.status_writer = TripProcessingStatusWriter(settings)
-        self.followup_pipeline = LocationFollowupPipeline()
+        self.followup_pipeline = LocationFollowupPipeline(settings)
 
     async def ingest_batch(self, payload: LocationLogBatchStoredEvent) -> LocationPreprocessSummary:
         self.status_writer.mark_processing(payload.trip_id, requested_at=payload.requested_at)
@@ -41,7 +41,11 @@ class LocationPipelineService:
             summary = preprocess_result.summary.model_copy(
                 update={"cleanPersistedCount": clean_persisted_count},
             )
-            await self.followup_pipeline.run(payload, summary)
+            summary = await self.followup_pipeline.run(
+                payload,
+                preprocess_result.clean_logs,
+                summary,
+            )
             self.status_writer.mark_ready(payload.trip_id, requested_at=payload.requested_at)
             return summary
         except Exception as exc:
