@@ -13,9 +13,34 @@ const apiClient = axios.create({
   },
 });
 
+const PUBLIC_API_PATH_PREFIXES = [
+  '/auth/signup',
+  '/auth/login',
+  '/auth/oauth/google',
+  '/auth/refresh',
+  '/auth/email/code',
+  '/auth/email/verify',
+  '/auth/password/reset/request',
+  '/auth/password/reset/confirm',
+  '/users/check-email',
+  '/users/check-nickname',
+];
+
+const isPublicApiRequest = (url?: string) => {
+  if (!url) return false;
+  return PUBLIC_API_PATH_PREFIXES.some((prefix) => url.startsWith(prefix));
+};
+
 // Request interceptor to add the access token to every request
 apiClient.interceptors.request.use(
   (config) => {
+    if (isPublicApiRequest(config.url)) {
+      if (config.headers?.Authorization) {
+        delete config.headers.Authorization;
+      }
+      return config;
+    }
+
     const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -34,9 +59,14 @@ apiClient.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config;
+    const requestUrl = originalRequest?.url;
 
     // If error is 401 and not already retrying
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest?._retry &&
+      !isPublicApiRequest(requestUrl)
+    ) {
       originalRequest._retry = true;
 
       try {

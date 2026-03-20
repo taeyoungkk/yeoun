@@ -37,6 +37,20 @@ export interface SignupRequest {
   nickname: string;
 }
 
+export interface AvailabilityCheckData {
+  available: boolean;
+}
+
+export interface EmailCodeSendData {
+  sent: boolean;
+  message: string;
+}
+
+export interface EmailVerificationData {
+  verified: boolean;
+  message: string;
+}
+
 const API_MOCKS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_API_MOCKS === 'true';
 const FORCE_MOCK_LOGIN = process.env.EXPO_PUBLIC_FORCE_MOCK_LOGIN === 'true';
 
@@ -97,9 +111,11 @@ export const logoutApi = async (): Promise<CommonResponse<string>> => {
  * Sends a 6-digit verification code to the input email.
  * Mocks success in development if the network fails.
  */
-export const sendEmailCode = async (email: string): Promise<CommonResponse<string>> => {
+export const sendEmailCode = async (
+  email: string,
+): Promise<CommonResponse<EmailCodeSendData>> => {
   try {
-    const response = await apiClient.post<CommonResponse<string>>('/auth/email/code', { email });
+    const response = await apiClient.post<CommonResponse<EmailCodeSendData>>('/auth/email/code', { email });
     return response.data;
   } catch (error) {
     if (shouldMockInDev(error)) {
@@ -108,7 +124,60 @@ export const sendEmailCode = async (email: string): Promise<CommonResponse<strin
         success: true,
         code: 'SUCCESS',
         message: 'Code sent (MOCK)',
-        data: 'OK',
+        data: {
+          sent: true,
+          message: 'Code sent (MOCK)',
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
+
+export const checkEmailAvailability = async (
+  email: string,
+): Promise<CommonResponse<AvailabilityCheckData>> => {
+  try {
+    const response = await apiClient.get<CommonResponse<AvailabilityCheckData>>(
+      '/users/check-email',
+      { params: { email } },
+    );
+    return response.data;
+  } catch (error) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Email availability checked (MOCK)',
+        data: {
+          available: !email.toLowerCase().includes('test'),
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
+
+export const checkNicknameAvailability = async (
+  nickname: string,
+): Promise<CommonResponse<AvailabilityCheckData>> => {
+  try {
+    const response = await apiClient.get<CommonResponse<AvailabilityCheckData>>(
+      '/users/check-nickname',
+      { params: { nickname } },
+    );
+    return response.data;
+  } catch (error) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Nickname availability checked (MOCK)',
+        data: {
+          available: !nickname.toLowerCase().includes('test'),
+        },
         timestamp: new Date().toISOString(),
       };
     }
@@ -120,9 +189,12 @@ export const sendEmailCode = async (email: string): Promise<CommonResponse<strin
  * Verifies the email and the 6-digit code.
  * Mocks success in development if the network fails.
  */
-export const verifyEmailCode = async (email: string, code: string): Promise<CommonResponse<string>> => {
+export const verifyEmailCode = async (
+  email: string,
+  code: string,
+): Promise<CommonResponse<EmailVerificationData>> => {
   try {
-    const response = await apiClient.post<CommonResponse<string>>('/auth/email/verify', { email, code });
+    const response = await apiClient.post<CommonResponse<EmailVerificationData>>('/auth/email/verify', { email, code });
     return response.data;
   } catch (error) {
     if (shouldMockInDev(error)) {
@@ -131,7 +203,10 @@ export const verifyEmailCode = async (email: string, code: string): Promise<Comm
         success: true,
         code: 'SUCCESS',
         message: 'Verified (MOCK)',
-        data: 'OK',
+        data: {
+          verified: true,
+          message: 'Verified (MOCK)',
+        },
         timestamp: new Date().toISOString(),
       };
     }
