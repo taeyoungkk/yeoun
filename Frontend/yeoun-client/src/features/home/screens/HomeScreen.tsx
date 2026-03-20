@@ -6,13 +6,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HomeSearchBar } from '../components/HomeSearchBar';
 import { PastTravelSection } from '../components/PastTravelSection';
+import { useTripStore } from '@/src/store/trip.store';
 
 const baseImage = require('@/assets/images/base.png');
 
 const HomeScreen = () => {
+    const isTripActive = useTripStore((state) => state.isTripActive);
+
     return (
         <View style={styles.container}>
-            <View style={styles.heroBackground}>
+            <View style={styles.heroBackground} pointerEvents="none">
                 <Image
                     source={baseImage}
                     style={styles.heroImage}
@@ -24,7 +27,7 @@ const HomeScreen = () => {
             <SafeAreaView style={styles.safeArea}>
                 <ScrollView
                     style={styles.scrollView}
-                    contentContainerStyle={styles.contentContainer}
+                    contentContainerStyle={[styles.contentContainer, { paddingBottom: 80 }]}
                     showsVerticalScrollIndicator={false}
                 >
                     <View style={styles.searchSection}>
@@ -32,7 +35,7 @@ const HomeScreen = () => {
                     </View>
 
                     <View style={styles.pastTravelSection}>
-                        <PastTravelSection />
+                        <PastTravelSection isTripActive={isTripActive} />
                     </View>
                 </ScrollView>
             </SafeAreaView>
@@ -80,7 +83,6 @@ const styles = StyleSheet.create({
         paddingTop: 16,
     },
     pastTravelSection: {
-        flex: 1,
-        marginTop: 'auto',
+        width: '100%',
     },
 });

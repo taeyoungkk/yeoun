@@ -30,22 +30,45 @@ export function CurrentLocationMap() {
   const cameraRef = useRef<Mapbox.Camera>(null);
   const [isMapReady, setIsMapReady] = useState(false);
   const [mapLoadFailed, setMapLoadFailed] = useState(false);
-  const [currentLocation, setCurrentLocation] = useState<[number, number]>([126.9784, 37.5667]);
+  const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null);
   const [isFogEnabled, setIsFogEnabled] = useState(true);
 
-  // 사용자의 현재 위치를 앱 로드시 한 번 가져옵니다.
+  // 사용자의 실시간 현재 위치를 추적합니다.
   useEffect(() => {
+    let locationSubscription: Location.LocationSubscription | null = null;
+
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
 
       try {
-        const location = await Location.getCurrentPositionAsync({});
-        setCurrentLocation([location.coords.longitude, location.coords.latitude]);
+        let loc = await Location.getLastKnownPositionAsync({});
+        if (!loc) {
+          loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+        }
+        if (loc) {
+          setCurrentLocation([loc.coords.longitude, loc.coords.latitude]);
+        }
+
+        // 에뮬레이터에서 위치를 변경하거나 사용자가 물리적으로 이동했을 때 카메라가 실시간으로 따라가도록 설정합니다.
+        locationSubscription = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.Balanced, distanceInterval: 10 },
+          (newLoc) => {
+            setCurrentLocation([newLoc.coords.longitude, newLoc.coords.latitude]);
+          }
+        );
       } catch (e) {
         console.log('초기 위치를 가져오지 못했습니다:', e);
       }
     })();
+
+    return () => {
+      if (locationSubscription) {
+        locationSubscription.remove();
+      }
+    };
   }, []);
 
   const handleMapReady = () => {
@@ -56,6 +79,16 @@ export function CurrentLocationMap() {
   const handleMapLoadFailure = () => {
     setIsMapReady(false);
     setMapLoadFailed(true);
+  };
+
+  const centerOnUser = () => {
+    if (currentLocation && cameraRef.current) {
+      cameraRef.current.setCamera({
+        centerCoordinate: currentLocation,
+        zoomLevel: 15,
+        animationDuration: 1000,
+      });
+    }
   };
 
   return (
@@ -76,9 +109,11 @@ export function CurrentLocationMap() {
         <Mapbox.Camera
           ref={cameraRef}
           zoomLevel={15}
-          centerCoordinate={currentLocation}
+          followZoomLevel={15}
+          followUserLocation={true}
+          centerCoordinate={currentLocation || undefined}
           animationMode="flyTo"
-          animationDuration={1000}
+          animationDuration={currentLocation ? 1000 : 0}
         />
         
         {/* 과거 이동 경로 표시 및 안개 걷어내기 효과 */}
@@ -88,8 +123,8 @@ export function CurrentLocationMap() {
         />
 
         {/* 현재 위치 반경 1km 밖을 부드럽게 어둡게 처리하는 안개 오버레이 */}
-        {/* 과거 경로와 현재 위치를 모두 걷어냅니다 */}
-        {isFogEnabled && (
+        {/* 과거 경로, 그리고 현재 위치를 모두 걷어냅니다 */}
+        {isFogEnabled && currentLocation && (
           <FogOverlay 
             feature={{
               type: 'Feature',
@@ -143,7 +178,7 @@ export function CurrentLocationMap() {
         </View>
       ) : null}
 
-      {/* 안개 토글 버튼 */}
+      {/* 안개 토글 버튼 및 내 위치 버튼 */}
       {isMapReady && (
         <View className="absolute top-4 right-4 items-end gap-2">
           <TouchableOpacity 
@@ -153,6 +188,17 @@ export function CurrentLocationMap() {
           >
             <MaterialIcons 
               name={isFogEnabled ? 'visibility-off' : 'visibility'} 
+              size={24} 
+              color="#415D4C" 
+            />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            className="bg-white p-3 rounded-full shadow-md items-center justify-center"
+            style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 4 }}
+            onPress={centerOnUser}
+          >
+            <MaterialIcons 
+              name="my-location" 
               size={24} 
               color="#415D4C" 
             />
