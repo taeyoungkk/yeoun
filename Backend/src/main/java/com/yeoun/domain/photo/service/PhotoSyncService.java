@@ -5,6 +5,9 @@ import com.yeoun.domain.photo.dto.request.PhotoSyncRequest;
 import com.yeoun.domain.photo.dto.response.PhotoSyncItemResponse;
 import com.yeoun.domain.photo.dto.response.PhotoSyncResponse;
 import com.yeoun.domain.photo.entity.Photo;
+import com.yeoun.domain.photo.event.PhotoProcessingCoordinatesEvent;
+import com.yeoun.domain.photo.event.PhotoProcessingRequestEvent;
+import com.yeoun.domain.photo.event.PhotoProcessingRequestEventPublisher;
 import com.yeoun.domain.photo.repository.PhotoRepository;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripMember;
@@ -14,10 +17,14 @@ import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -47,17 +54,23 @@ public class PhotoSyncService {
     private final TripMemberRepository tripMemberRepository;
     private final PhotoRepository photoRepository;
     private final PhotoStorageService photoStorageService;
+    private final PhotoProcessingRequestEventPublisher photoProcessingRequestEventPublisher;
+    private final String photoProcessingImageBaseUrl;
 
     public PhotoSyncService(
             TripRepository tripRepository,
             TripMemberRepository tripMemberRepository,
             PhotoRepository photoRepository,
-            PhotoStorageService photoStorageService
+            PhotoStorageService photoStorageService,
+            PhotoProcessingRequestEventPublisher photoProcessingRequestEventPublisher,
+            @Value("${app.photo-processing.image-base-url:}") String photoProcessingImageBaseUrl
     ) {
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
         this.photoRepository = photoRepository;
         this.photoStorageService = photoStorageService;
+        this.photoProcessingRequestEventPublisher = photoProcessingRequestEventPublisher;
+        this.photoProcessingImageBaseUrl = photoProcessingImageBaseUrl;
     }
 
     public PhotoSyncResponse syncTripPhotos(
@@ -124,6 +137,22 @@ public class PhotoSyncService {
                     .updatedAt(now)
                     .build();
             photoRepository.save(photo);
+
+            PhotoProcessingRequestEvent processingRequestEvent = new PhotoProcessingRequestEvent(
+                    photo.getPhotoId(),
+                    photo.getTripId(),
+                    photo.getOwnerUserId(),
+                    photo.getStorageKey(),
+                    resolveImageUrl(photo.getStorageKey()),
+                    photo.getFileName(),
+                    photo.getMimeType(),
+                    photo.getTakenAt(),
+                    photo.getTakenTimezone(),
+                    toCoordinates(item.exifLatitude(), item.exifLongitude()),
+                    now,
+                    0
+            );
+            publishAfterCommit(processingRequestEvent);
 
             syncedItems.add(new PhotoSyncItemResponse(
                     photo.getPhotoId(),
@@ -228,5 +257,36 @@ public class PhotoSyncService {
         } catch (Exception ex) {
             throw new BaseException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private PhotoProcessingCoordinatesEvent toCoordinates(BigDecimal latitude, BigDecimal longitude) {
+        if (latitude == null || longitude == null) {
+            return null;
+        }
+        return new PhotoProcessingCoordinatesEvent(latitude.doubleValue(), longitude.doubleValue());
+    }
+
+    private String resolveImageUrl(String storageKey) {
+        if (photoProcessingImageBaseUrl == null || photoProcessingImageBaseUrl.isBlank()) {
+            return null;
+        }
+        String normalizedBaseUrl = photoProcessingImageBaseUrl.endsWith("/")
+                ? photoProcessingImageBaseUrl.substring(0, photoProcessingImageBaseUrl.length() - 1)
+                : photoProcessingImageBaseUrl;
+        return normalizedBaseUrl + "/" + storageKey;
+    }
+
+    private void publishAfterCommit(PhotoProcessingRequestEvent event) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            photoProcessingRequestEventPublisher.publish(event);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                photoProcessingRequestEventPublisher.publish(event);
+            }
+        });
     }
 }
