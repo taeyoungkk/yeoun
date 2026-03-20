@@ -81,7 +81,8 @@ pipeline {
     }
 
     stage('Backend Test (MR only)') {
-      when { expression { env.EVENT_KIND == 'merge_request' && env.CHANGED_API == 'true' && fileExists('Backend/pom.xml') } }
+      // MR 이벤트이거나 개발 브랜치가 아닌 경우(기능 브랜치)는 모두 CI 테스트 대상으로 간주합니다.
+      when { expression { (env.EVENT_KIND == 'merge_request' || env.IS_DEVELOP == 'false') && env.CHANGED_API == 'true' && fileExists('Backend/pom.xml') } }
       steps {
         withCredentials([
           string(credentialsId: 'ci-postgres-db', variable: 'CI_POSTGRES_DB'),
@@ -171,7 +172,8 @@ EOT
     }
 
     stage('Build API Image') {
-      when { expression { env.EVENT_KIND != 'merge_request' && env.CHANGED_API == 'true' && fileExists('Backend/Dockerfile') } }
+      // 도커 이미지 빌드는 오직 운영/개발 타겟 브랜치(develop)에서만 수행합니다.
+      when { expression { env.IS_DEVELOP == 'true' && env.CHANGED_API == 'true' && fileExists('Backend/Dockerfile') } }
       steps {
         script {
           if (!env.DOCKERHUB_NAMESPACE_EFFECTIVE?.trim()) error('DOCKERHUB_NAMESPACE is not set.')
@@ -182,7 +184,7 @@ EOT
     }
 
     stage('Build Worker Image') {
-      when { expression { env.EVENT_KIND != 'merge_request' && env.CHANGED_WORKER == 'true' && fileExists('Worker/Dockerfile') } }
+      when { expression { env.IS_DEVELOP == 'true' && env.CHANGED_WORKER == 'true' && fileExists('Worker/Dockerfile') } }
       steps {
         script {
           env.WORKER_IMAGE = "${env.DOCKERHUB_NAMESPACE_EFFECTIVE}/yeoun-worker:${env.IMAGE_TAG}"
@@ -192,7 +194,7 @@ EOT
     }
 
     stage('Push Images') {
-      when { expression { env.EVENT_KIND != 'merge_request' && (env.API_IMAGE?.trim() || env.WORKER_IMAGE?.trim()) } }
+      when { expression { env.IS_DEVELOP == 'true' && (env.API_IMAGE?.trim() || env.WORKER_IMAGE?.trim()) } }
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
           sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
