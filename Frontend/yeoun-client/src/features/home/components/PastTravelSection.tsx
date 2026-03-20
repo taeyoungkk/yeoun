@@ -52,13 +52,15 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
 
   const currentTripCard = useMemo(() => {
     if (activeTrip) {
+      const locationParts = [activeTrip.country, activeTrip.region].filter(Boolean);
+
       return {
         title: activeTrip.title,
-        location: `${activeTrip.country}, ${activeTrip.region}`,
+        location: locationParts.length > 0 ? locationParts.join(', ') : activeTrip.title,
         date: `${activeTrip.startDate} ~ ${activeTrip.endDate}`,
-        participants: activeTrip.participants,
+        participants: activeTrip.memberCount || activeTrip.participants || 0,
         imageUrl: activeTrip.imageUrl,
-        region: activeTrip.region,
+        region: activeTrip.region || activeTrip.title,
       };
     }
 

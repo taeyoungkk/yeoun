@@ -1,9 +1,10 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/auth.store';
 
-// We'll use a default if EXPO_PUBLIC_API_URL is not set, 
+// We'll use a default if EXPO_PUBLIC_API_URL is not set,
 // though in a real app you'd want this to be mandatory.
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.yeoun.com/api/v1';
+const normalizeApiUrl = (url: string) => url.replace(/\/+$/, '');
+const API_URL = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL || 'https://api.yeoun.com/api/v1');
 
 const apiClient = axios.create({
   baseURL: API_URL,
