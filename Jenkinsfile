@@ -165,8 +165,7 @@ EOT
         always {
           sh '''#!/usr/bin/env bash
             set +e
-            docker rm -f "${CI_REDIS_CONTAINER}" >/dev/null 2>&1 || true
-            docker rm -f "${CI_POSTGRES_CONTAINER}" >/dev/null 2>&1 || true
+            docker rm -f ci-redis ci-postgres >/dev/null 2>&1 || true
           '''
         }
       }
