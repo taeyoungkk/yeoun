@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import psycopg
+from psycopg import Connection
 
 from app.config import Settings
 from app.schemas.location import LocationCleanLog
@@ -11,7 +12,14 @@ class LocationLogCleanWriter:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    def save_batch(self, trip_id: str, user_id: str, clean_logs: list[LocationCleanLog]) -> int:
+    def save_batch(
+        self,
+        trip_id: str,
+        user_id: str,
+        clean_logs: list[LocationCleanLog],
+        *,
+        connection: Connection | None = None,
+    ) -> int:
         if not self.settings.worker_database_url:
             raise RuntimeError("WORKER_DATABASE_URL is required for GPS clean persistence.")
 
@@ -21,7 +29,11 @@ class LocationLogCleanWriter:
         persisted_count = 0
         now = datetime.now(timezone.utc)
 
-        with psycopg.connect(self.settings.worker_database_url) as connection:
+        owns_connection = connection is None
+        if owns_connection:
+            connection = psycopg.connect(self.settings.worker_database_url)
+
+        try:
             with connection.cursor() as cursor:
                 for log in clean_logs:
                     cursor.execute(
@@ -76,7 +88,14 @@ class LocationLogCleanWriter:
                     )
                     if cursor.rowcount == 1:
                         persisted_count += 1
-
-            connection.commit()
+            if owns_connection:
+                connection.commit()
+        except Exception:
+            if owns_connection:
+                connection.rollback()
+            raise
+        finally:
+            if owns_connection:
+                connection.close()
 
         return persisted_count

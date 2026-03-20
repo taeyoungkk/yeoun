@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from hashlib import sha1
 from math import asin, cos, radians, sin, sqrt
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
 from app.config import Settings
 from app.schemas.location import LocationPlaceCandidate, LocationStaySegment
@@ -50,19 +51,50 @@ class LocationPlaceBuilder:
         center_latitude = sum(float(segment.center_latitude) for segment in segments) / len(segments)
         center_longitude = sum(float(segment.center_longitude) for segment in segments) / len(segments)
         total_duration_seconds = sum(segment.duration_seconds for segment in segments)
+        started_at = min(segment.started_at for segment in segments)
+        ended_at = max(segment.ended_at for segment in segments)
+        rounded_center_latitude = Decimal(str(round(center_latitude, 7)))
+        rounded_center_longitude = Decimal(str(round(center_longitude, 7)))
 
         return LocationPlaceCandidate(
-            placeId=str(uuid4()),
+            placeId=self._build_place_id(
+                trip_id=trip_id,
+                user_id=user_id,
+                segments=segments,
+                center_latitude=rounded_center_latitude,
+                center_longitude=rounded_center_longitude,
+                started_at=started_at.isoformat(),
+                ended_at=ended_at.isoformat(),
+            ),
             tripId=trip_id,
             userId=user_id,
-            startedAt=min(segment.started_at for segment in segments),
-            endedAt=max(segment.ended_at for segment in segments),
+            startedAt=started_at,
+            endedAt=ended_at,
             durationSeconds=total_duration_seconds,
-            centerLatitude=Decimal(str(round(center_latitude, 7))),
-            centerLongitude=Decimal(str(round(center_longitude, 7))),
+            centerLatitude=rounded_center_latitude,
+            centerLongitude=rounded_center_longitude,
             staySegmentCount=len(segments),
             source=segments[0].source,
         )
+
+    def _build_place_id(
+        self,
+        *,
+        trip_id: str,
+        user_id: str,
+        segments: list[LocationStaySegment],
+        center_latitude: Decimal,
+        center_longitude: Decimal,
+        started_at: str,
+        ended_at: str,
+    ) -> str:
+        segment_key = "|".join(segment.segment_id for segment in segments)
+        segment_hash = sha1(segment_key.encode("utf-8")).hexdigest()
+        fingerprint = (
+            f"{trip_id}:{user_id}:{center_latitude}:{center_longitude}:"
+            f"{started_at}:{ended_at}:{segment_hash}"
+        )
+        return str(uuid5(NAMESPACE_URL, fingerprint))
 
     def _distance_m(self, left: LocationStaySegment, right: LocationStaySegment) -> float:
         earth_radius_m = 6_371_000

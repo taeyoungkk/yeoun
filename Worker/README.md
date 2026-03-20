@@ -19,7 +19,9 @@
 - clean GPS 기반 stay detection 수행
 - move/stay segment 분리 및 일자별 route 생성
 - stay segment 기반 place 후보 생성 및 병합
+- place 재처리 시 동일 결과를 유지하는 결정적 place_id 생성
 - route/place 후속 결과 저장
+- raw/clean/route/place/READY status 단일 트랜잭션 처리
 - 타임라인 연결용 candidate 생성
 - 후속 GPS 파이프라인 진입점 분리
 
@@ -87,6 +89,7 @@ Worker/
   - GPS batch 처리 진입점
   - `PROCESSING -> READY/FAILED` 상태 전이 관리
   - raw 저장 후 1차 전처리, clean 로그 저장, 후속 파이프라인까지 연결
+  - raw/clean/route/place/READY status를 하나의 DB 트랜잭션으로 처리
 
 - `app/services/location_clean_writer.py`
   - 전처리된 clean GPS 로그를 `location_logs_clean` 테이블에 저장
@@ -119,6 +122,7 @@ Worker/
 - `app/services/location_place_builder.py`
   - stay segment를 place 후보로 변환
   - 인접한 place 후보를 거리 기준으로 병합
+  - 같은 stay segment 묶음이면 동일한 place_id를 생성하도록 멱등성 보장
 
 - `app/services/location_route_writer.py`
   - 일자별 route 결과를 `location_route_days` 테이블에 저장
