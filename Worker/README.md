@@ -71,12 +71,20 @@ Worker/
   - 후속 타임라인 생성용 후보 저장
 - `photo_manual_review_candidates`
   - 자동 매칭 실패 또는 낮은 신뢰도 결과 저장
+- `photo_rebuild_pipeline`
+  - trip 단위로 기존 사진을 다시 읽어 GPS 매칭, place/event 링크, 수동보정 후보를 재계산
 
 ## 여행 사진 수동보정 후보 규칙
 
 - GPS 매칭 결과가 없으면 `UNMATCHED`
 - GPS 매칭 점수가 `PHOTO_MANUAL_REVIEW_SCORE_THRESHOLD` 미만이면 `LOW_CONFIDENCE_MATCH`
 - 수동보정 후보는 `photo_manual_review_candidates`에 저장
+
+## 여행 사진 재처리
+
+- `PhotoRebuildPipeline.rebuild_trip(trip_id)`로 trip 단위 재처리를 수행할 수 있다.
+- 기존 `photos` 테이블의 저장 결과를 읽어 GPS 매칭, place/event 링크, timeline candidate, 수동보정 후보를 다시 계산한다.
+- 재처리 시 `photo_timeline_candidates`, `photo_event_links`, `photo_manual_review_candidates`는 사진 단위로 교체 저장된다.
 
 ## 여행 GPS 파이프라인
 

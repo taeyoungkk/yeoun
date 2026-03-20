@@ -40,7 +40,11 @@ class PhotoProcessingPipeline:
                     connection=connection,
                 )
                 timeline_candidates = self.timeline_linker.build_candidates(enriched)
-                self.timeline_candidate_writer.save_batch(timeline_candidates, connection=connection)
+                self.timeline_candidate_writer.replace_for_photo(
+                    enriched.photo_id,
+                    timeline_candidates,
+                    connection=connection,
+                )
                 self.event_link_writer.replace_for_photo(
                     enriched.photo_id,
                     timeline_candidates,
