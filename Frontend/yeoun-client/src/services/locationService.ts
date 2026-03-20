@@ -85,27 +85,30 @@ export const locationService = {
       }
 
       // 2. Request background permission
+      let hasBackgroundPermission = true;
       const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
       if (bgStatus !== 'granted') {
-        console.warn('Background location permission denied');
-        return false;
+        console.warn('Background location permission denied. Falling back to foreground tracking only.');
+        hasBackgroundPermission = false;
       }
 
-      // 3. Start high-accuracy tracking
-      const isStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
-      if (!isStarted) {
-        await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 10000, // 10 seconds
-          distanceInterval: 10, // 10 meters
-          foregroundService: {
-            notificationTitle: '여행 기록 중',
-            notificationBody: '현재 위치를 기반으로 여행 경로를 기록하고 있습니다.',
-            notificationColor: '#344966',
-          },
-          pausesUpdatesAutomatically: false,
-        });
-        console.log('Background location tracking started');
+      // 3. Start high-accuracy background tracking
+      if (hasBackgroundPermission) {
+        const isStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
+        if (!isStarted) {
+          await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 10000, // 10 seconds
+            distanceInterval: 10, // 10 meters
+            foregroundService: {
+              notificationTitle: '여행 기록 중',
+              notificationBody: '현재 위치를 기반으로 여행 경로를 기록하고 있습니다.',
+              notificationColor: '#344966',
+            },
+            pausesUpdatesAutomatically: false,
+          });
+          console.log('Background location tracking started');
+        }
       }
 
       // 4. Start foreground watching for instant UI updates

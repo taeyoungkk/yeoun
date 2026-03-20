@@ -91,14 +91,24 @@ class LocationConsumer:
             await self._consumer.commit()
             logger.info(
                 (
-                    "Processed GPS batch tripId=%s userId=%s accepted=%s stored=%s "
-                    "preprocessed=%s filteredAccuracy=%s filteredDuplicate=%s filteredJump=%s"
+                    "Processed GPS batch tripId=%s userId=%s accepted=%s stored=%s cleanPersisted=%s "
+                    "preprocessed=%s staySegments=%s moveSegments=%s routeDays=%s places=%s "
+                    "routePersisted=%s placePersisted=%s timelineCandidates=%s "
+                    "filteredAccuracy=%s filteredDuplicate=%s filteredJump=%s"
                 ),
                 payload.trip_id,
                 payload.user_id,
                 result.accepted_count,
                 result.stored_count,
+                result.clean_persisted_count,
                 result.preprocessed_count,
+                result.stay_segment_count,
+                result.move_segment_count,
+                result.route_day_count,
+                result.place_count,
+                result.route_persisted_count,
+                result.place_persisted_count,
+                result.timeline_candidate_count,
                 result.filtered_accuracy_count,
                 result.filtered_duplicate_count,
                 result.filtered_jump_count,
@@ -143,7 +153,15 @@ class LocationConsumer:
             duplicate_count=result.duplicate_count,
             stored_count=result.stored_count,
             attempt=payload.attempt,
+            clean_persisted_count=result.clean_persisted_count,
             preprocessed_count=result.preprocessed_count,
+            stay_segment_count=result.stay_segment_count,
+            move_segment_count=result.move_segment_count,
+            route_day_count=result.route_day_count,
+            place_count=result.place_count,
+            route_persisted_count=result.route_persisted_count,
+            place_persisted_count=result.place_persisted_count,
+            timeline_candidate_count=result.timeline_candidate_count,
             filtered_accuracy_count=result.filtered_accuracy_count,
             filtered_duplicate_count=result.filtered_duplicate_count,
             filtered_jump_count=result.filtered_jump_count,

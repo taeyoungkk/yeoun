@@ -3,13 +3,14 @@ import { StyleSheet, View, TouchableOpacity, Text } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
 import { configureMapbox } from '@/src/lib/mapbox';
 import { locationService } from '@/src/services/locationService';
+import * as Location from 'expo-location';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { FogOverlay } from './FogOverlay';
 import { PastRoutesLayer } from './PastRoutesLayer';
 
 // TODO: 실제 서버에서 지난 여행 기록을 가져오도록 수정해야 합니다.
 // 현재는 안개 걷히는(스크래치 오프) 기능 테스트를 위한 하드코딩된 더미 데이터입니다.
-const MOCK_PAST_ROUTES = [
+export const MOCK_PAST_ROUTES = [
   // 남산 타워 근처 루트
   [
     [126.9882, 37.5511],
@@ -34,12 +35,39 @@ export function ActiveTripMap() {
 
   // 여행 중 실시간 위치 업데이트를 구독합니다. 즉각적으로 선을 그어줍니다.
   useEffect(() => {
+    // 초기 위치를 즉시 가져와 중심을 맞춥니다.
+    (async () => {
+      try {
+        let loc = await Location.getLastKnownPositionAsync({});
+        if (!loc) {
+          loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        }
+        if (loc) {
+          setRouteCoordinates((prev) => 
+            prev.length === 0 ? [[loc.coords.longitude, loc.coords.latitude]] : prev
+          );
+        }
+      } catch (e) {
+        console.warn('초기 위치 획득 실패:', e);
+      }
+    })();
+
     const unsubscribe = locationService.subscribe((location) => {
       setRouteCoordinates((prev) => [...prev, [location.longitude, location.latitude]]);
     });
 
     return () => unsubscribe();
   }, []);
+
+  const centerOnUser = () => {
+    if (routeCoordinates.length > 0 && cameraRef.current) {
+      cameraRef.current.setCamera({
+        centerCoordinate: routeCoordinates[routeCoordinates.length - 1],
+        zoomLevel: 15,
+        animationDuration: 1000,
+      });
+    }
+  };
 
   const routeShape: GeoJSON.FeatureCollection<GeoJSON.LineString> = {
     type: 'FeatureCollection',
@@ -70,10 +98,11 @@ export function ActiveTripMap() {
         <Mapbox.Camera
           ref={cameraRef}
           zoomLevel={15}
-          // 마지막 위치를 따라다니도록 카메라 중앙을 지속적으로 업데이트합니다.
-          centerCoordinate={routeCoordinates.length > 0 ? routeCoordinates[routeCoordinates.length - 1] : [126.9784, 37.5667]}
+          followZoomLevel={15}
+          followUserLocation={true}
+          centerCoordinate={routeCoordinates.length > 0 ? routeCoordinates[routeCoordinates.length - 1] : undefined}
           animationMode="flyTo"
-          animationDuration={1000}
+          animationDuration={routeCoordinates.length > 0 ? 1000 : 0}
         />
         
         {/* 과거 이동 경로 표시 및 안개 걷어내기 효과 */}
@@ -97,7 +126,7 @@ export function ActiveTripMap() {
         <Mapbox.UserLocation visible={true} showsUserHeadingIndicator={true} />
       </Mapbox.MapView>
 
-      {/* 안개 토글 버튼 */}
+      {/* 안개 토글 버튼 및 내 위치 버튼 */}
       <View className="absolute top-4 right-4 items-end gap-2">
         <TouchableOpacity 
           className="bg-white p-3 rounded-full shadow-md items-center justify-center"
@@ -110,7 +139,20 @@ export function ActiveTripMap() {
             color="#415D4C" 
           />
         </TouchableOpacity>
-
+        <TouchableOpacity 
+          className="bg-white p-3 rounded-full shadow-md items-center justify-center"
+          style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 4 }}
+          onPress={centerOnUser}
+        >
+          <MaterialIcons 
+            name="my-location" 
+            size={24} 
+            color="#415D4C" 
+          />
+        </TouchableOpacity>
+      </View>
+      {/* 테스트용 경로 추가 버튼 (개발용) */}
+      <View className="absolute bottom-4 right-4">
         <TouchableOpacity 
           className="bg-white p-3 rounded-full shadow-md items-center justify-center"
           style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 4 }}
