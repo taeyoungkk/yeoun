@@ -10,6 +10,7 @@
 - 여행 사진 처리 결과(정규화 메타데이터/썸네일) DB 반영
 - 여행 사진-GPS 자동 매칭 후보 계산
 - 여행 사진 place 연결 및 대표 사진 선정 구조 반영
+- 여행 사진 타임라인 candidate 저장 및 후속 연결 구조 반영
 - 여행 GPS batch Kafka consumer
 - 여행 GPS raw 로그 Postgres 저장
 - `(trip_id, user_id, client_log_uuid)` 기준 idempotency 처리
@@ -59,6 +60,8 @@ Worker/
       photo_place_linker.py
       photo_processing_pipeline.py
       photo_result_writer.py
+      photo_timeline_candidate_writer.py
+      photo_timeline_linker.py
       photo_thumbnail.py
       receipt_ocr.py
       trip_processing_status.py
@@ -70,6 +73,7 @@ Worker/
     create_location_logs_clean.sql
     create_location_places.sql
     create_location_route_days.sql
+    create_photo_timeline_candidates.sql
   requirements.txt
   .env.example
   Dockerfile
@@ -107,6 +111,14 @@ Worker/
 
 - `app/services/photo_processing_pipeline.py`
   - 사진 처리 결과 반영과 place 연결/대표 사진 선정을 하나의 DB 트랜잭션으로 처리
+  - 사진 타임라인 candidate 생성 및 저장까지 후속 파이프라인으로 연결
+
+- `app/services/photo_timeline_linker.py`
+  - 사진 처리 결과를 타임라인 생성용 candidate로 변환
+  - place 연결 여부에 따라 `PLACE_PHOTO`, `UNMATCHED_PHOTO` 타입 분기
+
+- `app/services/photo_timeline_candidate_writer.py`
+  - 사진 타임라인 candidate를 `photo_timeline_candidates` 테이블에 upsert 저장
 
 - `app/services/photo_result_writer.py`
   - Worker가 계산한 사진 처리 결과를 `photos` 테이블에 업데이트

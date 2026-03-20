@@ -44,6 +44,23 @@ class PhotoRepresentativeSelection(BaseModel):
     selection_reason: str = Field(alias="selectionReason")
 
 
+class PhotoTimelineCandidate(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    candidate_id: str = Field(alias="candidateId")
+    trip_id: str = Field(alias="tripId")
+    photo_id: str = Field(alias="photoId")
+    place_id: str | None = Field(alias="placeId", default=None)
+    candidate_type: str = Field(alias="candidateType")
+    day_date: str = Field(alias="dayDate")
+    title: str
+    start_at: datetime = Field(alias="startAt")
+    end_at: datetime = Field(alias="endAt")
+    is_representative: bool = Field(alias="isRepresentative")
+    sort_order: int = Field(alias="sortOrder", ge=1)
+    metadata: dict = Field(default_factory=dict)
+
+
 class PhotoProcessingRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
@@ -85,6 +102,7 @@ class PhotoProcessingResultMessage(BaseModel):
     gps_match: PhotoGpsMatch | None = Field(alias="gpsMatch", default=None)
     place_link: PhotoPlaceLink | None = Field(alias="placeLink", default=None)
     representative_selection: PhotoRepresentativeSelection | None = Field(alias="representativeSelection", default=None)
+    timeline_candidates: list[PhotoTimelineCandidate] = Field(alias="timelineCandidates", default_factory=list)
     width: int | None = Field(default=None, ge=1)
     height: int | None = Field(default=None, ge=1)
     metadata: dict = Field(default_factory=dict)

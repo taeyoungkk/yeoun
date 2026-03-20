@@ -4,6 +4,8 @@ from app.config import Settings
 from app.schemas.photo import PhotoProcessingResultMessage
 from app.services.photo_place_linker import PhotoPlaceLinker
 from app.services.photo_result_writer import PhotoResultWriter
+from app.services.photo_timeline_candidate_writer import PhotoTimelineCandidateWriter
+from app.services.photo_timeline_linker import PhotoTimelineLinker
 
 
 class PhotoProcessingPipeline:
@@ -11,6 +13,8 @@ class PhotoProcessingPipeline:
         self.settings = settings
         self.result_writer = PhotoResultWriter(settings)
         self.place_linker = PhotoPlaceLinker()
+        self.timeline_linker = PhotoTimelineLinker()
+        self.timeline_candidate_writer = PhotoTimelineCandidateWriter()
 
     def persist_and_link(self, result: PhotoProcessingResultMessage) -> PhotoProcessingResultMessage:
         if not self.settings.worker_database_url:
@@ -20,6 +24,21 @@ class PhotoProcessingPipeline:
             try:
                 self.result_writer.persist_result(result, connection=connection)
                 enriched = self.place_linker.link_and_select(result, connection=connection)
+                timeline_candidates = self.timeline_linker.build_candidates(enriched)
+                self.timeline_candidate_writer.save_batch(timeline_candidates, connection=connection)
+                enriched = enriched.model_copy(
+                    update={
+                        "timelineCandidates": timeline_candidates,
+                        "metadata": {
+                            **enriched.metadata,
+                            "timelineCandidates": [
+                                candidate.model_dump(mode="json", by_alias=True)
+                                for candidate in timeline_candidates
+                            ],
+                        },
+                    }
+                )
+                self.result_writer.persist_result(enriched, connection=connection)
                 connection.commit()
                 return enriched
             except Exception:
