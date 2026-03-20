@@ -17,6 +17,7 @@
 - trip processing status 갱신
 - 전처리 결과 clean GPS 로그 영속화
 - clean GPS 기반 stay detection 수행
+- move/stay segment 분리 및 일자별 route 생성
 - 후속 GPS 파이프라인 진입점 분리
 
 ## 디렉터리 구조
@@ -38,6 +39,7 @@ Worker/
       location_log_writer.py
       location_pipeline.py
       location_preprocessor.py
+      location_route_builder.py
       location_stay_detector.py
       photo_loader.py
       photo_metadata.py
@@ -93,11 +95,16 @@ Worker/
 
 - `app/services/location_followup_pipeline.py`
   - clean GPS 기준 stay detection 실행
-  - route/place 생성 전의 후속 처리 진입점
+  - move/stay segment 분리 및 일자별 route 생성
+  - place 생성 전의 후속 처리 진입점
 
 - `app/services/location_stay_detector.py`
   - clean GPS 데이터를 기반으로 체류 구간을 탐지
   - 반경/시간 기준의 contiguous stay segment 계산
+
+- `app/services/location_route_builder.py`
+  - stay segment를 제외한 이동 구간을 move segment로 구성
+  - move segment를 일자별 route로 집계
 
 - `sql/create_location_logs_clean.sql`
   - Worker 기준 clean GPS 저장 테이블 초안
@@ -118,7 +125,7 @@ Worker/
 5. `location_log_writer`가 `location_logs_raw` 테이블에 저장
 6. `location_preprocessor`가 1차 clean 파이프라인 실행
 7. `location_clean_writer`가 `location_logs_clean` 테이블에 저장
-8. `location_followup_pipeline`이 stay detection 및 후속 처리 진입점 실행
+8. `location_followup_pipeline`이 stay detection, move/stay 분리, route 생성 실행
 9. 성공 시 trip processing status를 `READY`로 갱신하고 result topic 발행
 10. 실패 시 trip processing status를 `FAILED`로 갱신하고 retry 또는 DLQ topic으로 발행
 
@@ -186,6 +193,5 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 여행 GPS 쪽 다음 단계는 아래 순서로 이어집니다.
 
-1. clean GPS 영속화
-2. route / place 생성
-3. timeline / photo 매칭 연결
+1. place 생성
+2. timeline / photo 매칭 연결

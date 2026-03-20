@@ -54,6 +54,8 @@ class LocationLogBatchResultMessage(BaseModel):
     attempt: int = Field(default=0, ge=0)
     preprocessed_count: int = Field(alias="preprocessedCount", default=0, ge=0)
     stay_segment_count: int = Field(alias="staySegmentCount", default=0, ge=0)
+    move_segment_count: int = Field(alias="moveSegmentCount", default=0, ge=0)
+    route_day_count: int = Field(alias="routeDayCount", default=0, ge=0)
     filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", default=0, ge=0)
     filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", default=0, ge=0)
     filtered_jump_count: int = Field(alias="filteredJumpCount", default=0, ge=0)
@@ -85,6 +87,8 @@ class LocationPreprocessSummary(BaseModel):
     clean_persisted_count: int = Field(alias="cleanPersistedCount", default=0, ge=0)
     preprocessed_count: int = Field(alias="preprocessedCount", ge=0)
     stay_segment_count: int = Field(alias="staySegmentCount", default=0, ge=0)
+    move_segment_count: int = Field(alias="moveSegmentCount", default=0, ge=0)
+    route_day_count: int = Field(alias="routeDayCount", default=0, ge=0)
     filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", ge=0)
     filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", ge=0)
     filtered_jump_count: int = Field(alias="filteredJumpCount", ge=0)
@@ -108,3 +112,29 @@ class LocationStaySegment(BaseModel):
     center_longitude: Decimal = Field(alias="centerLongitude")
     point_count: int = Field(alias="pointCount", ge=1)
     source: str
+
+
+class LocationMoveSegment(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    segment_id: str = Field(alias="segmentId")
+    trip_id: str = Field(alias="tripId")
+    user_id: str = Field(alias="userId")
+    started_at: datetime = Field(alias="startedAt")
+    ended_at: datetime = Field(alias="endedAt")
+    duration_seconds: int = Field(alias="durationSeconds", ge=0)
+    point_count: int = Field(alias="pointCount", ge=2)
+    distance_m: Decimal = Field(alias="distanceM", ge=Decimal("0"))
+    coordinates: list[tuple[Decimal, Decimal]]
+    source: str
+
+
+class LocationRouteDay(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    trip_id: str = Field(alias="tripId")
+    user_id: str = Field(alias="userId")
+    day: str
+    point_count: int = Field(alias="pointCount", ge=2)
+    distance_m: Decimal = Field(alias="distanceM", ge=Decimal("0"))
+    coordinates: list[tuple[Decimal, Decimal]]
