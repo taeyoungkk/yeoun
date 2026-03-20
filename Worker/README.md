@@ -1,21 +1,23 @@
 # Yeoun Worker
 
-`Worker`는 `EC2-2`에서 실행되는 AI 및 비동기 처리 전용 애플리케이션입니다.
-현재 구조에서는 node2 nginx 뒤에서 실행되며, Kafka 기반 백그라운드 작업과 직접 HTTP 호출을 모두 지원하도록 설계되어 있습니다.
+`Worker`는 `EC2-2`에서 실행되는 비동기 처리 애플리케이션입니다.
+현재 Worker는 Kafka 기반으로 영수증 OCR, 여행 사진 처리, 여행 GPS batch 처리 기능을 담당합니다.
 
-현재 구현된 파이프라인:
+## 현재 지원 기능
 
-- 영수증 OCR 파이프라인
-- 여행 사진 처리 파이프라인 초안
+- 영수증 OCR Kafka 처리
+- 여행 사진 메타데이터/썸네일 Kafka 처리
+- 여행 GPS batch Kafka consumer
+- 여행 GPS raw 로그 Postgres 저장
+- `(trip_id, user_id, client_log_uuid)` 기준 idempotency 처리
+- GPS 처리 실패 시 retry / DLQ 발행
+- GPS payload 검증 실패 시 즉시 DLQ 발행
+- GPS 1차 전처리 파이프라인 실행
+- 정렬, near-duplicate 제거, accuracy 필터, jump outlier 제거
+- trip processing status 갱신
+- 후속 GPS 파이프라인 진입점 분리
 
-## 역할
-
-- 백엔드가 전달한 비동기 작업을 소비하고 처리
-- 이미지 기반 작업을 Worker 노드에서 전담 수행
-- 백엔드가 저장할 수 있는 구조화된 JSON 결과 생성
-- 실패 시 retry 및 DLQ 흐름 처리
-
-## 폴더 구조
+## 디렉터리 구조
 
 ```text
 Worker/
@@ -26,14 +28,21 @@ Worker/
       health.py
       receipt.py
     schemas/
+      location.py
       photo.py
       receipt.py
     services/
+      location_followup_pipeline.py
+      location_log_writer.py
+      location_pipeline.py
+      location_preprocessor.py
       photo_loader.py
       photo_metadata.py
       photo_thumbnail.py
       receipt_ocr.py
+      trip_processing_status.py
     consumer/
+      location_consumer.py
       photo_consumer.py
       receipt_consumer.py
   requirements.txt
@@ -41,100 +50,59 @@ Worker/
   Dockerfile
 ```
 
-## 파일 설명
+## 주요 파일
 
 - `app/main.py`
-  - FastAPI 진입점
-  - 환경변수 설정에 따라 Kafka consumer를 조건부로 시작
+  - FastAPI 엔트리포인트
+  - 설정값에 따라 receipt/photo/location consumer를 시작하고 종료
 
 - `app/config.py`
-  - Worker 설정을 한 곳에서 관리
-  - Kafka, Gemini, 이미지 원본 URL, 썸네일 생성 옵션 정의
+  - Worker 환경변수 로더
+  - Kafka, DB, Gemini, 이미지 URL, S3 관련 설정 관리
 
-- `app/routers/health.py`
-  - 헬스체크 엔드포인트 제공
+- `app/schemas/location.py`
+  - 여행 GPS batch request/result/DLQ 메시지 스키마
 
-- `app/routers/receipt.py`
-  - 영수증 OCR HTTP 테스트용 엔드포인트
+- `app/services/location_log_writer.py`
+  - Kafka로 수신한 GPS raw 로그를 `location_logs_raw`에 저장
+  - `(trip_id, user_id, client_log_uuid)` 기준으로 중복 저장 방지
 
-- `app/schemas/receipt.py`
-  - 영수증 OCR request/response 모델
-  - 영수증 Kafka request/result/dlq 메시지 스키마
+- `app/services/location_pipeline.py`
+  - GPS batch 처리 진입점
+  - `PROCESSING -> READY/FAILED` 상태 전이 관리
+  - raw 저장 후 1차 전처리 및 후속 파이프라인까지 연결
 
-- `app/schemas/photo.py`
-  - 여행 사진 처리 request/result/dlq 메시지 스키마
-  - 타임라인 생성을 위한 촬영 시각, 좌표, 썸네일 key 관련 필드 포함
+- `app/services/location_preprocessor.py`
+  - recordedAt 기준 정렬
+  - near-duplicate 제거
+  - accuracy threshold 초과 포인트 제거
+  - 비정상 jump/outlier 제거
 
-- `app/services/receipt_ocr.py`
-  - 영수증 이미지를 다운로드하고 Gemini OCR 호출
+- `app/services/trip_processing_status.py`
+  - `trip_processing_statuses` 테이블 갱신
+  - `PROCESSING`, `READY`, `FAILED` 상태 전이 처리
 
-- `app/services/photo_loader.py`
-  - 여행 사진 원본 다운로드
-  - `imageUrl`이 있으면 우선 사용하고, 없으면 `IMAGE_BASE_URL + storageKey` 로 원본 URL 구성
-  - 다운로드한 파일이 실제 이미지인지 검증
+- `app/services/location_followup_pipeline.py`
+  - clean GPS 영속화, stay detection, route/place 생성 전의 후속 진입점
+  - 현재는 placeholder 로깅만 수행
 
-- `app/services/photo_metadata.py`
-  - 여행 사진 EXIF 메타데이터 추출
-  - 촬영 시각과 GPS 좌표를 타임라인 생성에 맞게 정규화
+- `app/consumer/location_consumer.py`
+  - `trip-location-log-batch` / retry 토픽 consume
+  - 처리 성공 시 result topic 발행
+  - 처리 실패 시 retry 또는 DLQ 발행
+  - payload 검증 실패 시 즉시 DLQ 발행
 
-- `app/services/photo_thumbnail.py`
-  - 여행 사진 썸네일 생성 및 S3 업로드
-  - EXIF orientation 반영 후 리사이즈 수행
+## GPS 처리 흐름
 
-- `app/consumer/receipt_consumer.py`
-  - 영수증 OCR Kafka 메시지 소비
-  - result, retry, dlq 메시지 발행
-
-- `app/consumer/photo_consumer.py`
-  - 여행 사진 처리 consumer/producer 뼈대
-  - 현재는 request 검증, 원본 다운로드, EXIF 추출/정규화, 썸네일 생성/S3 업로드까지 수행
-
-## 실행 방식
-
-### 1. HTTP 직접 테스트
-
-Kafka 없이 영수증 OCR HTTP 흐름만 확인할 때 사용합니다.
-
-```bash
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-이 경우 `KAFKA_ENABLED=false` 로 설정하면 됩니다.
-
-### 2. Kafka 비동기 Worker
-
-운영 기준 흐름:
-
-- 백엔드가 `receipt-ocr-request` 또는 `photo-processing-request` 발행
-- Worker가 메시지 consume
-- Worker가 작업 처리
-- Worker가 result 또는 retry/DLQ 메시지 발행
-
-이 방식에서는 Kafka 연결 정보와 각 consumer 활성화 여부를 맞춰야 합니다.
-
-## 엔드포인트
-
-- `GET /`
-- `GET /health`
-- `POST /api/v1/ocr/receipts/extract`
-
-## 영수증 OCR 요청 예시
-
-```json
-{
-  "receiptId": "7e0df1f0-25e8-4ae2-b3f4-a7c7d07e8b35",
-  "tripId": "c0a1c6f2-a25b-4b1d-9312-3cb1e4f1ce0f",
-  "imageUrl": "https://example.com/receipts/receipt-001.jpg",
-  "currencyCode": "KRW",
-  "locale": "ko-KR"
-}
-```
-
-주의:
-
-- `imageUrl`은 Worker 서버에서 접근 가능해야 합니다.
-- `localhost` URL은 Worker가 다른 머신에서 실행되면 사용할 수 없습니다.
-- 운영에서는 공개 URL 또는 presigned URL 사용이 적절합니다.
+1. Backend가 `trip-location-log-batch` 토픽으로 GPS batch 메시지 발행
+2. Worker의 `location_consumer`가 메시지 consume
+3. `location_pipeline`이 raw 저장 파이프라인 실행
+4. `location_pipeline`이 trip processing status를 `PROCESSING`으로 갱신
+5. `location_log_writer`가 `location_logs_raw` 테이블에 저장
+6. `location_preprocessor`가 1차 clean 파이프라인 실행
+7. `location_followup_pipeline`이 후속 처리 진입점 실행
+8. 성공 시 trip processing status를 `READY`로 갱신하고 result topic 발행
+9. 실패 시 trip processing status를 `FAILED`로 갱신하고 retry 또는 DLQ topic으로 발행
 
 ## Kafka 토픽
 
@@ -152,47 +120,55 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 - Retry: `photo-processing-retry`
 - DLQ: `photo-processing-dlq`
 
-현재 구현 범위:
+### 여행 GPS batch 처리
 
-- request/result/dlq 메시지 스키마 정의
-- consumer/producer 뼈대 추가
-- 원본 이미지 다운로드 및 이미지 로딩 구현
-- EXIF 촬영 시각 / GPS 추출 및 정규화 구현
-- 썸네일 생성 및 S3 업로드 구현
+- Request: `trip-location-log-batch`
+- Result: `trip-location-log-result`
+- Retry: `trip-location-log-retry`
+- DLQ: `trip-location-log-dlq`
 
-## 주요 환경변수
+## 환경변수
 
-- `KAFKA_PHOTO_ENABLED=false`
-- `KAFKA_PHOTO_REQUEST_TOPIC=photo-processing-request`
-- `KAFKA_PHOTO_RESULT_TOPIC=photo-processing-result`
-- `KAFKA_PHOTO_RETRY_TOPIC=photo-processing-retry`
-- `KAFKA_PHOTO_DLQ_TOPIC=photo-processing-dlq`
-- `KAFKA_PHOTO_CONSUMER_GROUP=yeoun-worker-photo`
-- `IMAGE_BASE_URL=http://localhost/images`
-- `PHOTO_THUMBNAIL_FORMAT=JPEG`
-- `PHOTO_THUMBNAIL_MAX_SIZE=512`
-- `PHOTO_THUMBNAIL_QUALITY=85`
-- `AWS_REGION=ap-northeast-2`
-- `AWS_S3_BUCKET=your_bucket_name`
-- `AWS_ACCESS_KEY_ID=your_access_key`
-- `AWS_SECRET_ACCESS_KEY=your_secret_key`
-- `AWS_S3_THUMBNAIL_PREFIX=thumbnails`
-- `AWS_S3_PUBLIC_BASE_URL=https://your-bucket.s3.ap-northeast-2.amazonaws.com`
+주요 항목:
 
-## 현재 구현 상태
+- `KAFKA_BOOTSTRAP_SERVERS`
+- `KAFKA_MAX_RETRY_ATTEMPTS`
+- `KAFKA_LOCATION_ENABLED`
+- `KAFKA_LOCATION_REQUEST_TOPIC`
+- `KAFKA_LOCATION_RESULT_TOPIC`
+- `KAFKA_LOCATION_RETRY_TOPIC`
+- `KAFKA_LOCATION_DLQ_TOPIC`
+- `KAFKA_LOCATION_CONSUMER_GROUP`
+- `WORKER_DATABASE_URL`
+- `GPS_ACCURACY_THRESHOLD_M`
+- `GPS_JUMP_SPEED_THRESHOLD_MPS`
+- `IMAGE_BASE_URL`
+- `AWS_S3_BUCKET`
+- `GEMINI_MODEL`
 
-구현됨:
+자세한 값은 `.env.example`을 참고합니다.
 
-- Gemini 2.5 Flash 기반 영수증 OCR 파이프라인
-- 영수증 Kafka request/result/retry/dlq 흐름
-- 여행 사진 Kafka 스키마 및 consumer/producer 뼈대
-- 여행 사진 원본 다운로드 및 이미지 로더
-- 여행 사진 EXIF 메타데이터 추출 및 시간/위치 정규화
-- 여행 사진 썸네일 생성 및 S3 업로드
+## 실행 방법
 
-아직 필요한 것:
+### HTTP 서버 실행
 
-- 백엔드의 여행 사진 request producer
-- 백엔드의 여행 사진 result consumer
-- 여행 사진 처리 결과 메시지 발행
-- 여행 사진 retry/DLQ 처리
+```bash
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+### Kafka consumer 활성화
+
+`.env`에서 기능 플래그를 `true`로 설정합니다.
+
+- `KAFKA_ENABLED=true`
+- `KAFKA_PHOTO_ENABLED=true`
+- `KAFKA_LOCATION_ENABLED=true`
+
+## 다음 단계
+
+여행 GPS 쪽 다음 단계는 아래 순서로 이어집니다.
+
+1. clean GPS 영속화
+2. stay detection
+3. route / place 생성
+4. timeline / photo 매칭 연결

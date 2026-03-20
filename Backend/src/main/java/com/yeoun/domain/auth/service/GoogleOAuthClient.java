@@ -24,7 +24,9 @@ import java.security.spec.RSAPublicKeySpec;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Arrays;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 public class GoogleOAuthClient {
@@ -37,20 +39,27 @@ public class GoogleOAuthClient {
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
-    private final String googleClientId;
+    private final Set<String> googleClientIds;
     private final String jwkSetUri;
 
     public GoogleOAuthClient(
             ObjectMapper objectMapper,
-            @Value("${oauth.google.client-id}") String googleClientId,
+            @Value("${oauth.google.client-ids:${oauth.google.client-id:}}") String googleClientIds,
             @Value("${oauth.google.jwk-set-uri:https://www.googleapis.com/oauth2/v3/certs}") String jwkSetUri
     ) {
         this.objectMapper = objectMapper;
-        this.googleClientId = googleClientId;
+        this.googleClientIds = Arrays.stream(googleClientIds.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
         this.jwkSetUri = jwkSetUri;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(3))
                 .build();
+
+        if (this.googleClientIds.isEmpty()) {
+            throw new IllegalStateException("At least one Google client ID must be configured");
+        }
     }
 
     public GoogleUserInfo verifyIdToken(String idToken) {
@@ -158,7 +167,7 @@ public class GoogleOAuthClient {
         String issuer = textOrNull(payload, "iss");
         long expirationEpochSeconds = longOrZero(payload, "exp");
 
-        if (audience == null || !audience.equals(googleClientId)) {
+        if (audience == null || !googleClientIds.contains(audience)) {
             throw new BaseException(ErrorCode.GOOGLE_INVALID_AUDIENCE);
         }
         if (issuer == null || !ALLOWED_ISSUERS.contains(issuer)) {

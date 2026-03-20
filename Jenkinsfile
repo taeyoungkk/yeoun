@@ -214,6 +214,14 @@ EOT
           }
           try {
             sshagent(credentials: ['ec2-node1-ssh']) {
+              // apt-get이 실패해도 파이프라인이 터지지 않도록 방어하고, 
+              // dos2unix가 정상 설치되었을 때만 실행하도록 && 로 묶어주는 것이 가장 안전합니다.
+              sh "apt-get update && apt-get install -y dos2unix || true"
+              sh "command -v dos2unix >/dev/null 2>&1 && dos2unix Infra/scripts/*.sh || true"
+              
+              // 1. 젠킨스가 가진 최신 Infra 폴더(배포 스크립트 모음)만 EC2 서버로 전송합니다.
+              sh "scp -o StrictHostKeyChecking=no -r Infra \"${env.NODE1_HOST}:${PROJECT_PATH}/\""
+              
               sh "ssh -o StrictHostKeyChecking=no \"${env.NODE1_HOST}\" \"cd '${PROJECT_PATH}' && sed -i 's|^API_IMAGE=.*|API_IMAGE=${env.API_IMAGE}|' Infra/docker/node1/.env && bash Infra/scripts/deploy-node1.sh\""
             }
           } catch (Exception err) {
@@ -239,6 +247,14 @@ EOT
           }
           try {
             sshagent(credentials: ['ec2-node2-ssh']) {
+              // apt-get이 실패해도 파이프라인이 터지지 않도록 방어하고, 
+// dos2unix가 정상 설치되었을 때만 실행하도록 && 로 묶어주는 것이 가장 안전합니다.
+sh "apt-get update && apt-get install -y dos2unix || true"
+sh "command -v dos2unix >/dev/null 2>&1 && dos2unix Infra/scripts/*.sh || true"
+              
+              // 1. 젠킨스가 가진 최신 Infra 폴더(배포 스크립트 모음)만 EC2 서버로 전송합니다.
+              sh "scp -o StrictHostKeyChecking=no -r Infra \"${env.NODE2_HOST}:${PROJECT_PATH}/\""
+              
               sh "ssh -o StrictHostKeyChecking=no \"${env.NODE2_HOST}\" \"cd '${PROJECT_PATH}' && sed -i 's|^WORKER_IMAGE=.*|WORKER_IMAGE=${env.WORKER_IMAGE}|' Infra/docker/node2/.env && bash Infra/scripts/deploy-node2.sh\""
             }
           } catch (Exception err) {

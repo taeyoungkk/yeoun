@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 
@@ -17,6 +17,10 @@ HEALTHCHECK_URL="${NODE2_HEALTHCHECK_URL:-http://localhost/}"
 
 log_info "Deploying node2 with worker image: ${WORKER_IMAGE}"
 compose_ec2 "$NODE_DIR" pull worker nginx
-compose_ec2 "$NODE_DIR" up -d worker nginx
+compose_ec2 "$NODE_DIR" up -d worker
+
+# Nginx DNS 캐싱 초기화 (502/504 강제 다운타임 방지를 위한 무중단 Graceful Reload)
+log_info "Gracefully reloading Nginx to update DNS cache and route to the new worker container..."
+compose_ec2 "$NODE_DIR" exec -T nginx nginx -s reload
 verify_http_health "$HEALTHCHECK_URL"
 compose_ec2 "$NODE_DIR" ps

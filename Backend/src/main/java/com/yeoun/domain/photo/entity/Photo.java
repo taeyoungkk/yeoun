@@ -34,9 +34,6 @@ public class Photo {
     @Column(name = "trip_id", nullable = false)
     private UUID tripId;
 
-    @Column(name = "event_id")
-    private UUID eventId;
-
     @Column(name = "storage_key", nullable = false, length = 500)
     private String storageKey;
 
