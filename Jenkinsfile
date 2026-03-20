@@ -117,6 +117,7 @@ EOT
               export SPRING_PROFILES_ACTIVE=ci
 
               # 4. 테스트 실행
+              chmod +x mvnw || true
               ./mvnw test -DskipTests -Dmaven.repo.local=.m2/repository -Djava.security.egd=file:/dev/./urandom -T 1C -ntp
             '''
           }
