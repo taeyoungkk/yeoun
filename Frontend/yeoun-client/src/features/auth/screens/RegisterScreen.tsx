@@ -45,6 +45,10 @@ type NicknameStatus = 'idle' | 'checking' | 'available' | 'taken';
 type RegisterStep = 'EMAIL' | 'VERIFY' | 'INFO';
 type EmailStatus = 'idle' | 'checking' | 'available' | 'taken';
 
+const CODE_EXPIRE_SECONDS = 180;
+const RESEND_COOLDOWN_SECONDS = 60;
+const RESEND_BLOCKED_MESSAGE = '인증코드는 60초마다 다시 요청할 수 있어요. 잠시 후 다시 시도해주세요.';
+
 export const RegisterScreen = () => {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<RegisterStep>('EMAIL');
@@ -55,8 +59,10 @@ export const RegisterScreen = () => {
   const [emailErrorMessage, setEmailErrorMessage] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [verificationError, setVerificationError] = useState('');
-  const [timer, setTimer] = useState(180);
+  const [timer, setTimer] = useState(CODE_EXPIRE_SECONDS);
   const [isTimerActive, setIsTimerActive] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [isResendingCode, setIsResendingCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [registerError, setRegisterError] = useState('');
@@ -101,10 +107,35 @@ export const RegisterScreen = () => {
     };
   }, [isTimerActive, timer]);
 
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | undefined;
+
+    if (resendCooldown > 0) {
+      interval = setInterval(() => {
+        setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [resendCooldown]);
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getResendErrorMessage = (fallback: string, error?: any) => {
+    const message = error?.response?.data?.message;
+    const code = error?.response?.data?.code;
+
+    if (code === 'EMAIL_RESEND_BLOCKED' || message === 'Verification code resend is not allowed yet.') {
+      return RESEND_BLOCKED_MESSAGE;
+    }
+
+    return message || fallback;
   };
 
   const checkEmail = async () => {
@@ -146,8 +177,9 @@ export const RegisterScreen = () => {
       setCurrentStep('VERIFY');
       setVerificationCode('');
       setVerificationError('');
-      setTimer(180);
+      setTimer(CODE_EXPIRE_SECONDS);
       setIsTimerActive(true);
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (error: any) {
       setEmailErrorMessage(error?.response?.data?.message || '인증코드 발송에 실패했습니다.');
     } finally {
@@ -176,6 +208,9 @@ export const RegisterScreen = () => {
   };
 
   const handleResendCode = async () => {
+    if (resendCooldown > 0 || isResendingCode) return;
+
+    setIsResendingCode(true);
     setVerificationCode('');
     setVerificationError('');
 
@@ -184,15 +219,23 @@ export const RegisterScreen = () => {
 
       if (!response.success || !response.data?.sent) {
         setVerificationError(response.message || response.data?.message || '인증코드 재발송에 실패했습니다.');
-        setIsTimerActive(false);
         return;
       }
 
-      setTimer(180);
+      setTimer(CODE_EXPIRE_SECONDS);
       setIsTimerActive(true);
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (error: any) {
       setVerificationError(error?.response?.data?.message || '인증코드 재발송에 실패했습니다.');
-      setIsTimerActive(false);
+      if (
+        error?.response?.data?.code === 'EMAIL_RESEND_BLOCKED' ||
+        error?.response?.data?.message === 'Verification code resend is not allowed yet.'
+      ) {
+        setVerificationError(RESEND_BLOCKED_MESSAGE);
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
+      }
+    } finally {
+      setIsResendingCode(false);
     }
   };
 
@@ -409,10 +452,18 @@ export const RegisterScreen = () => {
 
               <View className="flex-row justify-start mt-2">
                 <Text className="text-[12px] text-[#ABABAB]">인증코드를 받지 못하셨나요? </Text>
-                <TouchableOpacity onPress={handleResendCode}>
+                <TouchableOpacity onPress={handleResendCode} disabled={resendCooldown > 0 || isResendingCode}>
                   <Text className="text-[12px] text-primary font-pretendard-bold underline">재전송</Text>
                 </TouchableOpacity>
               </View>
+
+              <Text className="font-pretendard text-[12px] text-[#8E8E8E] mt-3">
+                {isResendingCode
+                  ? '인증코드를 다시 보내는 중이에요.'
+                  : resendCooldown > 0
+                    ? `인증코드는 ${resendCooldown}초 후 다시 요청할 수 있어요.`
+                    : '인증코드 재전송 요청이 가능해요.'}
+              </Text>
 
               {!!verificationError && (
                 <Text className="font-pretendard text-[12px] text-[#FF5252] text-center mt-5">{verificationError}</Text>
