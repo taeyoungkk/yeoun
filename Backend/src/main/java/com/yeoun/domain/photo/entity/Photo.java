@@ -84,4 +84,29 @@ public class Photo {
         this.excluded = excluded;
         this.updatedAt = now;
     }
+
+    public void applyProcessingCompleted(
+            String thumbnailKey,
+            Integer width,
+            Integer height,
+            Instant takenAt,
+            BigDecimal exifLatitude,
+            BigDecimal exifLongitude,
+            String metadataJson,
+            Instant now
+    ) {
+        this.thumbnailKey = thumbnailKey;
+        this.width = width;
+        this.height = height;
+        this.takenAt = takenAt;
+        this.exifLatitude = exifLatitude;
+        this.exifLongitude = exifLongitude;
+        this.metadataJson = metadataJson;
+        this.updatedAt = now;
+    }
+
+    public void applyProcessingMetadataOnly(String metadataJson, Instant now) {
+        this.metadataJson = metadataJson;
+        this.updatedAt = now;
+    }
 }
