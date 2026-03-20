@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     gps_jump_speed_threshold_mps: float = Field(default=60.0, alias="GPS_JUMP_SPEED_THRESHOLD_MPS")
     gps_stay_radius_m: float = Field(default=60.0, alias="GPS_STAY_RADIUS_M")
     gps_stay_min_duration_seconds: int = Field(default=300, alias="GPS_STAY_MIN_DURATION_SECONDS")
+    gps_place_merge_radius_m: float = Field(default=120.0, alias="GPS_PLACE_MERGE_RADIUS_M")
 
     image_base_url: str = Field(default="http://localhost/images", alias="IMAGE_BASE_URL")
     photo_thumbnail_format: str = Field(default="JPEG", alias="PHOTO_THUMBNAIL_FORMAT")

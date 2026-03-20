@@ -56,6 +56,7 @@ class LocationLogBatchResultMessage(BaseModel):
     stay_segment_count: int = Field(alias="staySegmentCount", default=0, ge=0)
     move_segment_count: int = Field(alias="moveSegmentCount", default=0, ge=0)
     route_day_count: int = Field(alias="routeDayCount", default=0, ge=0)
+    place_count: int = Field(alias="placeCount", default=0, ge=0)
     filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", default=0, ge=0)
     filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", default=0, ge=0)
     filtered_jump_count: int = Field(alias="filteredJumpCount", default=0, ge=0)
@@ -89,6 +90,7 @@ class LocationPreprocessSummary(BaseModel):
     stay_segment_count: int = Field(alias="staySegmentCount", default=0, ge=0)
     move_segment_count: int = Field(alias="moveSegmentCount", default=0, ge=0)
     route_day_count: int = Field(alias="routeDayCount", default=0, ge=0)
+    place_count: int = Field(alias="placeCount", default=0, ge=0)
     filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", ge=0)
     filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", ge=0)
     filtered_jump_count: int = Field(alias="filteredJumpCount", ge=0)
@@ -138,3 +140,18 @@ class LocationRouteDay(BaseModel):
     point_count: int = Field(alias="pointCount", ge=2)
     distance_m: Decimal = Field(alias="distanceM", ge=Decimal("0"))
     coordinates: list[tuple[Decimal, Decimal]]
+
+
+class LocationPlaceCandidate(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    place_id: str = Field(alias="placeId")
+    trip_id: str = Field(alias="tripId")
+    user_id: str = Field(alias="userId")
+    started_at: datetime = Field(alias="startedAt")
+    ended_at: datetime = Field(alias="endedAt")
+    duration_seconds: int = Field(alias="durationSeconds", ge=0)
+    center_latitude: Decimal = Field(alias="centerLatitude")
+    center_longitude: Decimal = Field(alias="centerLongitude")
+    stay_segment_count: int = Field(alias="staySegmentCount", ge=1)
+    source: str

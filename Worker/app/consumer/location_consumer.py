@@ -92,7 +92,7 @@ class LocationConsumer:
             logger.info(
                 (
                     "Processed GPS batch tripId=%s userId=%s accepted=%s stored=%s cleanPersisted=%s "
-                    "preprocessed=%s staySegments=%s moveSegments=%s routeDays=%s "
+                    "preprocessed=%s staySegments=%s moveSegments=%s routeDays=%s places=%s "
                     "filteredAccuracy=%s filteredDuplicate=%s filteredJump=%s"
                 ),
                 payload.trip_id,
@@ -104,6 +104,7 @@ class LocationConsumer:
                 result.stay_segment_count,
                 result.move_segment_count,
                 result.route_day_count,
+                result.place_count,
                 result.filtered_accuracy_count,
                 result.filtered_duplicate_count,
                 result.filtered_jump_count,
@@ -153,6 +154,7 @@ class LocationConsumer:
             stay_segment_count=result.stay_segment_count,
             move_segment_count=result.move_segment_count,
             route_day_count=result.route_day_count,
+            place_count=result.place_count,
             filtered_accuracy_count=result.filtered_accuracy_count,
             filtered_duplicate_count=result.filtered_duplicate_count,
             filtered_jump_count=result.filtered_jump_count,
