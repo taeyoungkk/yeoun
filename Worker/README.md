@@ -291,6 +291,12 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 - 최대 재시도 초과 또는 payload 검증 실패 시 `DLQ` 상태를 반영하고 DLQ topic으로 발행한다.
 - retry / DLQ 상태에는 마지막 처리 시각과 오류 코드, 오류 메시지를 함께 저장한다.
 
+## Photo Place/Event Persistence
+
+- `photo_place_links` 초안을 추가해 사진의 place 연결 결과와 대표 사진 선정 결과를 명시적으로 저장한다.
+- `photo_event_links` 초안을 추가해 사진의 event/timeline 연결 결과를 조회용 구조로 저장한다.
+- `photo_processing_pipeline`은 결과 반영, place 연결, timeline candidate 저장과 함께 place/event link 저장까지 하나의 트랜잭션으로 처리한다.
+
 ## 다음 단계
 
 여행 GPS 쪽 다음 단계는 아래 순서로 이어집니다.

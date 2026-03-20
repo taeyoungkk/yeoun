@@ -3,7 +3,9 @@ import psycopg
 from app.config import Settings
 from app.schemas.photo import PhotoProcessingResultMessage
 from app.services.photo_place_linker import PhotoPlaceLinker
+from app.services.photo_place_link_writer import PhotoPlaceLinkWriter
 from app.services.photo_result_writer import PhotoResultWriter
+from app.services.photo_event_link_writer import PhotoEventLinkWriter
 from app.services.photo_timeline_candidate_writer import PhotoTimelineCandidateWriter
 from app.services.photo_timeline_linker import PhotoTimelineLinker
 
@@ -13,8 +15,10 @@ class PhotoProcessingPipeline:
         self.settings = settings
         self.result_writer = PhotoResultWriter(settings)
         self.place_linker = PhotoPlaceLinker()
+        self.place_link_writer = PhotoPlaceLinkWriter()
         self.timeline_linker = PhotoTimelineLinker()
         self.timeline_candidate_writer = PhotoTimelineCandidateWriter()
+        self.event_link_writer = PhotoEventLinkWriter()
 
     def persist_and_link(self, result: PhotoProcessingResultMessage) -> PhotoProcessingResultMessage:
         if not self.settings.worker_database_url:
@@ -24,8 +28,14 @@ class PhotoProcessingPipeline:
             try:
                 self.result_writer.persist_result(result, connection=connection)
                 enriched = self.place_linker.link_and_select(result, connection=connection)
+                self.place_link_writer.save(enriched, connection=connection)
                 timeline_candidates = self.timeline_linker.build_candidates(enriched)
                 self.timeline_candidate_writer.save_batch(timeline_candidates, connection=connection)
+                self.event_link_writer.replace_for_photo(
+                    enriched.photo_id,
+                    timeline_candidates,
+                    connection=connection,
+                )
                 enriched = enriched.model_copy(
                     update={
                         "timelineCandidates": timeline_candidates,
