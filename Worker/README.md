@@ -11,6 +11,7 @@
 - 여행 사진-GPS 자동 매칭 후보 계산
 - 여행 사진 place 연결 및 대표 사진 선정 구조 반영
 - 여행 사진 타임라인 candidate 저장 및 후속 연결 구조 반영
+- 여행 사진 처리 상태 갱신 및 retry/DLQ 고도화
 - 여행 GPS batch Kafka consumer
 - 여행 GPS raw 로그 Postgres 저장
 - `(trip_id, user_id, client_log_uuid)` 기준 idempotency 처리
@@ -59,6 +60,7 @@ Worker/
       photo_metadata.py
       photo_place_linker.py
       photo_processing_pipeline.py
+      photo_processing_status.py
       photo_result_writer.py
       photo_timeline_candidate_writer.py
       photo_timeline_linker.py
@@ -73,6 +75,7 @@ Worker/
     create_location_logs_clean.sql
     create_location_places.sql
     create_location_route_days.sql
+    create_photo_processing_statuses.sql
     create_photo_timeline_candidates.sql
   requirements.txt
   .env.example
@@ -99,6 +102,8 @@ Worker/
   - GPS clean/place 데이터를 조회해 자동 매칭 후보 계산
   - 처리 성공 시 결과를 `photos` 테이블과 result topic에 반영
   - place 연결 및 대표 사진 선정 결과까지 함께 반영
+  - 처리 상태를 `PROCESSING/READY/RETRY_SCHEDULED/DLQ`로 갱신
+  - payload 검증 실패도 즉시 DLQ로 분기
   - 처리 실패 시 retry 또는 DLQ 발행
 
 - `app/services/photo_gps_matcher.py`
@@ -112,6 +117,10 @@ Worker/
 - `app/services/photo_processing_pipeline.py`
   - 사진 처리 결과 반영과 place 연결/대표 사진 선정을 하나의 DB 트랜잭션으로 처리
   - 사진 타임라인 candidate 생성 및 저장까지 후속 파이프라인으로 연결
+
+- `app/services/photo_processing_status.py`
+  - 사진 처리 상태를 `photo_processing_statuses` 테이블에 upsert 저장
+  - `PROCESSING`, `READY`, `RETRY_SCHEDULED`, `DLQ` 상태 관리
 
 - `app/services/photo_timeline_linker.py`
   - 사진 처리 결과를 타임라인 생성용 candidate로 변환
@@ -273,6 +282,14 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 - `KAFKA_ENABLED=true`
 - `KAFKA_PHOTO_ENABLED=true`
 - `KAFKA_LOCATION_ENABLED=true`
+
+## Photo Processing Status Update
+
+- `photo_processing_statuses` 테이블 기준으로 사진 처리 상태를 관리한다.
+- `photo_consumer`는 처리 시작 시 `PROCESSING`, 성공 시 `READY` 상태를 반영한다.
+- 처리 실패 시 재시도 가능하면 `RETRY_SCHEDULED`로 반영하고 retry topic으로 재발행한다.
+- 최대 재시도 초과 또는 payload 검증 실패 시 `DLQ` 상태를 반영하고 DLQ topic으로 발행한다.
+- retry / DLQ 상태에는 마지막 처리 시각과 오류 코드, 오류 메시지를 함께 저장한다.
 
 ## 다음 단계
 

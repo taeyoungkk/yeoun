@@ -4,12 +4,15 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from pydantic import ValidationError
+
 from app.config import Settings
 from app.schemas.photo import PhotoProcessingDlqMessage, PhotoProcessingRequest, PhotoProcessingResultMessage
 from app.services.photo_gps_matcher import PhotoGpsMatcherService
 from app.services.photo_loader import PhotoLoaderService
 from app.services.photo_metadata import PhotoMetadataService
 from app.services.photo_processing_pipeline import PhotoProcessingPipeline
+from app.services.photo_processing_status import PhotoProcessingStatusWriter
 from app.services.photo_thumbnail import PhotoThumbnailService
 
 logger = logging.getLogger(__name__)
@@ -29,6 +32,7 @@ class PhotoConsumer:
         self.metadata_service = PhotoMetadataService()
         self.thumbnail_service = PhotoThumbnailService(settings)
         self.processing_pipeline = PhotoProcessingPipeline(settings)
+        self.status_writer = PhotoProcessingStatusWriter(settings)
         self._consumer: Any = None
         self._producer: Any = None
         self._task: asyncio.Task | None = None
@@ -78,7 +82,19 @@ class PhotoConsumer:
                 raise
 
     async def _process_message(self, message: Any) -> None:
-        payload = PhotoProcessingRequest.model_validate(message.value)
+        try:
+            payload = PhotoProcessingRequest.model_validate(message.value)
+        except ValidationError as exc:
+            await self._handle_invalid_payload(message, exc)
+            await self._consumer.commit()
+            return
+
+        self.status_writer.mark_processing(
+            payload.photo_id,
+            payload.trip_id,
+            requested_at=payload.requested_at,
+            attempt=payload.attempt,
+        )
         try:
             loaded_photo = await self.loader.download_and_load(payload)
             extracted = self.metadata_service.extract_and_normalize(payload, loaded_photo)
@@ -88,6 +104,12 @@ class PhotoConsumer:
             result_message = self.build_completed_result(payload, loaded_photo, extracted, thumbnail, gps_match)
 
             result_message = self.processing_pipeline.persist_and_link(result_message)
+            self.status_writer.mark_ready(
+                payload.photo_id,
+                payload.trip_id,
+                requested_at=payload.requested_at,
+                attempt=payload.attempt,
+            )
             await self.publish_result(result_message)
             await self._consumer.commit()
 
@@ -193,6 +215,7 @@ class PhotoConsumer:
         exc: Exception,
         *,
         status: str = "FAILED",
+        attempt: int | None = None,
     ) -> PhotoProcessingResultMessage:
         return PhotoProcessingResultMessage(
             photo_id=payload.photo_id,
@@ -206,7 +229,7 @@ class PhotoConsumer:
             taken_timezone=payload.taken_timezone,
             coordinates=payload.coordinates,
             processed_at=self._utcnow(),
-            attempt=payload.attempt,
+            attempt=payload.attempt if attempt is None else attempt,
             error_code=type(exc).__name__,
             error_message=str(exc),
         )
@@ -230,6 +253,21 @@ class PhotoConsumer:
 
         if next_attempt <= self.settings.kafka_max_retry_attempts:
             retry_payload = payload.model_copy(update={"attempt": next_attempt})
+            retry_result = self.build_failed_result(
+                payload,
+                exc,
+                status="RETRY_SCHEDULED",
+                attempt=next_attempt,
+            )
+            self.status_writer.mark_retry_scheduled(
+                payload.photo_id,
+                payload.trip_id,
+                requested_at=payload.requested_at,
+                attempt=next_attempt,
+                error_code=type(exc).__name__,
+                error_message=str(exc),
+            )
+            await self.publish_result(retry_result)
             await self.publish_retry(retry_payload)
             logger.warning(
                 "Queued photo processing retry photoId=%s attempt=%s error=%s",
@@ -242,6 +280,14 @@ class PhotoConsumer:
         failed_result = self.build_failed_result(payload, exc)
         dlq_message = self.build_dlq_message(message, payload, exc)
 
+        self.status_writer.mark_dlq(
+            payload.photo_id,
+            payload.trip_id,
+            requested_at=payload.requested_at,
+            attempt=payload.attempt,
+            error_code=type(exc).__name__,
+            error_message=str(exc),
+        )
         await self.publish_result(failed_result)
         await self.publish_dlq(dlq_message)
         logger.exception(
@@ -249,6 +295,38 @@ class PhotoConsumer:
             payload.photo_id,
             payload.attempt,
             exc_info=exc,
+        )
+
+    async def _handle_invalid_payload(self, message: Any, exc: ValidationError) -> None:
+        payload_dict = message.value if isinstance(message.value, dict) else {"raw": message.value}
+        photo_id = payload_dict.get("photoId") if isinstance(payload_dict, dict) else None
+        trip_id = payload_dict.get("tripId") if isinstance(payload_dict, dict) else None
+        attempt = int(payload_dict.get("attempt", 0)) if isinstance(payload_dict, dict) else 0
+        dlq_message = PhotoProcessingDlqMessage(
+            photo_id=photo_id,
+            trip_id=trip_id,
+            topic=message.topic,
+            partition=message.partition,
+            offset=message.offset,
+            attempt=attempt,
+            payload=payload_dict,
+            error_code="ValidationError",
+            error_message=str(exc),
+            failed_at=self._utcnow(),
+        )
+        self.status_writer.mark_dlq(
+            photo_id,
+            trip_id,
+            attempt=attempt,
+            error_code="ValidationError",
+            error_message=str(exc),
+        )
+        await self.publish_dlq(dlq_message)
+        logger.warning(
+            "Moved invalid photo payload to DLQ photoId=%s tripId=%s offset=%s",
+            photo_id,
+            trip_id,
+            message.offset,
         )
 
     async def _publish(self, topic: str, key: str, value: dict[str, Any]) -> None:
