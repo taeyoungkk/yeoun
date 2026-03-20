@@ -17,7 +17,6 @@ import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -54,23 +53,23 @@ public class PhotoSyncService {
     private final TripMemberRepository tripMemberRepository;
     private final PhotoRepository photoRepository;
     private final PhotoStorageService photoStorageService;
+    private final PhotoProcessingImageUrlService photoProcessingImageUrlService;
     private final PhotoProcessingRequestEventPublisher photoProcessingRequestEventPublisher;
-    private final String photoProcessingImageBaseUrl;
 
     public PhotoSyncService(
             TripRepository tripRepository,
             TripMemberRepository tripMemberRepository,
             PhotoRepository photoRepository,
             PhotoStorageService photoStorageService,
-            PhotoProcessingRequestEventPublisher photoProcessingRequestEventPublisher,
-            @Value("${app.photo-processing.image-base-url:}") String photoProcessingImageBaseUrl
+            PhotoProcessingImageUrlService photoProcessingImageUrlService,
+            PhotoProcessingRequestEventPublisher photoProcessingRequestEventPublisher
     ) {
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
         this.photoRepository = photoRepository;
         this.photoStorageService = photoStorageService;
+        this.photoProcessingImageUrlService = photoProcessingImageUrlService;
         this.photoProcessingRequestEventPublisher = photoProcessingRequestEventPublisher;
-        this.photoProcessingImageBaseUrl = photoProcessingImageBaseUrl;
     }
 
     public PhotoSyncResponse syncTripPhotos(
@@ -143,7 +142,7 @@ public class PhotoSyncService {
                     photo.getTripId(),
                     photo.getOwnerUserId(),
                     photo.getStorageKey(),
-                    resolveImageUrl(photo.getStorageKey()),
+                    photoProcessingImageUrlService.createDownloadUrl(photo.getStorageKey()),
                     photo.getFileName(),
                     photo.getMimeType(),
                     photo.getTakenAt(),
@@ -264,16 +263,6 @@ public class PhotoSyncService {
             return null;
         }
         return new PhotoProcessingCoordinatesEvent(latitude.doubleValue(), longitude.doubleValue());
-    }
-
-    private String resolveImageUrl(String storageKey) {
-        if (photoProcessingImageBaseUrl == null || photoProcessingImageBaseUrl.isBlank()) {
-            return null;
-        }
-        String normalizedBaseUrl = photoProcessingImageBaseUrl.endsWith("/")
-                ? photoProcessingImageBaseUrl.substring(0, photoProcessingImageBaseUrl.length() - 1)
-                : photoProcessingImageBaseUrl;
-        return normalizedBaseUrl + "/" + storageKey;
     }
 
     private void publishAfterCommit(PhotoProcessingRequestEvent event) {
