@@ -61,6 +61,21 @@ class PhotoTimelineCandidate(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class PhotoManualReviewCandidate(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    candidate_id: str = Field(alias="candidateId")
+    trip_id: str = Field(alias="tripId")
+    photo_id: str = Field(alias="photoId")
+    review_status: str = Field(alias="reviewStatus")
+    review_reason: str = Field(alias="reviewReason")
+    confidence_score: float | None = Field(alias="confidenceScore", default=None, ge=0, le=1)
+    suggested_place_id: str | None = Field(alias="suggestedPlaceId", default=None)
+    suggested_client_log_uuid: str | None = Field(alias="suggestedClientLogUuid", default=None)
+    suggested_recorded_at: datetime | None = Field(alias="suggestedRecordedAt", default=None)
+    metadata: dict = Field(default_factory=dict)
+
+
 class PhotoProcessingRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
@@ -103,6 +118,10 @@ class PhotoProcessingResultMessage(BaseModel):
     place_link: PhotoPlaceLink | None = Field(alias="placeLink", default=None)
     representative_selection: PhotoRepresentativeSelection | None = Field(alias="representativeSelection", default=None)
     timeline_candidates: list[PhotoTimelineCandidate] = Field(alias="timelineCandidates", default_factory=list)
+    manual_review_candidates: list[PhotoManualReviewCandidate] = Field(
+        alias="manualReviewCandidates",
+        default_factory=list,
+    )
     width: int | None = Field(default=None, ge=1)
     height: int | None = Field(default=None, ge=1)
     metadata: dict = Field(default_factory=dict)
