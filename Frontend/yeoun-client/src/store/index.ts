@@ -9,3 +9,5 @@ export type { Toast, ToastType } from './ui.store';
 
 export { useTripStore, selectIsTripActive, selectCurrentTripId, selectCurrentTrip, selectActiveTrip } from './trip.store';
 export type { CurrentTrip } from './trip.store';
+
+export { useFavoriteStore } from './favorite.store';

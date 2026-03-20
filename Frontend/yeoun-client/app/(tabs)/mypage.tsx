@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState, useCallback } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 
-import { useUserStore } from '@/src/store';
+import { useUserStore, useFavoriteStore } from '@/src/store';
 import { getMyInfo } from '@/src/api/user';
 import { getFriendsApi } from '@/src/api/friend';
 import { ProfileHeader } from '@/src/components/profile/ProfileHeader';
@@ -51,8 +51,22 @@ const MOCK_PAST_TRIPS: TripData[] = [
 
 export default function MyPageScreen() {
   const { profile, setProfile } = useUserStore();
-  const [favoriteTrips, setFavoriteTrips] = useState<TripData[]>(MOCK_FAVORITE_TRIPS);
-  const [pastTrips, setPastTrips] = useState<TripData[]>(MOCK_PAST_TRIPS);
+  const { favoriteIds, toggleFavorite } = useFavoriteStore();
+  
+  // Use all mock trips together to filter correctly
+  const allMockTrips = [...MOCK_FAVORITE_TRIPS, ...MOCK_PAST_TRIPS];
+  
+  // Dynamic favorite trips based on store
+  const favoriteTrips = allMockTrips
+    .filter(trip => favoriteIds.includes(trip.id))
+    .map(trip => ({ ...trip, isFavorite: true }));
+
+  // Past trips with favorite status from store
+  const pastTrips = MOCK_PAST_TRIPS.map(trip => ({
+    ...trip,
+    isFavorite: favoriteIds.includes(trip.id)
+  }));
+
   const [friendsCount, setFriendsCount] = useState(0);
 
   useFocusEffect(
@@ -83,12 +97,8 @@ export default function MyPageScreen() {
     }, [setProfile])
   );
 
-  const handleToggleFavorite = (id: string, isFavList: boolean) => {
-    if (isFavList) {
-      setFavoriteTrips((prev) => prev.map((trip) => (trip.id === id ? { ...trip, isFavorite: !trip.isFavorite } : trip)));
-    } else {
-      setPastTrips((prev) => prev.map((trip) => (trip.id === id ? { ...trip, isFavorite: !trip.isFavorite } : trip)));
-    }
+  const handleToggleFavorite = (id: string) => {
+    toggleFavorite(id);
   };
 
   return (
@@ -113,15 +123,15 @@ export default function MyPageScreen() {
         <TripList
           title="좋아하는 여행"
           trips={favoriteTrips}
-          onViewMore={() => console.log('View more favorites')}
-          onToggleFavorite={(id) => handleToggleFavorite(id, true)}
+          onViewMore={() => router.push('/trip/liked')}
+          onToggleFavorite={handleToggleFavorite}
         />
 
         <TripList
           title="다녀온 여행"
           trips={pastTrips}
-          onViewMore={() => console.log('View more past trips')}
-          onToggleFavorite={(id) => handleToggleFavorite(id, false)}
+          onViewMore={() => router.push('/trip/past')}
+          onToggleFavorite={handleToggleFavorite}
         />
 
         <TravelMap />
