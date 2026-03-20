@@ -6,6 +6,7 @@ from typing import Any
 
 from app.config import Settings
 from app.schemas.photo import PhotoProcessingDlqMessage, PhotoProcessingRequest, PhotoProcessingResultMessage
+from app.services.photo_gps_matcher import PhotoGpsMatcherService
 from app.services.photo_loader import PhotoLoaderService
 from app.services.photo_metadata import PhotoMetadataService
 from app.services.photo_result_writer import PhotoResultWriter
@@ -24,6 +25,7 @@ class PhotoConsumer:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.loader = PhotoLoaderService(settings)
+        self.gps_matcher = PhotoGpsMatcherService(settings)
         self.metadata_service = PhotoMetadataService()
         self.thumbnail_service = PhotoThumbnailService(settings)
         self.result_writer = PhotoResultWriter(settings)
@@ -81,7 +83,9 @@ class PhotoConsumer:
             loaded_photo = await self.loader.download_and_load(payload)
             extracted = self.metadata_service.extract_and_normalize(payload, loaded_photo)
             thumbnail = self.thumbnail_service.generate_and_store(payload, loaded_photo)
-            result_message = self.build_completed_result(payload, loaded_photo, extracted, thumbnail)
+            base_result = self.build_completed_result(payload, loaded_photo, extracted, thumbnail)
+            gps_match = self.gps_matcher.match(base_result)
+            result_message = self.build_completed_result(payload, loaded_photo, extracted, thumbnail, gps_match)
 
             self.result_writer.persist_result(result_message)
             await self.publish_result(result_message)
@@ -145,6 +149,7 @@ class PhotoConsumer:
         loaded_photo: Any,
         extracted: Any,
         thumbnail: Any,
+        gps_match: Any = None,
     ) -> PhotoProcessingResultMessage:
         metadata = dict(extracted.metadata)
         metadata.update(
@@ -157,6 +162,8 @@ class PhotoConsumer:
                 "thumbnailUrl": thumbnail.thumbnail_url,
             }
         )
+        if gps_match is not None:
+            metadata["gpsMatch"] = gps_match.model_dump(mode="json", by_alias=True)
 
         return PhotoProcessingResultMessage(
             photo_id=payload.photo_id,
@@ -172,6 +179,7 @@ class PhotoConsumer:
             normalized_taken_at=extracted.normalized_taken_at,
             coordinates=payload.coordinates or extracted.extracted_coordinates,
             normalized_coordinates=extracted.normalized_coordinates,
+            gps_match=gps_match,
             width=loaded_photo.width,
             height=loaded_photo.height,
             metadata=metadata,

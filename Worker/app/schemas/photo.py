@@ -10,6 +10,19 @@ class PhotoCoordinates(BaseModel):
     longitude: float = Field(ge=-180, le=180)
 
 
+class PhotoGpsMatch(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    match_type: str = Field(alias="matchType")
+    matched_place_id: str | None = Field(alias="matchedPlaceId", default=None)
+    matched_client_log_uuid: str | None = Field(alias="matchedClientLogUuid", default=None)
+    matched_recorded_at: datetime | None = Field(alias="matchedRecordedAt", default=None)
+    matched_coordinates: PhotoCoordinates | None = Field(alias="matchedCoordinates", default=None)
+    time_diff_seconds: int | None = Field(alias="timeDiffSeconds", default=None, ge=0)
+    distance_m: float | None = Field(alias="distanceM", default=None, ge=0)
+    score: float = Field(ge=0, le=1)
+
+
 class PhotoProcessingRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
@@ -48,6 +61,7 @@ class PhotoProcessingResultMessage(BaseModel):
     normalized_taken_at: datetime | None = Field(alias="normalizedTakenAt", default=None)
     coordinates: PhotoCoordinates | None = Field(default=None)
     normalized_coordinates: PhotoCoordinates | None = Field(alias="normalizedCoordinates", default=None)
+    gps_match: PhotoGpsMatch | None = Field(alias="gpsMatch", default=None)
     width: int | None = Field(default=None, ge=1)
     height: int | None = Field(default=None, ge=1)
     metadata: dict = Field(default_factory=dict)
