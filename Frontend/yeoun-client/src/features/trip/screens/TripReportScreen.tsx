@@ -1,6 +1,6 @@
 ﻿import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -114,7 +114,6 @@ const getSettlementRows = (events: TimelineEvent[]) =>
 export default function TripReportScreen() {
   const currentTrip = useTripStore((state) => state.currentTrip);
   const router = useRouter();
-  const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const receiptAppear = useRef(new Animated.Value(0)).current;
