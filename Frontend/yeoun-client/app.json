@@ -5,12 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": [
-      "yeoun",
-      "com.hoimook.yeoun",
-      "com.googleusercontent.apps.978032006656-3qipmatfs3p9vrouqstak4a21tsmspa7",
-      "com.googleusercontent.apps.978032006656-6d4eati8im5llgl2od69ttc2pjrpq9p7"
-    ],
+    "scheme": "yeoun",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -65,8 +60,7 @@
         {
           "RNMapboxMapsImpl": "mapbox"
         }
-      ],
-      "@react-native-google-signin/google-signin"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

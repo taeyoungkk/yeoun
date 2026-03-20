@@ -4,14 +4,14 @@ import Svg, { Path, G, Text as SvgText, Defs, TextPath } from 'react-native-svg'
 import { LinearGradient } from 'expo-linear-gradient';
 
 const regionsData = [
-  { id: 'capital',    name: '수도권',   desc: '서울·경기·인천',     total: 66,  visited: 25 },
-  { id: 'gangwon',   name: '강원권',   desc: '강원특별자치도',      total: 18,  visited: 0  },
-  { id: 'chungbuk',  name: '충북권',   desc: '충청북도',           total: 11,  visited: 0  },
+  { id: 'capital',    name: '수도권',   desc: '서울·경기·인천',     total: 66,  visited: 5  },
+  { id: 'gangwon',   name: '강원권',   desc: '강원특별자치도',      total: 18,  visited: 2  },
+  { id: 'chungbuk',  name: '충북권',   desc: '충청북도',           total: 11,  visited: 1  },
   { id: 'chungnam',  name: '충남권',   desc: '대전·세종·충남',      total: 21,  visited: 5  },
-  { id: 'jeolla',    name: '전라권',   desc: '광주·전북·전남',      total: 41,  visited: 0  },
-  { id: 'daegyeong', name: '대구·경북', desc: '대구·경북',          total: 31,  visited: 0  },
-  { id: 'buulgyeong',name: '부울경',   desc: '부산·울산·경남',      total: 39,  visited: 16 },
-  { id: 'jeju',      name: '제주권',   desc: '제주특별자치도',      total: 2,   visited: 2  },
+  { id: 'jeolla',    name: '전라권',   desc: '광주·전북·전남',      total: 41,  visited: 3  },
+  { id: 'daegyeong', name: '대구·경북', desc: '대구·경북',          total: 31,  visited: 2  },
+  { id: 'buulgyeong',name: '부울경',   desc: '부산·울산·경남',      total: 39,  visited: 3  },
+  { id: 'jeju',      name: '제주권',   desc: '제주특별자치도',      total: 2,   visited: 0  },
 ];
 
 

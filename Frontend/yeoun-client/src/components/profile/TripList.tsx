@@ -8,10 +8,9 @@ interface Props {
   trips: TripData[];
   onViewMore?: () => void;
   onToggleFavorite?: (id: string) => void;
-  onPressTrip?: (id: string) => void;
 }
 
-export function TripList({ title, trips, onViewMore, onToggleFavorite, onPressTrip }: Props) {
+export function TripList({ title, trips, onViewMore, onToggleFavorite }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -31,8 +30,7 @@ export function TripList({ title, trips, onViewMore, onToggleFavorite, onPressTr
           <TripCard 
             key={trip.id} 
             data={trip} 
-            style={{ width: 170, height: 240, marginRight: 16 }}
-            onPress={() => onPressTrip?.(trip.id)} 
+            onPress={() => console.log('Trip pressed:', trip.id)} 
             onPressHeart={() => onToggleFavorite?.(trip.id)}
           />
         ))}
