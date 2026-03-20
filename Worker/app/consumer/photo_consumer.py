@@ -8,6 +8,7 @@ from app.config import Settings
 from app.schemas.photo import PhotoProcessingDlqMessage, PhotoProcessingRequest, PhotoProcessingResultMessage
 from app.services.photo_loader import PhotoLoaderService
 from app.services.photo_metadata import PhotoMetadataService
+from app.services.photo_result_writer import PhotoResultWriter
 from app.services.photo_thumbnail import PhotoThumbnailService
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ class PhotoConsumer:
         self.loader = PhotoLoaderService(settings)
         self.metadata_service = PhotoMetadataService()
         self.thumbnail_service = PhotoThumbnailService(settings)
+        self.result_writer = PhotoResultWriter(settings)
         self._consumer: Any = None
         self._producer: Any = None
         self._task: asyncio.Task | None = None
@@ -81,6 +83,7 @@ class PhotoConsumer:
             thumbnail = self.thumbnail_service.generate_and_store(payload, loaded_photo)
             result_message = self.build_completed_result(payload, loaded_photo, extracted, thumbnail)
 
+            self.result_writer.persist_result(result_message)
             await self.publish_result(result_message)
             await self._consumer.commit()
 

@@ -7,6 +7,7 @@
 
 - 영수증 OCR Kafka 처리
 - 여행 사진 메타데이터/썸네일 Kafka 처리
+- 여행 사진 처리 결과(정규화 메타데이터/썸네일) DB 반영
 - 여행 GPS batch Kafka consumer
 - 여행 GPS raw 로그 Postgres 저장
 - `(trip_id, user_id, client_log_uuid)` 기준 idempotency 처리
@@ -52,6 +53,7 @@ Worker/
       location_timeline_linker.py
       photo_loader.py
       photo_metadata.py
+      photo_result_writer.py
       photo_thumbnail.py
       receipt_ocr.py
       trip_processing_status.py
@@ -77,6 +79,19 @@ Worker/
 - `app/config.py`
   - Worker 환경변수 로더
   - Kafka, DB, Gemini, 이미지 URL, S3 관련 설정 관리
+
+- `app/schemas/photo.py`
+  - 여행 사진 처리 request/result/DLQ 메시지 스키마
+
+- `app/consumer/photo_consumer.py`
+  - `photo-processing-request` / retry 토픽 consume
+  - EXIF 추출, 정규화, 썸네일 생성 수행
+  - 처리 성공 시 결과를 `photos` 테이블과 result topic에 반영
+  - 처리 실패 시 retry 또는 DLQ 발행
+
+- `app/services/photo_result_writer.py`
+  - Worker가 계산한 사진 처리 결과를 `photos` 테이블에 업데이트
+  - 정규화된 촬영 시각/좌표, 썸네일 키, 메타데이터 JSON 반영
 
 - `app/schemas/location.py`
   - 여행 GPS batch request/result/DLQ 메시지 스키마
