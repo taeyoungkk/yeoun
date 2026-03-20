@@ -87,7 +87,10 @@ pipeline {
               docker run -d --name "${CI_REDIS_CONTAINER}" "${CI_REDIS_IMAGE}" >/dev/null
               REDIS_IP="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CI_REDIS_CONTAINER}")"
 
-              # 3. 테스트용 .env 생성 (AWS 관련 빈 생성 에러 방지용 가짜 키 주입 🔥)
+              # 3. 테스트용 설정 파일 복구 및 생성 (이게 없어서 Bean이 길을 잃었습니다!)
+              # 예제 파일을 복사해서 ci용 프로필 파일을 만들어줍니다.
+              cp src/main/resources/application-local.properties.example src/main/resources/application-ci.properties || true
+              cp .env.example .env || true
               cat <<EOT > .env
 DB_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
 FLYWAY_URL=jdbc:postgresql://${POSTGRES_IP}:5432/${CI_POSTGRES_DB}
@@ -105,12 +108,20 @@ AWS_REGION=ap-northeast-2
 S3_BUCKET_NAME=dummy-bucket
 EOT
 
-              # 환경변수 로드
-              set -a; source .env; set +a
+              # 젠킨스 터미널의 환경변수로 완벽하게 밀어넣기
+              set -a
+              source .env
+              set +a
+              
+              # 스프링 부트에게 CI 환경임을 확실히 알림
+              export SPRING_PROFILES_ACTIVE=ci
 
-              # 4. 테스트 실행 (캐시 사용으로 속도 최적화)
-              chmod +x mvnw
-              ./mvnw test -Dmaven.repo.local=.m2/repository -Djava.security.egd=file:/dev/./urandom -T 1C -ntp
+              # 4. 테스트 실행
+              chmod +x mvnw || true
+              ./mvnw test \
+                -Dmaven.repo.local=.m2/repository \
+                -Djava.security.egd=file:/dev/./urandom \
+                -T 1C -ntp
             '''
           }
         }
