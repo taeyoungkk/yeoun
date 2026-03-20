@@ -17,6 +17,19 @@ class LocationLogRequestItem(BaseModel):
     source: str
 
 
+class LocationCleanLog(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    client_log_uuid: str = Field(alias="clientLogUuid", min_length=1, max_length=100)
+    recorded_at: datetime = Field(alias="recordedAt")
+    latitude: Decimal
+    longitude: Decimal
+    accuracy_m: Decimal = Field(alias="accuracyM")
+    speed_mps: Decimal | None = Field(alias="speedMps", default=None)
+    heading: Decimal | None = Field(default=None)
+    source: str
+
+
 class LocationLogBatchStoredEvent(BaseModel):
     model_config = {"populate_by_name": True}
 
@@ -63,10 +76,18 @@ class LocationLogBatchDlqMessage(BaseModel):
 
 
 class LocationPreprocessSummary(BaseModel):
+    model_config = {"populate_by_name": True}
+
     accepted_count: int = Field(alias="acceptedCount", ge=0)
     duplicate_count: int = Field(alias="duplicateCount", ge=0)
     stored_count: int = Field(alias="storedCount", ge=0)
+    clean_persisted_count: int = Field(alias="cleanPersistedCount", default=0, ge=0)
     preprocessed_count: int = Field(alias="preprocessedCount", ge=0)
     filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", ge=0)
     filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", ge=0)
     filtered_jump_count: int = Field(alias="filteredJumpCount", ge=0)
+
+
+class LocationPreprocessResult(BaseModel):
+    clean_logs: list[LocationCleanLog] = Field(default_factory=list, alias="cleanLogs")
+    summary: LocationPreprocessSummary

@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from math import asin, cos, radians, sin, sqrt
 
 from app.config import Settings
-from app.schemas.location import LocationLogRequestItem, LocationPreprocessSummary
+from app.schemas.location import (
+    LocationCleanLog,
+    LocationLogRequestItem,
+    LocationPreprocessResult,
+    LocationPreprocessSummary,
+)
 
 
 @dataclass(frozen=True)
@@ -39,7 +45,7 @@ class LocationPreprocessor:
         accepted_count: int,
         duplicate_count: int,
         stored_count: int,
-    ) -> LocationPreprocessSummary:
+    ) -> LocationPreprocessResult:
         sorted_points = [self._to_point(log) for log in sorted(logs, key=self._sort_key)]
 
         filtered_accuracy_count = 0
@@ -69,14 +75,19 @@ class LocationPreprocessor:
 
             clean_points.append(point)
 
-        return LocationPreprocessSummary(
-            acceptedCount=accepted_count,
-            duplicateCount=duplicate_count,
-            storedCount=stored_count,
-            preprocessedCount=len(clean_points),
-            filteredAccuracyCount=filtered_accuracy_count,
-            filteredDuplicateCount=filtered_duplicate_count,
-            filteredJumpCount=filtered_jump_count,
+        clean_logs = [self._to_clean_log(point) for point in clean_points]
+
+        return LocationPreprocessResult(
+            cleanLogs=clean_logs,
+            summary=LocationPreprocessSummary(
+                acceptedCount=accepted_count,
+                duplicateCount=duplicate_count,
+                storedCount=stored_count,
+                preprocessedCount=len(clean_logs),
+                filteredAccuracyCount=filtered_accuracy_count,
+                filteredDuplicateCount=filtered_duplicate_count,
+                filteredJumpCount=filtered_jump_count,
+            ),
         )
 
     def _sort_key(self, log: LocationLogRequestItem) -> tuple[datetime, str]:
@@ -90,6 +101,18 @@ class LocationPreprocessor:
             accuracy_m=float(log.accuracy_m),
             speed_mps=float(log.speed_mps) if log.speed_mps is not None else None,
             recorded_at=log.recorded_at,
+        )
+
+    def _to_clean_log(self, point: _Point) -> LocationCleanLog:
+        return LocationCleanLog(
+            clientLogUuid=point.log.client_log_uuid,
+            recordedAt=point.recorded_at,
+            latitude=Decimal(str(round(point.latitude, 7))),
+            longitude=Decimal(str(round(point.longitude, 7))),
+            accuracyM=Decimal(str(round(point.accuracy_m, 2))),
+            speedMps=Decimal(str(round(point.speed_mps, 2))) if point.speed_mps is not None else None,
+            heading=Decimal(str(round(float(point.log.heading), 2))) if point.log.heading is not None else None,
+            source=point.log.source,
         )
 
     def _is_duplicate_point(self, previous: _Point, current: _Point) -> bool:

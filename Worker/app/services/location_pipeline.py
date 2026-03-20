@@ -1,5 +1,6 @@
 from app.config import Settings
 from app.schemas.location import LocationLogBatchStoredEvent, LocationPreprocessSummary
+from app.services.location_clean_writer import LocationLogCleanWriter
 from app.services.location_followup_pipeline import LocationFollowupPipeline
 from app.services.location_log_writer import LocationLogRawWriter
 from app.services.location_preprocessor import LocationPreprocessor
@@ -16,6 +17,7 @@ class LocationPipelineService:
 
     def __init__(self, settings: Settings):
         self.writer = LocationLogRawWriter(settings)
+        self.clean_writer = LocationLogCleanWriter(settings)
         self.preprocessor = LocationPreprocessor(settings)
         self.status_writer = TripProcessingStatusWriter(settings)
         self.followup_pipeline = LocationFollowupPipeline()
@@ -25,11 +27,19 @@ class LocationPipelineService:
 
         try:
             persisted = self.writer.save_batch(payload)
-            summary = self.preprocessor.preprocess(
+            preprocess_result = self.preprocessor.preprocess(
                 payload.logs,
                 accepted_count=persisted["accepted_count"],
                 duplicate_count=persisted["duplicate_count"],
                 stored_count=persisted["stored_count"],
+            )
+            clean_persisted_count = self.clean_writer.save_batch(
+                payload.trip_id,
+                payload.user_id,
+                preprocess_result.clean_logs,
+            )
+            summary = preprocess_result.summary.model_copy(
+                update={"cleanPersistedCount": clean_persisted_count},
             )
             await self.followup_pipeline.run(payload, summary)
             self.status_writer.mark_ready(payload.trip_id, requested_at=payload.requested_at)
