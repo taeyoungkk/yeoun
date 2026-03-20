@@ -9,6 +9,7 @@
 - 여행 사진 메타데이터/썸네일 Kafka 처리
 - 여행 사진 처리 결과(정규화 메타데이터/썸네일) DB 반영
 - 여행 사진-GPS 자동 매칭 후보 계산
+- 여행 사진 place 연결 및 대표 사진 선정 구조 반영
 - 여행 GPS batch Kafka consumer
 - 여행 GPS raw 로그 Postgres 저장
 - `(trip_id, user_id, client_log_uuid)` 기준 idempotency 처리
@@ -55,6 +56,8 @@ Worker/
       photo_gps_matcher.py
       photo_loader.py
       photo_metadata.py
+      photo_place_linker.py
+      photo_processing_pipeline.py
       photo_result_writer.py
       photo_thumbnail.py
       receipt_ocr.py
@@ -91,11 +94,19 @@ Worker/
   - EXIF 추출, 정규화, 썸네일 생성 수행
   - GPS clean/place 데이터를 조회해 자동 매칭 후보 계산
   - 처리 성공 시 결과를 `photos` 테이블과 result topic에 반영
+  - place 연결 및 대표 사진 선정 결과까지 함께 반영
   - 처리 실패 시 retry 또는 DLQ 발행
 
 - `app/services/photo_gps_matcher.py`
   - 정규화된 사진 시각/좌표를 기준으로 GPS clean 로그 및 place 후보 자동 매칭
   - EXIF 좌표+시간 우선, 없으면 시간 기준 최근접 clean 로그로 fallback
+
+- `app/services/photo_place_linker.py`
+  - 같은 place로 매칭된 사진들을 조회해 대표 사진 순위를 계산
+  - `placeLink`, `representativeSelection` 구조를 `photos.metadata_json`에 반영
+
+- `app/services/photo_processing_pipeline.py`
+  - 사진 처리 결과 반영과 place 연결/대표 사진 선정을 하나의 DB 트랜잭션으로 처리
 
 - `app/services/photo_result_writer.py`
   - Worker가 계산한 사진 처리 결과를 `photos` 테이블에 업데이트

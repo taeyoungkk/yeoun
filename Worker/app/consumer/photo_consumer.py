@@ -9,7 +9,7 @@ from app.schemas.photo import PhotoProcessingDlqMessage, PhotoProcessingRequest,
 from app.services.photo_gps_matcher import PhotoGpsMatcherService
 from app.services.photo_loader import PhotoLoaderService
 from app.services.photo_metadata import PhotoMetadataService
-from app.services.photo_result_writer import PhotoResultWriter
+from app.services.photo_processing_pipeline import PhotoProcessingPipeline
 from app.services.photo_thumbnail import PhotoThumbnailService
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class PhotoConsumer:
         self.gps_matcher = PhotoGpsMatcherService(settings)
         self.metadata_service = PhotoMetadataService()
         self.thumbnail_service = PhotoThumbnailService(settings)
-        self.result_writer = PhotoResultWriter(settings)
+        self.processing_pipeline = PhotoProcessingPipeline(settings)
         self._consumer: Any = None
         self._producer: Any = None
         self._task: asyncio.Task | None = None
@@ -87,7 +87,7 @@ class PhotoConsumer:
             gps_match = self.gps_matcher.match(base_result)
             result_message = self.build_completed_result(payload, loaded_photo, extracted, thumbnail, gps_match)
 
-            self.result_writer.persist_result(result_message)
+            result_message = self.processing_pipeline.persist_and_link(result_message)
             await self.publish_result(result_message)
             await self._consumer.commit()
 

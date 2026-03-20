@@ -23,6 +23,27 @@ class PhotoGpsMatch(BaseModel):
     score: float = Field(ge=0, le=1)
 
 
+class PhotoPlaceLink(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    place_id: str = Field(alias="placeId")
+    linked_by: str = Field(alias="linkedBy")
+    match_type: str = Field(alias="matchType")
+    score: float = Field(ge=0, le=1)
+    linked_at: datetime = Field(alias="linkedAt")
+
+
+class PhotoRepresentativeSelection(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    scope: str
+    scope_id: str = Field(alias="scopeId")
+    is_representative: bool = Field(alias="isRepresentative")
+    rank: int = Field(ge=1)
+    selected_at: datetime = Field(alias="selectedAt")
+    selection_reason: str = Field(alias="selectionReason")
+
+
 class PhotoProcessingRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
@@ -62,6 +83,8 @@ class PhotoProcessingResultMessage(BaseModel):
     coordinates: PhotoCoordinates | None = Field(default=None)
     normalized_coordinates: PhotoCoordinates | None = Field(alias="normalizedCoordinates", default=None)
     gps_match: PhotoGpsMatch | None = Field(alias="gpsMatch", default=None)
+    place_link: PhotoPlaceLink | None = Field(alias="placeLink", default=None)
+    representative_selection: PhotoRepresentativeSelection | None = Field(alias="representativeSelection", default=None)
     width: int | None = Field(default=None, ge=1)
     height: int | None = Field(default=None, ge=1)
     metadata: dict = Field(default_factory=dict)
