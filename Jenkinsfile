@@ -155,7 +155,8 @@ EOT
               # 4. 테스트 실행
               ./mvnw -q clean test \
                 -Dspring.profiles.active=ci \
-                2>&1 | tee -a "../../${CI_TEST_LOG}"
+                -Djava.security.egd=file:/dev/./urandom \
+                -T 1C -ntp
             '''
           }
         }
