@@ -30,7 +30,7 @@ let mockProfile: UserProfileData = {
  */
 export const getMyInfo = async (): Promise<CommonResponse<UserProfileData>> => {
   try {
-    const response = await apiClient.get<CommonResponse<UserProfileData>>('/api/v1/users/me');
+    const response = await apiClient.get<CommonResponse<UserProfileData>>('/users/me');
     return response.data;
   } catch (error) {
     if (__DEV__) {
@@ -53,7 +53,7 @@ export const getMyInfo = async (): Promise<CommonResponse<UserProfileData>> => {
  */
 export const withdrawAccount = async (): Promise<CommonResponse<string>> => {
   try {
-    const response = await apiClient.delete<CommonResponse<string>>('/api/v1/users/me');
+    const response = await apiClient.delete<CommonResponse<string>>('/users/me');
     return response.data;
   } catch (error) {
     if (__DEV__) {
@@ -88,7 +88,7 @@ export type PasswordChangeResponse = AuthTokens;
  */
 export const updateMyInfo = async (data: UpdateProfileRequest): Promise<CommonResponse<UserProfileData>> => {
   try {
-    const response = await apiClient.patch<CommonResponse<UserProfileData>>('/api/v1/users/me', data);
+    const response = await apiClient.patch<CommonResponse<UserProfileData>>('/users/me', data);
     // If successful, we would ideally update our local mock too, but we return fresh data from server
     return response.data;
   } catch (error) {
@@ -117,7 +117,7 @@ export const updateMyInfo = async (data: UpdateProfileRequest): Promise<CommonRe
  */
 export const updatePassword = async (data: PasswordChangeRequest): Promise<CommonResponse<PasswordChangeResponse>> => {
   try {
-    const response = await apiClient.patch<CommonResponse<PasswordChangeResponse>>('/api/v1/users/me/password', data);
+    const response = await apiClient.patch<CommonResponse<PasswordChangeResponse>>('/users/me/password', data);
     return response.data;
   } catch (error) {
     if (__DEV__) {
