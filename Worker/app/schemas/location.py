@@ -57,6 +57,9 @@ class LocationLogBatchResultMessage(BaseModel):
     move_segment_count: int = Field(alias="moveSegmentCount", default=0, ge=0)
     route_day_count: int = Field(alias="routeDayCount", default=0, ge=0)
     place_count: int = Field(alias="placeCount", default=0, ge=0)
+    route_persisted_count: int = Field(alias="routePersistedCount", default=0, ge=0)
+    place_persisted_count: int = Field(alias="placePersistedCount", default=0, ge=0)
+    timeline_candidate_count: int = Field(alias="timelineCandidateCount", default=0, ge=0)
     filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", default=0, ge=0)
     filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", default=0, ge=0)
     filtered_jump_count: int = Field(alias="filteredJumpCount", default=0, ge=0)
@@ -91,6 +94,9 @@ class LocationPreprocessSummary(BaseModel):
     move_segment_count: int = Field(alias="moveSegmentCount", default=0, ge=0)
     route_day_count: int = Field(alias="routeDayCount", default=0, ge=0)
     place_count: int = Field(alias="placeCount", default=0, ge=0)
+    route_persisted_count: int = Field(alias="routePersistedCount", default=0, ge=0)
+    place_persisted_count: int = Field(alias="placePersistedCount", default=0, ge=0)
+    timeline_candidate_count: int = Field(alias="timelineCandidateCount", default=0, ge=0)
     filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", ge=0)
     filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", ge=0)
     filtered_jump_count: int = Field(alias="filteredJumpCount", ge=0)
@@ -155,3 +161,16 @@ class LocationPlaceCandidate(BaseModel):
     center_longitude: Decimal = Field(alias="centerLongitude")
     stay_segment_count: int = Field(alias="staySegmentCount", ge=1)
     source: str
+
+
+class LocationTimelineCandidate(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    candidate_id: str = Field(alias="candidateId")
+    trip_id: str = Field(alias="tripId")
+    user_id: str = Field(alias="userId")
+    candidate_type: str = Field(alias="candidateType")
+    reference_id: str = Field(alias="referenceId")
+    started_at: datetime = Field(alias="startedAt")
+    ended_at: datetime = Field(alias="endedAt")
+    title: str
