@@ -155,7 +155,7 @@ EOT
               # 4. 테스트 실행
               # -Dmaven.repo.local 옵션으로 다운로드한 파일들을 프로젝트 폴더 안에 저장해둡니다.
               # 다음 빌드부터는 다운로드 과정을 통째로 건너뛰어서 순식간에 켜집니다!
-              ./mvnw clean test \
+              ./mvnw test \
                 -Dmaven.repo.local=.m2/repository \
                 -Dspring.profiles.active=ci \
                 -Djava.security.egd=file:/dev/./urandom \
