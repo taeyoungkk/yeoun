@@ -16,6 +16,11 @@ const apiClient = axios.create({
 // Request interceptor to add the access token to every request
 apiClient.interceptors.request.use(
   (config) => {
+    // Skip Authorization header for refresh endpoint
+    if (config.url === '/auth/refresh') {
+      return config;
+    }
+
     const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -27,7 +32,7 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle token refresh on 401
+// Response interceptor to handle token refresh on 401/403
 apiClient.interceptors.response.use(
   (response) => {
     return response;
@@ -35,14 +40,21 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // If error is 401 or 403 and not already retrying
-    if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
+    // If error is 401/403 and not already retrying
+    if (
+      (error.response?.status === 401 || error.response?.status === 403) && 
+      !originalRequest._retry &&
+      originalRequest.url !== '/auth/refresh' // Don't retry refresh calls
+    ) {
       originalRequest._retry = true;
+
+      console.log(`[API Interceptor] Error ${error.response.status} on ${originalRequest.url}. Attempting token refresh...`);
 
       try {
         const { refreshToken, setTokens, clearTokens } = useAuthStore.getState();
         
         if (!refreshToken) {
+          console.log('[API Interceptor] No refresh token available. Clearing session.');
           clearTokens();
           return Promise.reject(error);
         }
@@ -52,6 +64,7 @@ apiClient.interceptors.response.use(
         const refreshResponse = await refreshApi(refreshToken);
 
         if (refreshResponse.success) {
+          console.log('[API Interceptor] Token refresh successful. Retrying original request.');
           const { accessToken: newAccess, refreshToken: newRefresh } = refreshResponse.data;
           setTokens(newAccess, newRefresh);
           
@@ -59,10 +72,12 @@ apiClient.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${newAccess}`;
           return apiClient(originalRequest);
         } else {
+          console.log('[API Interceptor] Token refresh failed. Clearing session.');
           clearTokens();
           return Promise.reject(error);
         }
       } catch (refreshError) {
+        console.error('[API Interceptor] Token refresh error:', refreshError);
         useAuthStore.getState().clearTokens();
         return Promise.reject(refreshError);
       }

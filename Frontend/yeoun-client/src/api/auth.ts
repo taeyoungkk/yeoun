@@ -18,12 +18,16 @@ export interface AuthTokens {
 }
 
 export interface LoginResponseData {
-  user: {
+  user?: {
     userId: string;
     email: string;
     nickname: string;
   };
-  tokens: AuthTokens;
+  // The API sometimes returns tokens wrapped in a 'tokens' object, 
+  // and sometimes flat at the top level of 'data'.
+  tokens?: AuthTokens;
+  accessToken?: string;
+  refreshToken?: string;
 }
 
 export interface LoginRequest {

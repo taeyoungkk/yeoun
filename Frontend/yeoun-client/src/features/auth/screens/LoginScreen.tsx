@@ -23,7 +23,7 @@ import { loginApi, googleAuthApi, LoginRequest } from "@/src/api/auth";
 import { useAuthStore } from "@/src/store/auth.store";
 import { useUserStore } from "@/src/store";
 
-WebBrowser.maybeCompleteAuthSession();
+// Google login handles its own auth session via prompts
 
 interface LoginForm {
   email: string;
@@ -67,11 +67,31 @@ export const LoginScreen = () => {
     setLoginError("");
     try {
       const apiResponse = await googleAuthApi(idToken);
+      console.log('[LoginScreen] Google Auth Response:', JSON.stringify(apiResponse, null, 2));
+
       if (apiResponse.success && apiResponse.data) {
-        const { tokens, user } = apiResponse.data;
-        setTokens(tokens.accessToken, tokens.refreshToken);
+        const data = apiResponse.data;
         
-        // Populate user store with basic info
+        // Handle both wrapped and flat token structures
+        const accessToken = data.tokens?.accessToken || data.accessToken;
+        const refreshToken = data.tokens?.refreshToken || data.refreshToken;
+
+        if (!accessToken) {
+          console.error('[LoginScreen] Missing accessToken in response:', data);
+          setLoginError("서버 응답 형식이 올바르지 않습니다. (액세스 토큰 누락)");
+          return;
+        }
+
+        setTokens(accessToken, refreshToken || "");
+        
+        // If user info is missing, we might need a fallback or another API call.
+        // For now, let's use what we have or placeholder.
+        const user = data.user || {
+          userId: 'google-user',
+          email: '',
+          nickname: 'Google 사용자',
+        };
+
         setProfile({
           userId: user.userId,
           email: user.email,
@@ -113,11 +133,28 @@ export const LoginScreen = () => {
     setLoginError("");
     try {
       const response = await loginApi(data);
+      console.log('[LoginScreen] Email Login Response:', JSON.stringify(response, null, 2));
+
       if (response.success && response.data) {
-        const { tokens, user } = response.data;
-        setTokens(tokens.accessToken, tokens.refreshToken);
+        const resData = response.data;
         
-        // Populate user store with basic info
+        const accessToken = resData.tokens?.accessToken || resData.accessToken;
+        const refreshToken = resData.tokens?.refreshToken || resData.refreshToken;
+
+        if (!accessToken) {
+          console.error('[LoginScreen] Missing tokens in email login response:', resData);
+          setLoginError("서버 응답 형식이 올바르지 않습니다. (토큰 누락)");
+          return;
+        }
+
+        setTokens(accessToken, refreshToken || "");
+        
+        const user = resData.user || {
+          userId: 'user',
+          email: data.email,
+          nickname: '사용자',
+        };
+
         setProfile({
           userId: user.userId,
           email: user.email,
