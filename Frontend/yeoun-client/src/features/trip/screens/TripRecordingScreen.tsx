@@ -1,4 +1,4 @@
-﻿import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Mapbox from '@rnmapbox/maps';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';

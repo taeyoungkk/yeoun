@@ -1,43 +1,51 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView } from 'react-native';
-import { router } from 'expo-router';
+import React, { useState, useCallback } from 'react';
+import { View, Text, FlatList, Pressable, SafeAreaView } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { TripCard, TripData } from '@/src/components/profile/TripCard';
 import { useFavoriteStore } from '@/src/store';
-
-// Using the same mock data as MyPage for now.
-const MOCK_PAST_TRIPS: TripData[] = [
-  {
-    id: '3',
-    title: '부산 여행',
-    location: '부산, 대한민국',
-    dates: '2023.08.12 ~ 08.15',
-    imageSource: require('@/assets/images/trip_placeholder_3.png'),
-  },
-  {
-    id: '4',
-    title: '강릉 여행',
-    location: '강릉, 대한민국',
-    dates: '2022.07.01 ~ 07.03',
-    imageSource: require('@/assets/images/trip_placeholder_1.png'),
-  },
-];
+import { getTripsApi, TripListItem } from '@/src/api/trip';
 
 export default function PastTripsScreen() {
   const { favoriteIds, toggleFavorite } = useFavoriteStore();
+  const [trips, setTrips] = useState<TripData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
-  const pastTripsWithFav = MOCK_PAST_TRIPS.map(trip => ({
-    ...trip,
-    isFavorite: favoriteIds.includes(trip.id)
-  }));
+  const fetchTrips = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await getTripsApi();
+      if (response.success) {
+        const pastTrips = response.data.items
+          .filter(item => item.status === 'ENDED')
+          .map(item => ({
+            id: item.tripId,
+            title: item.title,
+            location: (item.region && item.country) ? `${item.region}, ${item.country}` : (item.region || item.country || '대한민국'),
+            dates: `${item.startDate.replace(/-/g, '.')} ~ ${item.endDate.split('-').pop()}`,
+            imageSource: require('@/assets/images/trip_placeholder_1.png'), // Placeholder
+            isFavorite: favoriteIds.includes(item.tripId)
+          }));
+        setTrips(pastTrips);
+      }
+    } catch (error) {
+      console.error('Failed to fetch past trips:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [favoriteIds]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchTrips();
+    }, [fetchTrips])
+  );
 
   const renderItem = ({ item }: { item: TripData }) => (
-    <View style={styles.cardWrapper}>
+    <View className="w-[48%]">
         <TripCard 
             data={item} 
             onPress={() => {
-                // Determine if we should go to report or photo album
-                // For now, let's default to report
                 router.push({
                     pathname: '/trip/report',
                     params: { id: item.id }
@@ -49,62 +57,31 @@ export default function PastTripsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+    <SafeAreaView className="flex-1 bg-[#F3F6EB]">
+      <View className="flex-row items-center justify-between px-4 py-3 bg-[#F3F6EB]">
+        <Pressable onPress={() => router.back()} className="p-1">
           <Ionicons name="chevron-back" size={28} color="#1A1A1A" />
         </Pressable>
-        <Text style={styles.headerTitle}>다녀온 여행</Text>
-        <View style={styles.placeholder} />
+        <Text className="text-lg font-bold text-[#1A1A1A]">다녀온 여행</Text>
+        <View className="w-9" />
       </View>
 
       <FlatList
-        data={pastTripsWithFav}
+        data={trips}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        contentContainerStyle={styles.listContent}
-        columnWrapperStyle={styles.columnWrapper}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
+        columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: 16 }}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          !isLoading ? (
+            <View className="flex-1 items-center justify-center pt-24">
+              <Text className="text-base text-[#8A8A8A] font-medium">다녀온 여행이 없습니다.</Text>
+            </View>
+          ) : null
+        }
       />
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F3F6EB',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#F3F6EB',
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1A1A1A',
-  },
-  placeholder: {
-    width: 36, // To balance the back button width
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 24,
-  },
-  columnWrapper: {
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  cardWrapper: {
-    width: '48%',
-  }
-});

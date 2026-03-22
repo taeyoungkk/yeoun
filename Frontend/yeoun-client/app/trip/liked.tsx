@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView } from 'react-native';
+import { View, Text, FlatList, Pressable, SafeAreaView } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { TripCard, TripData } from '@/src/components/profile/TripCard';
@@ -51,7 +51,7 @@ export default function LikedTripsScreen() {
     .map(trip => ({ ...trip, isFavorite: true }));
 
   const renderItem = ({ item }: { item: TripData }) => (
-    <View style={styles.cardWrapper}>
+    <View className="w-[48%]">
         <TripCard 
             data={item} 
             onPress={() => console.log('Trip pressed:', item.id)}
@@ -61,13 +61,13 @@ export default function LikedTripsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+    <SafeAreaView className="flex-1 bg-[#F3F6EB]">
+      <View className="flex-row items-center justify-between px-4 py-3 bg-[#F3F6EB]">
+        <Pressable onPress={() => router.back()} className="p-1">
           <Ionicons name="chevron-back" size={28} color="#1A1A1A" />
         </Pressable>
-        <Text style={styles.headerTitle}>좋아하는 여행</Text>
-        <View style={styles.placeholder} />
+        <Text className="text-lg font-bold text-[#1A1A1A]">좋아하는 여행</Text>
+        <View className="w-9" />
       </View>
 
       <FlatList
@@ -75,48 +75,10 @@ export default function LikedTripsScreen() {
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        contentContainerStyle={styles.listContent}
-        columnWrapperStyle={styles.columnWrapper}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
+        columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: 16 }}
         showsVerticalScrollIndicator={false}
       />
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F3F6EB',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#F3F6EB',
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1A1A1A',
-  },
-  placeholder: {
-    width: 36, // To balance the back button width
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 24,
-  },
-  columnWrapper: {
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  cardWrapper: {
-    width: '48%', // Approx half with spacing
-  }
-});
