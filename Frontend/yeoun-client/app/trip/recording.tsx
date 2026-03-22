@@ -1,5 +1,5 @@
-import TripRecordingScreen from '@/src/features/trip/screens/TripRecordingScreen';
+import MockTripRecordingScreen from '@/src/features/trip/screens/MockTripRecordingScreen';
 
 export default function TripRecordingRoute() {
-  return <TripRecordingScreen />;
+  return <MockTripRecordingScreen reportRoute="/trip/report" useMockData={false} />;
 }
