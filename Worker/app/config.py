@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     photo_gps_match_time_window_seconds: int = Field(default=1800, alias="PHOTO_GPS_MATCH_TIME_WINDOW_SECONDS")
     photo_gps_match_place_radius_m: float = Field(default=150.0, alias="PHOTO_GPS_MATCH_PLACE_RADIUS_M")
     photo_gps_match_log_radius_m: float = Field(default=120.0, alias="PHOTO_GPS_MATCH_LOG_RADIUS_M")
+    photo_manual_review_score_threshold: float = Field(
+        default=0.8,
+        alias="PHOTO_MANUAL_REVIEW_SCORE_THRESHOLD",
+    )
     aws_region: str = Field(default="ap-northeast-2", alias="AWS_REGION")
     aws_s3_bucket: str | None = Field(default=None, alias="AWS_S3_BUCKET")
     aws_access_key_id: str | None = Field(default=None, alias="AWS_ACCESS_KEY_ID")

@@ -8,14 +8,29 @@ from app.schemas.photo import PhotoTimelineCandidate
 
 
 class PhotoTimelineCandidateWriter:
-    def save_batch(self, candidates: list[PhotoTimelineCandidate], *, connection: Connection) -> int:
-        if not candidates:
-            return 0
-
-        persisted_count = 0
-        now = datetime.now(timezone.utc)
-
+    def replace_for_photo(
+        self,
+        photo_id: str,
+        candidates: list[PhotoTimelineCandidate],
+        *,
+        connection: Connection,
+    ) -> int:
         with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM photo_timeline_candidates
+                WHERE photo_id = %(photo_id)s
+                """,
+                {
+                    "photo_id": photo_id,
+                },
+            )
+
+            if not candidates:
+                return 0
+
+            persisted_count = 0
+            now = datetime.now(timezone.utc)
             for candidate in candidates:
                 cursor.execute(
                     """
