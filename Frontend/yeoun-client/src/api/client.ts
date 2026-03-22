@@ -13,11 +13,22 @@ const apiClient = axios.create({
   },
 });
 
+const PUBLIC_API_PATH_PREFIXES = [
+  '/auth/signup',
+  '/auth/login',
+  '/auth/oauth/google',
+  '/auth/refresh',
+  '/auth/email/code',
+  '/auth/email/verify',
+  '/auth/password/reset/request',
+  '/auth/password/reset/confirm',
+  '/users/check-email',
+  '/users/check-nickname',
+];
+
 const isPublicApiRequest = (url?: string) => {
   if (!url) return false;
-  // Define public endpoints that don't need Authorization header
-  const publicPaths = ['/auth/login', '/auth/signup', '/auth/refresh', '/auth/password/reset', '/auth/email'];
-  return publicPaths.some(path => url.includes(path));
+  return PUBLIC_API_PATH_PREFIXES.some((prefix) => url.startsWith(prefix));
 };
 
 // Request interceptor to add the access token to every request
