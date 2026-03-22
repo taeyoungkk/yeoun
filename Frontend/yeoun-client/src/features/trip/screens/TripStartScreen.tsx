@@ -29,12 +29,12 @@ import { TripStartHeader } from '../components/TripStartHeader';
 import { createTripApi, getTripDetailApi, startTripApi } from '@/src/api/trip';
 import { locationService } from '@/src/services/locationService';
 import { useTripStore } from '@/src/store/trip.store';
+import { useUserStore } from '@/src/store/user.store';
 
 type ScreenMode = 'form' | 'invite';
 type PickerMode = 'month' | 'year' | null;
 type NoticeModalType = 'missing' | 'start' | null;
 
-const DUMMY_NICKNAME = '\uC9C0\uC6B0\uB2D8';
 const DUMMY_INVITE_LINK = 'https://yeoun.app/invite/trip-demo-2026';
 const WEEK_LABELS = ['\uC77C', '\uC6D4', '\uD654', '\uC218', '\uBAA9', '\uAE08', '\uD1A0'];
 const MONTH_LABELS = [
@@ -207,6 +207,7 @@ function FieldNoticeModal({
 
 export default function TripStartScreen() {
   const router = useRouter();
+  const profileNickname = useUserStore((state) => state.profile?.nickname);
   const startTrip = useTripStore((state) => state.startTrip);
   const updateCurrentTrip = useTripStore((state) => state.updateCurrentTrip);
   const setActiveTrip = useTripStore((state) => state.setActiveTrip);
@@ -230,6 +231,7 @@ export default function TripStartScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [inviteMembers, setInviteMembers] = useState<InviteMember[]>(INITIAL_INVITE_MEMBERS);
   const [noticeModalType, setNoticeModalType] = useState<NoticeModalType>(null);
+  const headerNickname = profileNickname?.trim() || '\uC9C0\uC6B0';
 
   const calendarDays = useMemo(() => getCalendarDays(calendarMonth), [calendarMonth]);
   const hasTripName = tripName.trim().length > 0;
@@ -539,7 +541,7 @@ export default function TripStartScreen() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <TripStartHeader nickname={DUMMY_NICKNAME} isEditing={isEditingActiveTrip} />
+        <TripStartHeader nickname={headerNickname} isEditing={isEditingActiveTrip} />
 
         <View style={styles.formStack}>
           <TripStartInputField

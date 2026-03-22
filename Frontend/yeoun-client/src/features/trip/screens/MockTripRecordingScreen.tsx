@@ -203,18 +203,14 @@ function formatWon(value: number) {
 }
 
 function buildRealTripDays(timelineDays: TimelineDayDetail[]): TripDay[] {
-  return timelineDays.map((timelineDay, index) => {
-    const template = TRIP_DAY_TEMPLATES[Math.min(index, TRIP_DAY_TEMPLATES.length - 1)];
-
-    return {
-      id: `day${index + 1}` as DayKey,
-      label: `DAY ${index + 1}`,
-      dateLabel: formatDateLabel(timelineDay.dayDate),
-      distanceKm: Number((timelineDay.distanceM / 1000).toFixed(1)),
-      summary: timelineDay.summaryText || template.summary,
-      route: template.route,
-    };
-  });
+  return timelineDays.map((timelineDay, index) => ({
+    id: `day${index + 1}` as DayKey,
+    label: `DAY ${index + 1}`,
+    dateLabel: formatDateLabel(timelineDay.dayDate),
+    distanceKm: 0,
+    summary: timelineDay.summaryText || '',
+    route: [],
+  }));
 }
 
 function buildRealTripEvents(timelineDays: TimelineDayDetail[]): TimelineEvent[] {
@@ -237,7 +233,6 @@ function buildRealTripEvents(timelineDays: TimelineDayDetail[]): TimelineEvent[]
           title: event.title || event.placeName || 'Trip event',
           subtitle: event.placeName ?? '',
           placeName: event.placeName ?? undefined,
-          coordinate: template.route[Math.min(eventIndex, template.route.length - 1)],
           chips: [event.eventType, hasPhotos ? `photo ${event.photoCount}` : null].filter(Boolean) as string[],
           eventMemo: hasPhotos ? 'Photo detail sync is not connected yet.' : undefined,
           photoContributors: hasPhotos ? [{ id: event.createdBy, name: 'member', color: '#77B6EA' }] : undefined,
@@ -268,8 +263,6 @@ function appendRealExpenseEvents(
   expenses.forEach((expense, index) => {
     const expenseDate = expense.paidAt?.slice(0, 10);
     const dayIndex = expenseDate && dayIndexByDate.has(expenseDate) ? dayIndexByDate.get(expenseDate)! : 0;
-    const template = TRIP_DAY_TEMPLATES[Math.min(dayIndex, TRIP_DAY_TEMPLATES.length - 1)];
-
     events.push({
       id: `expense-${expense.expenseId}`,
       day: `day${dayIndex + 1}` as DayKey,
@@ -278,7 +271,6 @@ function appendRealExpenseEvents(
       title: expense.merchantName || 'Expense',
       subtitle: expense.category || 'Trip expense',
       amount: formatWon(expense.totalAmount),
-      coordinate: template.route[Math.min(index % template.route.length, template.route.length - 1)],
       chips: [expense.category, expense.sourceType].filter(Boolean),
       paymentStatus: expense.status === 'PENDING' ? 'candidate' : 'confirmed',
       paymentCardName: expense.sourceType || undefined,
@@ -353,6 +345,7 @@ export default function MockTripRecordingScreen({
   });
   const [isSyncing, setIsSyncing] = useState(false);
   const [liveRoute, setLiveRoute] = useState<Coordinate[]>([]);
+  const showMockRouteMetrics = useMockData;
 
   const tripDays = useMemo(() => {
     if (!useMockData && realTripDays) {
@@ -424,12 +417,14 @@ export default function MockTripRecordingScreen({
   );
   const summaryStats = useMemo(
     () => ({
-      totalDistanceLabel: `${filteredDays.reduce((sum, day) => sum + day.distanceKm, 0).toFixed(1)}km`,
-      visitedPlaceCount: filteredEvents.filter((event) => Boolean(event.coordinate)).length,
+      totalDistanceLabel: showMockRouteMetrics
+        ? `${filteredDays.reduce((sum, day) => sum + day.distanceKm, 0).toFixed(1)}km`
+        : '-',
+      visitedPlaceCount: showMockRouteMetrics ? filteredEvents.filter((event) => Boolean(event.coordinate)).length : '-',
       photoCount: filteredEvents.reduce((sum, event) => sum + (event.photoItems?.length ?? 0), 0),
       paymentCount: filteredEvents.filter((event) => event.type === 'payment' && event.paymentStatus !== 'candidate').length,
     }),
-    [filteredDays, filteredEvents]
+    [filteredDays, filteredEvents, showMockRouteMetrics]
   );
   const selectedPhotoEvent = useMemo(
     () => filteredEvents.find((event) => event.id === photoViewer?.eventId) ?? null,
@@ -1441,10 +1436,12 @@ export default function MockTripRecordingScreen({
                 <Text style={styles.daySummaryTitle}>{day.label} · {day.dateLabel}</Text>
                 <Text style={styles.daySummaryText}>{day.summary}</Text>
               </View>
-              <View style={styles.dayDistanceBadge}>
-                <MaterialIcons name="directions-walk" size={16} color="#5A6D61" />
-                <Text style={styles.dayDistanceText}>{day.distanceKm.toFixed(1)}km</Text>
-              </View>
+              {showMockRouteMetrics ? (
+                <View style={styles.dayDistanceBadge}>
+                  <MaterialIcons name="directions-walk" size={16} color="#5A6D61" />
+                  <Text style={styles.dayDistanceText}>{day.distanceKm.toFixed(1)}km</Text>
+                </View>
+              ) : null}
             </View>
           ))}
 
