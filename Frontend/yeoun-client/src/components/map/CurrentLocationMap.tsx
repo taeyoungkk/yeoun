@@ -6,6 +6,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Location from 'expo-location';
 import { FogOverlay } from './FogOverlay';
 import { PastRoutesLayer } from './PastRoutesLayer';
+import { matchMapTrace } from '@/src/api/mapbox';
 
 // TODO: 실제 서버에서 지난 여행 기록을 가져오도록 수정해야 합니다.
 const MOCK_PAST_ROUTES = [
@@ -32,31 +33,51 @@ export function CurrentLocationMap() {
   const [mapLoadFailed, setMapLoadFailed] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null);
   const [isFogEnabled, setIsFogEnabled] = useState(true);
+  const [isFollowing, setIsFollowing] = useState(true);
+  const [isCentred, setIsCentred] = useState(false);
+  const [matchedRoutes, setMatchedRoutes] = useState<[number, number][][]>(MOCK_PAST_ROUTES as [number, number][][]);
+
+  // 초기 로드 시 Mock 데이터를 맵 매칭 API로 보정합니다.
+  useEffect(() => {
+    const performMapMatching = async () => {
+      const results = await Promise.all(
+        MOCK_PAST_ROUTES.map(route => matchMapTrace(route as [number, number][], 'walking'))
+      );
+      // 매칭에 성공한 것들만 업데이트, 실패하면 Mock 그대로 유지
+      setMatchedRoutes(results.map((res, i) => res || MOCK_PAST_ROUTES[i] as [number, number][] ));
+    };
+    performMapMatching();
+  }, []);
 
   // 사용자의 실시간 현재 위치를 추적합니다.
   useEffect(() => {
     let locationSubscription: Location.LocationSubscription | null = null;
+    let initialLocationFound = false;
 
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
 
       try {
+        // 1. 초기 위치 확보 (가장 최근 또는 현재)
         let loc = await Location.getLastKnownPositionAsync({});
         if (!loc) {
-          loc = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
+          loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         }
-        if (loc) {
+        
+        if (loc && !initialLocationFound) {
+          initialLocationFound = true;
           setCurrentLocation([loc.coords.longitude, loc.coords.latitude]);
         }
 
-        // 에뮬레이터에서 위치를 변경하거나 사용자가 물리적으로 이동했을 때 카메라가 실시간으로 따라가도록 설정합니다.
+        // 2. 실시간 위치 추적 시작
         locationSubscription = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.Balanced, distanceInterval: 10 },
           (newLoc) => {
             setCurrentLocation([newLoc.coords.longitude, newLoc.coords.latitude]);
+            if (!initialLocationFound) {
+              initialLocationFound = true;
+            }
           }
         );
       } catch (e) {
@@ -82,13 +103,8 @@ export function CurrentLocationMap() {
   };
 
   const centerOnUser = () => {
-    if (currentLocation && cameraRef.current) {
-      cameraRef.current.setCamera({
-        centerCoordinate: currentLocation,
-        zoomLevel: 15,
-        animationDuration: 1000,
-      });
-    }
+    console.log('[CurrentLocationMap] centerOnUser triggered. CurrentLocation:', currentLocation);
+    setIsFollowing(true); // 따라가기 모드 다시 활성화 (Mapbox가 자동으로 부드럽게 중심을 맞춥니다)
   };
 
   return (
@@ -113,15 +129,24 @@ export function CurrentLocationMap() {
             zoomLevel: 15,
           }}
           followZoomLevel={15}
-          followUserLocation={!!currentLocation} // 위치가 있을 때만 활성화하여 초기 튐 방지
-          centerCoordinate={currentLocation || undefined}
-          animationMode={currentLocation ? 'flyTo' : 'none'}
-          animationDuration={currentLocation ? 1000 : 0}
+          followUserLocation={isFollowing && !!currentLocation} // 위치가 있으면 즉시 따라가기 시작
+          onUserTrackingModeChange={(event: any) => {
+            // 사용자가 지도를 직접 움직이면(팬/줌) 따라가기 자동 해제
+            const isFollowActive = event.nativeEvent?.followUserLocation ?? event.payload?.followUserLocation;
+            if (!isFollowActive) {
+              setIsFollowing(false);
+            } else if (!isCentred) {
+              // 최초 "따라가기"가 활성화되었을 때, 비행 애니메이션이 끝날 시간을 벌어줍니다.
+              setTimeout(() => setIsCentred(true), 1500);
+            }
+          }}
+          animationMode={!isCentred ? 'flyTo' : 'none'}
+          animationDuration={!isCentred ? 1500 : 0}
         />
         
         {/* 과거 이동 경로 표시 및 안개 걷어내기 효과 */}
         <PastRoutesLayer 
-          routes={MOCK_PAST_ROUTES} 
+          routes={matchedRoutes} 
           isFogEnabled={false} // 안개 영역은 아래 FogOverlay에서 합쳐서 한 번에 그립니다.
         />
 
@@ -141,7 +166,7 @@ export function CurrentLocationMap() {
                   },
                   {
                     type: 'MultiLineString',
-                    coordinates: MOCK_PAST_ROUTES
+                    coordinates: matchedRoutes
                   }
                 ]
               }
