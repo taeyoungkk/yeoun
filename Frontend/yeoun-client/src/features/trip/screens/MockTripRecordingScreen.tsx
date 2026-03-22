@@ -213,16 +213,58 @@ function buildRealTripDays(timelineDays: TimelineDayDetail[]): TripDay[] {
   }));
 }
 
+function buildEmptyRealTripDays(startDate?: string, endDate?: string): TripDay[] {
+  const start = startDate ? new Date(startDate) : null;
+  const end = endDate ? new Date(endDate) : null;
+
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return [
+      {
+        id: 'day1',
+        label: 'DAY 1',
+        dateLabel: '--.--',
+        distanceKm: 0,
+        summary: '',
+        route: [],
+      },
+    ];
+  }
+
+  const normalizedStart = new Date(start);
+  const normalizedEnd = new Date(end);
+  normalizedStart.setHours(0, 0, 0, 0);
+  normalizedEnd.setHours(0, 0, 0, 0);
+
+  const diffDays =
+    Math.max(
+      1,
+      Math.floor((normalizedEnd.getTime() - normalizedStart.getTime()) / (24 * 60 * 60 * 1000)) + 1,
+    );
+
+  return Array.from({ length: diffDays }, (_, index) => {
+    const targetDate = new Date(normalizedStart);
+    targetDate.setDate(normalizedStart.getDate() + index);
+
+    return {
+      id: `day${index + 1}` as DayKey,
+      label: `DAY ${index + 1}`,
+      dateLabel: formatDayTabLabel(targetDate),
+      distanceKm: 0,
+      summary: '',
+      route: [],
+    };
+  });
+}
+
 function buildRealTripEvents(timelineDays: TimelineDayDetail[]): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
   timelineDays.forEach((timelineDay, dayIndex) => {
     const dayKey = `day${dayIndex + 1}` as DayKey;
-    const template = TRIP_DAY_TEMPLATES[Math.min(dayIndex, TRIP_DAY_TEMPLATES.length - 1)];
 
     timelineDay.events
       .filter((event) => !event.hidden)
-      .forEach((event, eventIndex) => {
+      .forEach((event) => {
         const hasPhotos = event.photoCount > 0 || Boolean(event.representativePhoto?.imageUrl);
 
         events.push({
@@ -348,8 +390,8 @@ export default function MockTripRecordingScreen({
   const showMockRouteMetrics = useMockData;
 
   const tripDays = useMemo(() => {
-    if (!useMockData && realTripDays) {
-      return realTripDays;
+    if (!useMockData) {
+      return realTripDays ?? buildEmptyRealTripDays(currentTrip?.startDate, currentTrip?.endDate);
     }
 
     return buildTripDays(currentTrip?.startDate, currentTrip?.endDate);
@@ -384,6 +426,10 @@ export default function MockTripRecordingScreen({
     const historical = filteredDays.flatMap((day) => day.route);
     return [...historical, ...liveRoute];
   }, [filteredDays, liveRoute]);
+  const currentLocationCoordinate = useMemo(
+    () => (liveRoute.length > 0 ? liveRoute[liveRoute.length - 1] : null),
+    [liveRoute]
+  );
   const routeShape = useMemo(
     () => ({
       type: 'Feature' as const,
@@ -1285,7 +1331,12 @@ export default function MockTripRecordingScreen({
           onMapIdle={handleMapReady}
           onDidFailLoadingMap={handleMapLoadFailure}
         >
-          <Mapbox.Camera ref={cameraRef} zoomLevel={13.4} centerCoordinate={routeCoordinates[0] ?? [126.9784, 37.5667]} />
+          <Mapbox.Camera
+            ref={cameraRef}
+            zoomLevel={13.4}
+            centerCoordinate={currentLocationCoordinate ?? routeCoordinates[0] ?? [126.9784, 37.5667]}
+          />
+          <Mapbox.UserLocation visible={true} showsUserHeadingIndicator={true} />
           <Mapbox.ShapeSource id="trip-route" shape={routeShape}>
             <Mapbox.LineLayer
               id="trip-route-line"
