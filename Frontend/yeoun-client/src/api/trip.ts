@@ -64,6 +64,8 @@ export interface TripListItem {
   endDate: string;
   status: string;
   memberCount: number;
+  region?: string;
+  country?: string;
 }
 
 export interface TripListData {
@@ -338,6 +340,8 @@ export const getTripsApi = async (): Promise<TripListResponse> => {
               endDate: '2024-02-06',
               status: 'ENDED',
               memberCount: 2,
+              region: '제주',
+              country: '대한민국',
             },
             {
               tripId: 'mock-2',
@@ -346,6 +350,8 @@ export const getTripsApi = async (): Promise<TripListResponse> => {
               endDate: '2023-12-18',
               status: 'ENDED',
               memberCount: 4,
+              region: '서울',
+              country: '대한민국',
             },
           ],
         },
