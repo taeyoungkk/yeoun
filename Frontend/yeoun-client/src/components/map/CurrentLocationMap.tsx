@@ -108,11 +108,14 @@ export function CurrentLocationMap() {
       >
         <Mapbox.Camera
           ref={cameraRef}
-          zoomLevel={15}
+          defaultSettings={{
+            centerCoordinate: [126.9784, 37.5667], // 서울 기본 좌표 (Europe/Africa 방지)
+            zoomLevel: 15,
+          }}
           followZoomLevel={15}
-          followUserLocation={true}
+          followUserLocation={!!currentLocation} // 위치가 있을 때만 활성화하여 초기 튐 방지
           centerCoordinate={currentLocation || undefined}
-          animationMode="flyTo"
+          animationMode={currentLocation ? 'flyTo' : 'none'}
           animationDuration={currentLocation ? 1000 : 0}
         />
         

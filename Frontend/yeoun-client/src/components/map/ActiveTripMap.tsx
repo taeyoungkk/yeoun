@@ -97,11 +97,14 @@ export function ActiveTripMap() {
       >
         <Mapbox.Camera
           ref={cameraRef}
-          zoomLevel={15}
+          defaultSettings={{
+            centerCoordinate: [126.9784, 37.5667], // 서울 기본 좌표 (Europe/Africa 방지)
+            zoomLevel: 15,
+          }}
           followZoomLevel={15}
-          followUserLocation={true}
+          followUserLocation={routeCoordinates.length > 0} // 위치 데이터가 있을 때만 follow
           centerCoordinate={routeCoordinates.length > 0 ? routeCoordinates[routeCoordinates.length - 1] : undefined}
-          animationMode="flyTo"
+          animationMode={routeCoordinates.length > 0 ? 'flyTo' : 'none'}
           animationDuration={routeCoordinates.length > 0 ? 1000 : 0}
         />
         
