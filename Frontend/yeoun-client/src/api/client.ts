@@ -13,11 +13,21 @@ const apiClient = axios.create({
   },
 });
 
+const isPublicApiRequest = (url?: string) => {
+  if (!url) return false;
+  // Define public endpoints that don't need Authorization header
+  const publicPaths = ['/auth/login', '/auth/signup', '/auth/refresh', '/auth/password/reset', '/auth/email'];
+  return publicPaths.some(path => url.includes(path));
+};
+
 // Request interceptor to add the access token to every request
 apiClient.interceptors.request.use(
   (config) => {
-    // Skip Authorization header for refresh endpoint
-    if (config.url === '/auth/refresh') {
+    // Skip Authorization header for public endpoints or refresh endpoint
+    if (isPublicApiRequest(config.url)) {
+      if (config.headers?.Authorization) {
+        delete config.headers.Authorization;
+      }
       return config;
     }
 
@@ -39,16 +49,17 @@ apiClient.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config;
+    const requestUrl = originalRequest?.url;
 
-    // If error is 401/403 and not already retrying
+    // If error is 401/403 and NOT already retrying and NOT a public request
     if (
       (error.response?.status === 401 || error.response?.status === 403) && 
-      !originalRequest._retry &&
-      originalRequest.url !== '/auth/refresh' // Don't retry refresh calls
+      !originalRequest?._retry &&
+      !isPublicApiRequest(requestUrl)
     ) {
       originalRequest._retry = true;
 
-      console.log(`[API Interceptor] Error ${error.response.status} on ${originalRequest.url}. Attempting token refresh...`);
+      console.log(`[API Interceptor] Error ${error.response.status} on ${requestUrl}. Attempting token refresh...`);
 
       try {
         const { refreshToken, setTokens, clearTokens } = useAuthStore.getState();
