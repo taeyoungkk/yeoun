@@ -10,6 +10,72 @@ class PhotoCoordinates(BaseModel):
     longitude: float = Field(ge=-180, le=180)
 
 
+class PhotoGpsMatch(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    match_type: str = Field(alias="matchType")
+    matched_place_id: str | None = Field(alias="matchedPlaceId", default=None)
+    matched_client_log_uuid: str | None = Field(alias="matchedClientLogUuid", default=None)
+    matched_recorded_at: datetime | None = Field(alias="matchedRecordedAt", default=None)
+    matched_coordinates: PhotoCoordinates | None = Field(alias="matchedCoordinates", default=None)
+    time_diff_seconds: int | None = Field(alias="timeDiffSeconds", default=None, ge=0)
+    distance_m: float | None = Field(alias="distanceM", default=None, ge=0)
+    score: float = Field(ge=0, le=1)
+
+
+class PhotoPlaceLink(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    place_id: str = Field(alias="placeId")
+    linked_by: str = Field(alias="linkedBy")
+    match_type: str = Field(alias="matchType")
+    score: float = Field(ge=0, le=1)
+    linked_at: datetime = Field(alias="linkedAt")
+
+
+class PhotoRepresentativeSelection(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    scope: str
+    scope_id: str = Field(alias="scopeId")
+    is_representative: bool = Field(alias="isRepresentative")
+    rank: int = Field(ge=1)
+    selected_at: datetime = Field(alias="selectedAt")
+    selection_reason: str = Field(alias="selectionReason")
+
+
+class PhotoTimelineCandidate(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    candidate_id: str = Field(alias="candidateId")
+    trip_id: str = Field(alias="tripId")
+    photo_id: str = Field(alias="photoId")
+    place_id: str | None = Field(alias="placeId", default=None)
+    candidate_type: str = Field(alias="candidateType")
+    day_date: str = Field(alias="dayDate")
+    title: str
+    start_at: datetime = Field(alias="startAt")
+    end_at: datetime = Field(alias="endAt")
+    is_representative: bool = Field(alias="isRepresentative")
+    sort_order: int = Field(alias="sortOrder", ge=1)
+    metadata: dict = Field(default_factory=dict)
+
+
+class PhotoManualReviewCandidate(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    candidate_id: str = Field(alias="candidateId")
+    trip_id: str = Field(alias="tripId")
+    photo_id: str = Field(alias="photoId")
+    review_status: str = Field(alias="reviewStatus")
+    review_reason: str = Field(alias="reviewReason")
+    confidence_score: float | None = Field(alias="confidenceScore", default=None, ge=0, le=1)
+    suggested_place_id: str | None = Field(alias="suggestedPlaceId", default=None)
+    suggested_client_log_uuid: str | None = Field(alias="suggestedClientLogUuid", default=None)
+    suggested_recorded_at: datetime | None = Field(alias="suggestedRecordedAt", default=None)
+    metadata: dict = Field(default_factory=dict)
+
+
 class PhotoProcessingRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
@@ -48,6 +114,14 @@ class PhotoProcessingResultMessage(BaseModel):
     normalized_taken_at: datetime | None = Field(alias="normalizedTakenAt", default=None)
     coordinates: PhotoCoordinates | None = Field(default=None)
     normalized_coordinates: PhotoCoordinates | None = Field(alias="normalizedCoordinates", default=None)
+    gps_match: PhotoGpsMatch | None = Field(alias="gpsMatch", default=None)
+    place_link: PhotoPlaceLink | None = Field(alias="placeLink", default=None)
+    representative_selection: PhotoRepresentativeSelection | None = Field(alias="representativeSelection", default=None)
+    timeline_candidates: list[PhotoTimelineCandidate] = Field(alias="timelineCandidates", default_factory=list)
+    manual_review_candidates: list[PhotoManualReviewCandidate] = Field(
+        alias="manualReviewCandidates",
+        default_factory=list,
+    )
     width: int | None = Field(default=None, ge=1)
     height: int | None = Field(default=None, ge=1)
     metadata: dict = Field(default_factory=dict)

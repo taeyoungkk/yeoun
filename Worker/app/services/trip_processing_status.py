@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import psycopg
+from psycopg import Connection
 
 from app.config import Settings
 
@@ -11,7 +12,13 @@ class TripProcessingStatusWriter:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    def mark_processing(self, trip_id: str, *, requested_at: datetime | None = None) -> None:
+    def mark_processing(
+        self,
+        trip_id: str,
+        *,
+        requested_at: datetime | None = None,
+        connection: Connection | None = None,
+    ) -> None:
         now = self._utcnow()
         self._upsert_status(
             trip_id=trip_id,
@@ -21,9 +28,16 @@ class TripProcessingStatusWriter:
             last_error_message=None,
             created_at=now,
             updated_at=now,
+            connection=connection,
         )
 
-    def mark_ready(self, trip_id: str, *, requested_at: datetime | None = None) -> None:
+    def mark_ready(
+        self,
+        trip_id: str,
+        *,
+        requested_at: datetime | None = None,
+        connection: Connection | None = None,
+    ) -> None:
         now = self._utcnow()
         self._upsert_status(
             trip_id=trip_id,
@@ -33,9 +47,17 @@ class TripProcessingStatusWriter:
             last_error_message=None,
             created_at=now,
             updated_at=now,
+            connection=connection,
         )
 
-    def mark_failed(self, trip_id: str, error_message: str, *, requested_at: datetime | None = None) -> None:
+    def mark_failed(
+        self,
+        trip_id: str,
+        error_message: str,
+        *,
+        requested_at: datetime | None = None,
+        connection: Connection | None = None,
+    ) -> None:
         now = self._utcnow()
         self._upsert_status(
             trip_id=trip_id,
@@ -45,6 +67,7 @@ class TripProcessingStatusWriter:
             last_error_message=error_message[:500],
             created_at=now,
             updated_at=now,
+            connection=connection,
         )
 
     def _upsert_status(
@@ -57,11 +80,16 @@ class TripProcessingStatusWriter:
         last_error_message: str | None,
         created_at: datetime,
         updated_at: datetime,
+        connection: Connection | None,
     ) -> None:
         if not self.settings.worker_database_url:
             raise RuntimeError("WORKER_DATABASE_URL is required for trip processing status updates.")
 
-        with psycopg.connect(self.settings.worker_database_url) as connection:
+        owns_connection = connection is None
+        if owns_connection:
+            connection = psycopg.connect(self.settings.worker_database_url)
+
+        try:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
@@ -100,7 +128,15 @@ class TripProcessingStatusWriter:
                         "updated_at": updated_at,
                     },
                 )
-            connection.commit()
+            if owns_connection:
+                connection.commit()
+        except Exception:
+            if owns_connection:
+                connection.rollback()
+            raise
+        finally:
+            if owns_connection:
+                connection.close()
 
     def _utcnow(self) -> datetime:
         return datetime.now(timezone.utc)

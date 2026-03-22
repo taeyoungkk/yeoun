@@ -1,5 +1,7 @@
 import logging
 
+from psycopg import Connection
+
 from app.config import Settings
 from app.schemas.location import LocationCleanLog, LocationLogBatchStoredEvent, LocationPreprocessSummary
 from app.services.location_place_builder import LocationPlaceBuilder
@@ -32,6 +34,8 @@ class LocationFollowupPipeline:
         payload: LocationLogBatchStoredEvent,
         clean_logs: list[LocationCleanLog],
         summary: LocationPreprocessSummary,
+        *,
+        connection: Connection | None = None,
     ) -> LocationPreprocessSummary:
         stay_segments = self.stay_detector.detect(payload.trip_id, payload.user_id, clean_logs)
         move_segments = self.route_builder.build_move_segments(
@@ -50,8 +54,8 @@ class LocationFollowupPipeline:
             payload.user_id,
             stay_segments,
         )
-        route_persisted_count = self.route_writer.save_batch(route_days)
-        place_persisted_count = self.place_writer.save_batch(places)
+        route_persisted_count = self.route_writer.save_batch(route_days, connection=connection)
+        place_persisted_count = self.place_writer.save_batch(places, connection=connection)
         timeline_candidates = self.timeline_linker.build_candidates(
             payload.trip_id,
             payload.user_id,

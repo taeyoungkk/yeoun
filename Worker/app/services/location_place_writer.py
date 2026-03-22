@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import psycopg
+from psycopg import Connection
 
 from app.config import Settings
 from app.schemas.location import LocationPlaceCandidate
@@ -11,7 +12,12 @@ class LocationPlaceWriter:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    def save_batch(self, places: list[LocationPlaceCandidate]) -> int:
+    def save_batch(
+        self,
+        places: list[LocationPlaceCandidate],
+        *,
+        connection: Connection | None = None,
+    ) -> int:
         if not self.settings.worker_database_url:
             raise RuntimeError("WORKER_DATABASE_URL is required for place persistence.")
 
@@ -21,7 +27,11 @@ class LocationPlaceWriter:
         persisted_count = 0
         now = datetime.now(timezone.utc)
 
-        with psycopg.connect(self.settings.worker_database_url) as connection:
+        owns_connection = connection is None
+        if owns_connection:
+            connection = psycopg.connect(self.settings.worker_database_url)
+
+        try:
             with connection.cursor() as cursor:
                 for place in places:
                     cursor.execute(
@@ -83,6 +93,14 @@ class LocationPlaceWriter:
                         },
                     )
                     persisted_count += 1
-            connection.commit()
+            if owns_connection:
+                connection.commit()
+        except Exception:
+            if owns_connection:
+                connection.rollback()
+            raise
+        finally:
+            if owns_connection:
+                connection.close()
 
         return persisted_count
