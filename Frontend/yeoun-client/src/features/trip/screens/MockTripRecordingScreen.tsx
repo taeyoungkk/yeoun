@@ -22,7 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { configureMapbox } from '@/src/lib/mapbox';
 import { getTripExpensesApi } from '@/src/api/expense';
 import { getTimelineDayDetailApi, getTripTimelineDaysApi, type TimelineDayDetail } from '@/src/api/timeline';
-import { startTripApi, endTripApi } from '@/src/api/trip';
+import { startTripApi, endTripApi, leaveTripApi } from '@/src/api/trip';
 import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 import {
   CURRENT_USER_ID,
@@ -39,6 +39,7 @@ import {
 } from '@/src/features/trip/store/tripMockStore';
 import { locationService } from '../../../services/locationService';
 import { useTripStore } from '@/src/store/trip.store';
+import { useUserStore } from '@/src/store/user.store';
 import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
 
 const hasMapboxToken = configureMapbox();
@@ -351,9 +352,12 @@ export default function MockTripRecordingScreen({
   const [realTripDays, setRealTripDays] = useState<TripDay[] | null>(null);
   const params = useLocalSearchParams();
   const endTrip = useTripStore((state) => state.endTrip);
+  const clearTrip = useTripStore((state) => state.clearTrip);
   const isTripActive = useTripStore((state) => state.isTripActive);
   const currentTrip = useTripStore((state) => state.currentTrip);
   const currentTripId = useTripStore((state) => state.currentTripId);
+  const activeTrip = useTripStore((state) => state.activeTrip);
+  const currentUserId = useUserStore((state) => state.profile?.userId);
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -678,6 +682,42 @@ export default function MockTripRecordingScreen({
         },
       ]
     );
+  };
+
+  const handleLeaveTrip = async () => {
+    if (!activeTripId) {
+      Alert.alert('No active trip', 'Could not find the trip to leave.');
+      return;
+    }
+
+    if (activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId) {
+      Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
+      return;
+    }
+
+    Alert.alert('여행 떠나기', '정말 이 여행에서 떠나시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '떠나기',
+        style: 'destructive',
+        onPress: async () => {
+          const response = await leaveTripApi(activeTripId);
+
+          if (!response.success) {
+            if (response.code === 'CONFLICT') {
+              Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
+              return;
+            }
+
+            Alert.alert('여행 떠나기 실패', response.message || '여행에서 나가지 못했습니다.');
+            return;
+          }
+
+          clearTrip();
+          router.replace('/(tabs)');
+        },
+      },
+    ]);
   };
 
   const handleMapReady = () => {
@@ -1023,6 +1063,10 @@ export default function MockTripRecordingScreen({
             <TouchableOpacity style={[styles.menuItem, isReviewMode && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85}>
+              <MaterialIcons name="logout" size={18} color="#244934" />
+              <Text style={styles.menuItemText}>여행 떠나기</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); router.push('/trip/start'); }} activeOpacity={0.85}>
               <MaterialIcons name="edit" size={18} color="#244934" />

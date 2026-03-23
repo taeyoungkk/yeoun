@@ -23,6 +23,14 @@ export interface TripStartData {
 
 export type TripStartResponse = CommonApiResponse<TripStartData>;
 
+export interface TripLeaveData {
+  tripId: string;
+  left: boolean;
+  leftAt: string;
+}
+
+export type TripLeaveResponse = CommonApiResponse<TripLeaveData>;
+
 export interface LocationLog {
   latitude: number;
   longitude: number;
@@ -99,6 +107,24 @@ export interface TripCreateData {
 }
 
 export type TripCreateResponse = CommonApiResponse<TripCreateData>;
+
+export interface UpdateTripRequest {
+  title: string;
+  startDate: string;
+  endDate: string;
+  visibility?: 'PRIVATE' | 'PARTIAL_PUBLIC' | 'PUBLIC';
+}
+
+export interface UpdateTripData {
+  tripId: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  visibility?: string;
+  updatedAt?: string;
+}
+
+export type UpdateTripResponse = CommonApiResponse<UpdateTripData>;
 
 export interface TripMemberItem {
   tripInviteId?: string;
@@ -248,6 +274,49 @@ export const createTripApi = async (data: CreateTripRequest): Promise<TripCreate
   }
 };
 
+export const updateTripApi = async (
+  tripId: string,
+  data: UpdateTripRequest,
+): Promise<UpdateTripResponse> => {
+  const payload = {
+    title: data.title,
+    startDate: formatApiDate(data.startDate),
+    endDate: formatApiDate(data.endDate),
+    visibility: data.visibility ?? 'PRIVATE',
+  };
+
+  try {
+    const response = await apiClient.patch<UpdateTripResponse>(`/trips/${tripId}`, payload);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Trip updated (MOCK)',
+        data: {
+          tripId,
+          title: payload.title,
+          startDate: payload.startDate,
+          endDate: payload.endDate,
+          visibility: payload.visibility,
+          updatedAt: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Update Trip API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to update trip.'),
+      data: {} as UpdateTripData,
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
 export const startTripApi = async (tripId: string): Promise<TripStartResponse> => {
   try {
     const response = await apiClient.post<TripStartResponse>(`/trips/${tripId}/start`);
@@ -313,6 +382,37 @@ export const endTripApi = async (tripId: string): Promise<TripStartResponse> => 
       code: getErrorCode(error),
       message: getErrorMessage(error, 'Failed to end trip.'),
       data: {} as TripStartData,
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const leaveTripApi = async (tripId: string): Promise<TripLeaveResponse> => {
+  try {
+    const response = await apiClient.post<TripLeaveResponse>(`/trips/${tripId}/leave`);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Trip left (MOCK)',
+        data: {
+          tripId,
+          left: true,
+          leftAt: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Leave Trip API Error:', error);
+    const normalizedCode = error?.response?.status === 409 ? 'CONFLICT' : getErrorCode(error);
+    return {
+      success: false,
+      code: normalizedCode,
+      message: getErrorMessage(error, 'Failed to leave trip.'),
+      data: {} as TripLeaveData,
       timestamp: new Date().toISOString(),
     };
   }

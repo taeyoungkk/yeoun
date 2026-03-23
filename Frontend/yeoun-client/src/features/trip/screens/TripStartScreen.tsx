@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { createTripApi, getTripDetailApi, startTripApi } from '@/src/api/trip';
+import { createTripApi, getTripDetailApi, startTripApi, updateTripApi } from '@/src/api/trip';
 import { useTripStore } from '@/src/store/trip.store';
 import { useUserStore } from '@/src/store/user.store';
 import { locationService } from '../../../services/locationService';
@@ -276,7 +276,40 @@ export default function TripStartScreen() {
     setNoticeModalType(null);
 
     if (isEditingActiveTrip) {
-      updateCurrentTrip(tripDraft);
+      if (!currentTrip?.tripId || !startDate || !endDate) {
+        Alert.alert('?수정 ?실패', '?수정할 여행 정보를 확인하지 못했습니다.');
+        return;
+      }
+
+      const updateResponse = await updateTripApi(currentTrip.tripId, {
+        title: tripName || '?ы뻾',
+        startDate: formatApiDate(startDate),
+        endDate: formatApiDate(endDate),
+      });
+
+      if (!updateResponse.success) {
+        Alert.alert('?수정 ?실패', updateResponse.message || '?여행 정보를 수정하지 못했습니다.');
+        return;
+      }
+
+      updateCurrentTrip({
+        ...tripDraft,
+        tripId: currentTrip.tripId,
+      });
+
+      try {
+        const detailRes = await getTripDetailApi(currentTrip.tripId);
+        if (detailRes.success) {
+          setActiveTrip(detailRes.data);
+        }
+      } catch (error) {
+        console.error('[TripStart] Failed to refresh trip detail after update.', {
+          tripId: currentTrip.tripId,
+          error,
+        });
+      }
+
+      Alert.alert('?수정 ?완료', '?여행 정보가 수정되었습니다.');
       router.replace('/trip/recording');
       return;
     }
