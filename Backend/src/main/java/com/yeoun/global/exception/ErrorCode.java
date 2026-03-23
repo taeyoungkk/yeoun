@@ -57,6 +57,8 @@ public enum ErrorCode {
     EXPENSE_CREATOR_NOT_IN_TRIP(HttpStatus.FORBIDDEN, "Expense creator must be a current trip participant."),
     EXPENSE_PAYER_NOT_IN_TRIP(HttpStatus.BAD_REQUEST, "Expense payer must be a current trip participant."),
     EXPENSE_PARTICIPANT_NOT_IN_TRIP(HttpStatus.BAD_REQUEST, "Expense participants must be current trip participants."),
+    SETTLEMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "Settlement not found."),
+    SETTLEMENT_FINALIZE_NOT_ALLOWED(HttpStatus.CONFLICT, "Settlement can be finalized only in DRAFT status."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid email or password."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found."),
     USER_INACTIVE(HttpStatus.FORBIDDEN, "Inactive user cannot log in."),

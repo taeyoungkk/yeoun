@@ -13,6 +13,8 @@ public interface ExpenseSplitRepository extends JpaRepository<ExpenseSplit, UUID
 
     List<ExpenseSplit> findByExpenseIdOrderByCreatedAtAsc(UUID expenseId);
 
+    List<ExpenseSplit> findByExpenseIdIn(List<UUID> expenseIds);
+
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM ExpenseSplit es WHERE es.expenseId = :expenseId")
     void deleteByExpenseId(@Param("expenseId") UUID expenseId);
