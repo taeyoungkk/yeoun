@@ -175,16 +175,31 @@ export interface CreateTripInviteLinkData {
 
 export type CreateTripInviteLinkResponse = CommonApiResponse<CreateTripInviteLinkData>;
 
-export interface TripRoutePoint {
-  lat: number;
-  lng: number;
-  recordedAt: string;
+export interface TripLocationLogStatusData {
+  tripId: string;
+  status: string;
+  lastRequestedAt?: string | null;
+  lastProcessedAt?: string | null;
+  lastErrorMessage?: string | null;
+}
+
+export type TripLocationLogStatusResponse = CommonApiResponse<TripLocationLogStatusData>;
+
+export interface TripRouteDay {
+  routeDayId: string;
+  tripId: string;
+  userId: string;
+  day: string;
+  pointCount: number;
+  distanceM: number;
+  coordinates: number[][];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface TripRouteData {
-  date: string;
-  distanceM: number;
-  points: TripRoutePoint[];
+  dayDate: string;
+  routeDays: TripRouteDay[];
 }
 
 export type TripRouteResponse = CommonApiResponse<TripRouteData>;
@@ -555,9 +570,8 @@ export const getTripRouteByDayApi = async (tripId: string, dayDate: string): Pro
         code: 'SUCCESS',
         message: 'Trip route fetched (MOCK)',
         data: {
-          date: dayDate,
-          distanceM: 0,
-          points: [],
+          dayDate,
+          routeDays: [],
         },
         timestamp: new Date().toISOString(),
       };
@@ -569,9 +583,46 @@ export const getTripRouteByDayApi = async (tripId: string, dayDate: string): Pro
       code: getErrorCode(error),
       message: getErrorMessage(error, 'Failed to fetch trip route.'),
       data: {
-        date: dayDate,
-        distanceM: 0,
-        points: [],
+        dayDate,
+        routeDays: [],
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const getTripLocationLogStatusApi = async (tripId: string): Promise<TripLocationLogStatusResponse> => {
+  try {
+    const response = await apiClient.get<TripLocationLogStatusResponse>(`/trips/${tripId}/location-log-status`);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Location log status fetched (MOCK)',
+        data: {
+          tripId,
+          status: 'SUCCESS',
+          lastRequestedAt: new Date().toISOString(),
+          lastProcessedAt: new Date().toISOString(),
+          lastErrorMessage: null,
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Get Location Log Status API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch location log status.'),
+      data: {
+        tripId,
+        status: 'UNKNOWN',
+        lastRequestedAt: null,
+        lastProcessedAt: null,
+        lastErrorMessage: null,
       },
       timestamp: new Date().toISOString(),
     };

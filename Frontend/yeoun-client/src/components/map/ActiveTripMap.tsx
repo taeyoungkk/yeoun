@@ -117,7 +117,11 @@ export function ActiveTripMap() {
       }
 
       if (response.success) {
-        const nextCoordinates = response.data.points.map((point) => [point.lng, point.lat] as [number, number]);
+        const nextCoordinates = response.data.routeDays.flatMap((routeDay) =>
+          routeDay.coordinates
+            .filter((coordinate): coordinate is [number, number] => Array.isArray(coordinate) && coordinate.length >= 2)
+            .map(([longitude, latitude]) => [longitude, latitude] as [number, number]),
+        );
         setRouteCoordinates(nextCoordinates);
         setRouteLoadFailed(false);
       } else {
