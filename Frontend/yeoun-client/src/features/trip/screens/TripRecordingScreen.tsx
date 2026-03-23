@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { endTripApi, getTripDetailApi } from '@/src/api/trip';
-import { locationService } from '@/src/services/locationService';
+import { locationService } from '../../../services/locationService';
 import { useTripStore } from '@/src/store/trip.store';
 
 type LiveLocation = {
@@ -29,6 +29,7 @@ export default function TripRecordingScreen() {
   const currentTripId = useTripStore((state) => state.currentTripId);
   const activeTrip = useTripStore((state) => state.activeTrip);
   const setActiveTrip = useTripStore((state) => state.setActiveTrip);
+  const bumpRouteRefreshKey = useTripStore((state) => state.bumpRouteRefreshKey);
   const endTrip = useTripStore((state) => state.endTrip);
 
   const [liveLocation, setLiveLocation] = useState<LiveLocation | null>(null);
@@ -83,22 +84,25 @@ export default function TripRecordingScreen() {
 
     setIsSyncing(true);
     const success = await locationService.syncLocations(tripId);
+    if (success) {
+      bumpRouteRefreshKey();
+    }
     setIsSyncing(false);
 
     Alert.alert(
       success ? '동기화 완료' : '동기화 실패',
       success
-        ? '위치 로그를 서버에 업로드했습니다.'
-        : '위치 로그 업로드에 실패했습니다. 네트워크 상태를 확인해 주세요.',
+        ? '위치 로그를 업로드했고 지도의 경로를 새로 불러오도록 갱신했습니다.'
+        : '위치 로그 업로드에 실패했습니다. 로컬 큐에 다시 보관했습니다.',
     );
-  }, [tripId]);
+  }, [bumpRouteRefreshKey, tripId]);
 
   const handleEndTrip = useCallback(() => {
     if (!tripId) {
       return;
     }
 
-    Alert.alert('여행 종료', '현재 여행을 종료하고 리포트 화면으로 이동할까요?', [
+    Alert.alert('여행 종료', '남아 있는 위치 로그를 마지막으로 동기화한 뒤 여행을 종료합니다.', [
       { text: '취소', style: 'cancel' },
       {
         text: '종료',
@@ -106,7 +110,11 @@ export default function TripRecordingScreen() {
         onPress: async () => {
           try {
             setIsEnding(true);
-            await locationService.syncLocations(tripId);
+
+            const syncSuccess = await locationService.syncLocations(tripId);
+            if (syncSuccess) {
+              bumpRouteRefreshKey();
+            }
 
             const response = await endTripApi(tripId);
             if (!response.success) {
@@ -119,22 +127,23 @@ export default function TripRecordingScreen() {
             router.push('/trip/report');
           } catch (error) {
             console.error('Failed to end trip:', error);
-            Alert.alert('여행 종료 실패', '여행 종료 중 문제가 발생했습니다.');
+            Alert.alert('여행 종료 실패', '여행 종료 처리 중 오류가 발생했습니다.');
           } finally {
             setIsEnding(false);
           }
         },
       },
     ]);
-  }, [endTrip, router, tripId]);
+  }, [bumpRouteRefreshKey, endTrip, router, tripId]);
 
   const tripTitle = currentTrip?.tripName || activeTrip?.title || '진행 중인 여행';
   const tripStatus = activeTrip?.status || 'ACTIVE';
   const startedAt = activeTrip?.startedAt || '-';
   const memberCount = activeTrip?.memberCount ?? currentTrip?.memberCount ?? 0;
+
   const locationLabel = useMemo(() => {
     if (!liveLocation) {
-      return '아직 수신된 위치 정보가 없습니다.';
+      return '아직 수집된 현재 위치가 없습니다.';
     }
 
     return `${liveLocation.latitude.toFixed(6)}, ${liveLocation.longitude.toFixed(6)}`;
@@ -165,7 +174,7 @@ export default function TripRecordingScreen() {
           </TouchableOpacity>
           <View style={styles.headerCopy}>
             <Text style={styles.headerTitle}>{tripTitle}</Text>
-            <Text style={styles.headerSubtitle}>실제 여행 기록 상태</Text>
+            <Text style={styles.headerSubtitle}>여행 기록 상태</Text>
           </View>
         </View>
 
@@ -178,18 +187,18 @@ export default function TripRecordingScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>실시간 위치</Text>
+          <Text style={styles.cardTitle}>현재 위치</Text>
           <InfoRow label="좌표" value={locationLabel} />
-          <InfoRow label="마지막 수신 시각" value={liveLocation?.recordedAt || '-'} />
+          <InfoRow label="최근 수집 시각" value={liveLocation?.recordedAt || '-'} />
           <Text style={styles.helperText}>
-            백그라운드 수집 로그는 수동 동기화 또는 여행 종료 시 서버로 업로드됩니다.
+            동기화 버튼을 누르면 로컬에 쌓인 위치 로그를 서버로 보내고, 탐색 탭 지도는 서버 경로를 다시 조회해서 그립니다.
           </Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>작업</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={handleManualSync} disabled={isSyncing || isEnding}>
-            {isSyncing ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryButtonText}>위치 로그 수동 동기화</Text>}
+            {isSyncing ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryButtonText}>위치 로그 동기화</Text>}
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={loadTrip} disabled={isLoading || isEnding}>
             <Text style={styles.secondaryButtonText}>여행 정보 새로고침</Text>
@@ -200,7 +209,7 @@ export default function TripRecordingScreen() {
         </View>
 
         <TouchableOpacity style={styles.mockButton} onPress={() => router.push('/trip/mock-recording')}>
-          <Text style={styles.mockButtonText}>목업 기록 화면 보기</Text>
+          <Text style={styles.mockButtonText}>기존 mock 기록 화면 보기</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

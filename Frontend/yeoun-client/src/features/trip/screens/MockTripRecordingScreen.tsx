@@ -37,7 +37,7 @@ import {
   updateTripPhoto,
   type TimelineEvent,
 } from '@/src/features/trip/store/tripMockStore';
-import { locationService } from '@/src/services/locationService';
+import { locationService } from '../../../services/locationService';
 import { useTripStore } from '@/src/store/trip.store';
 
 const hasMapboxToken = configureMapbox();
