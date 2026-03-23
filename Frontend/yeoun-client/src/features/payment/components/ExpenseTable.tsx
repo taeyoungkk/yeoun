@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useExpenseStore, ExpenseItem, Member } from '@/src/store/expenseStore';
+import { useTripStore } from '@/src/store/trip.store';
 
 interface ExpenseRowProps {
   item: ExpenseItem;
@@ -196,9 +197,18 @@ export function ExpenseTable() {
     setHoveredExpense,
     registerDropZone,
     unregisterDropZone,
-    updateExpenseCategory
+    updateExpenseCategory,
+    fetchExpenses
   } = useExpenseStore();
   
+  const currentTripId = useTripStore(state => state.currentTripId);
+
+  useEffect(() => {
+    if (currentTripId) {
+      fetchExpenses(currentTripId);
+    }
+  }, [currentTripId, fetchExpenses]);
+
   const [modalVisible, setModalVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
