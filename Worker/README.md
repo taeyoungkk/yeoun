@@ -129,4 +129,3 @@ Kafka consumer를 함께 실행하려면 `.env`에서 각 기능별 Kafka 플래
 - `KAFKA_ENABLED=true`
 - `KAFKA_PHOTO_ENABLED=true`
 - `KAFKA_LOCATION_ENABLED=true`
-
