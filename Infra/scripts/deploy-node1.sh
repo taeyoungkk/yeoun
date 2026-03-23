@@ -13,7 +13,7 @@ ensure_docker_compose
 load_env_file "$ENV_FILE"
 require_var API_IMAGE
 
-HEALTHCHECK_URL="${NODE1_HEALTHCHECK_URL:-http://localhost/api/health}"
+HEALTHCHECK_URL="${NODE1_HEALTHCHECK_URL:-http://localhost/actuator/health}"
 
 log_info "Deploying node1 with API image: ${API_IMAGE}"
 compose_ec2 "$NODE_DIR" pull api nginx
