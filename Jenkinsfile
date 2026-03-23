@@ -100,6 +100,7 @@ REDIS_HOST=${REDIS_IP}
 REDIS_PORT=6379
 JWT_SECRET=c2VjcmV0LWtleS1mb3ItdGVzdGluZy1wdXJwb3Nlcw==
 SPRING_PROFILES_ACTIVE=ci
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
 
 # AWS Dummy Keys (빈 생성 실패 방지용)
 AWS_ACCESS_KEY_ID=dummy_key
@@ -118,7 +119,7 @@ EOT
 
               # 4. 테스트 실행
               chmod +x mvnw || true
-              ./mvnw test -DskipTests -Dmaven.repo.local=.m2/repository -Djava.security.egd=file:/dev/./urandom -T 1C -ntp
+              ./mvnw test -Dmaven.repo.local=.m2/repository -Djava.security.egd=file:/dev/./urandom -T 1C -ntp
             '''
           }
         }
