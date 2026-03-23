@@ -1,8 +1,16 @@
 package com.yeoun.domain.tripprocessing.service;
 
+import com.yeoun.domain.locationlog.dto.response.LocationLogProcessingStatusResponse;
+import com.yeoun.domain.trip.entity.Trip;
+import com.yeoun.domain.trip.entity.TripMemberInviteStatus;
+import com.yeoun.domain.trip.entity.TripStatus;
+import com.yeoun.domain.trip.repository.TripMemberRepository;
+import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.domain.tripprocessing.entity.TripProcessingStatus;
 import com.yeoun.domain.tripprocessing.entity.TripProcessingStatusType;
 import com.yeoun.domain.tripprocessing.repository.TripProcessingStatusRepository;
+import com.yeoun.global.exception.BaseException;
+import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,9 +22,35 @@ import java.util.UUID;
 public class TripProcessingStatusService {
 
     private final TripProcessingStatusRepository tripProcessingStatusRepository;
+    private final TripRepository tripRepository;
+    private final TripMemberRepository tripMemberRepository;
 
-    public TripProcessingStatusService(TripProcessingStatusRepository tripProcessingStatusRepository) {
+    public TripProcessingStatusService(
+            TripProcessingStatusRepository tripProcessingStatusRepository,
+            TripRepository tripRepository,
+            TripMemberRepository tripMemberRepository
+    ) {
         this.tripProcessingStatusRepository = tripProcessingStatusRepository;
+        this.tripRepository = tripRepository;
+        this.tripMemberRepository = tripMemberRepository;
+    }
+
+    public LocationLogProcessingStatusResponse getLocationLogStatus(UUID requesterUserId, UUID tripId) {
+        Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
+
+        validateTripAccessible(requesterUserId, trip);
+
+        TripProcessingStatus status = tripProcessingStatusRepository.findById(tripId)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_PROCESSING_STATUS_NOT_FOUND));
+
+        return new LocationLogProcessingStatusResponse(
+                status.getTripId(),
+                status.getStatus(),
+                status.getLastRequestedAt(),
+                status.getLastProcessedAt(),
+                status.getLastErrorMessage()
+        );
     }
 
     @Transactional
@@ -69,5 +103,17 @@ public class TripProcessingStatusService {
                         .build());
         status.markFailed(now, errorMessage);
         tripProcessingStatusRepository.save(status);
+    }
+
+    private void validateTripAccessible(UUID requesterUserId, Trip trip) {
+        boolean isOwner = trip.getOwnerUserId().equals(requesterUserId);
+        boolean isCurrentMember = tripMemberRepository.existsByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
+                trip.getTripId(),
+                requesterUserId,
+                TripMemberInviteStatus.ACCEPTED
+        );
+        if (!isOwner && !isCurrentMember) {
+            throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
+        }
     }
 }
