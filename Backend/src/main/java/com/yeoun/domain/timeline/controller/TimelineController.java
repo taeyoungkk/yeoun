@@ -57,7 +57,7 @@ public class TimelineController {
     }
 
     @PostMapping("/trips/{tripId}/timeline-build-jobs")
-    @Operation(summary = "타임라인 생성 작업 요청", description = "현재는 사진 메타데이터만 기준으로 여행 타임라인을 임시 생성합니다.")
+    @Operation(summary = "타임라인 생성 작업 요청", description = "위치 로그와 사진 데이터를 바탕으로 여행 타임라인을 생성하거나 다시 계산합니다.")
     public ApiResponse<TimelineBuildJobResponse> buildTimeline(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @PathVariable("tripId") UUID tripId
