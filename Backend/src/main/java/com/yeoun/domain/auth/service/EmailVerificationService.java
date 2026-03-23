@@ -46,6 +46,7 @@ public class EmailVerificationService {
         }
 
         String code = mailSenderService.generateVerificationCode();
+        emailVerificationRedisRepository.deleteVerified(normalizedEmail);
         emailVerificationRedisRepository.saveCode(normalizedEmail, code);
         // 새 코드 발급 시 기존 실패 횟수는 정책에 따라 초기화한다.
         emailVerificationRedisRepository.deleteFailCount(normalizedEmail);

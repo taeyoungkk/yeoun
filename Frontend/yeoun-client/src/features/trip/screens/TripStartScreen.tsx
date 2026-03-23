@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -25,16 +26,15 @@ import {
   TripStartInputField,
 } from '../components/TripStartField';
 import { TripStartHeader } from '../components/TripStartHeader';
-import { startTripApi, getTripDetailApi } from '@/src/api/trip';
+import { createTripApi, getTripDetailApi, startTripApi } from '@/src/api/trip';
 import { locationService } from '@/src/services/locationService';
 import { useTripStore } from '@/src/store/trip.store';
-import { Alert } from 'react-native';
+import { useUserStore } from '@/src/store/user.store';
 
 type ScreenMode = 'form' | 'invite';
 type PickerMode = 'month' | 'year' | null;
 type NoticeModalType = 'missing' | 'start' | null;
 
-const DUMMY_NICKNAME = '\uC9C0\uC6B0\uB2D8';
 const DUMMY_INVITE_LINK = 'https://yeoun.app/invite/trip-demo-2026';
 const WEEK_LABELS = ['\uC77C', '\uC6D4', '\uD654', '\uC218', '\uBAA9', '\uAE08', '\uD1A0'];
 const MONTH_LABELS = [
@@ -207,6 +207,7 @@ function FieldNoticeModal({
 
 export default function TripStartScreen() {
   const router = useRouter();
+  const profileNickname = useUserStore((state) => state.profile?.nickname);
   const startTrip = useTripStore((state) => state.startTrip);
   const updateCurrentTrip = useTripStore((state) => state.updateCurrentTrip);
   const setActiveTrip = useTripStore((state) => state.setActiveTrip);
@@ -230,6 +231,7 @@ export default function TripStartScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [inviteMembers, setInviteMembers] = useState<InviteMember[]>(INITIAL_INVITE_MEMBERS);
   const [noticeModalType, setNoticeModalType] = useState<NoticeModalType>(null);
+  const headerNickname = profileNickname?.trim() || '\uC9C0\uC6B0';
 
   const calendarDays = useMemo(() => getCalendarDays(calendarMonth), [calendarMonth]);
   const hasTripName = tripName.trim().length > 0;
@@ -352,7 +354,6 @@ export default function TripStartScreen() {
     
     try {
       // 1. API 호출로 여행 생성 (DRAFT 상태)
-      const { createTripApi } = require('@/src/api/trip');
       const createResponse = await createTripApi({
         title: tripName || '제주도 여행',
         startDate: startDate ? formatDateLabel(startDate) : '2025.03.19',
@@ -425,6 +426,76 @@ export default function TripStartScreen() {
     }
   };
 
+  const handleConfirmStartTrip = async () => {
+    setNoticeModalType(null);
+
+    if (isEditingActiveTrip) {
+      updateCurrentTrip(tripDraft);
+      router.replace('/trip/recording');
+      return;
+    }
+
+    const startTrackingAndNavigate = async (tripId: string) => {
+      const trackingSuccess = await locationService.startTracking();
+      if (!trackingSuccess) {
+        Alert.alert(
+          'GPS 권한 필요',
+          '여행 경로를 기록하려면 위치 권한이 필요합니다. 설정에서 권한을 허용해 주세요.'
+        );
+      }
+
+      startTrip({ ...tripDraft, tripId });
+
+      try {
+        const detailRes = await getTripDetailApi(tripId);
+        if (detailRes.success) {
+          setActiveTrip(detailRes.data);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch trip details after start:', err);
+      }
+
+      router.replace('/trip/recording');
+    };
+
+    try {
+      const createResponse = await createTripApi({
+        title: tripName || '여행',
+        startDate: startDate ? formatDateLabel(startDate) : new Date().toISOString().slice(0, 10),
+        endDate: endDate ? formatDateLabel(endDate) : new Date().toISOString().slice(0, 10),
+        region: tripDraft.destination,
+        country: tripDraft.origin,
+        participants: memberCount,
+      });
+
+      if (!createResponse.success || !createResponse.data?.tripId) {
+        Alert.alert('여행 시작 실패', createResponse.message || '여행 생성에 실패했습니다.');
+        return;
+      }
+
+      const startResponse = await startTripApi(createResponse.data.tripId);
+      if (!startResponse.success) {
+        Alert.alert('여행 시작 실패', startResponse.message || '여행 시작 요청에 실패했습니다.');
+        return;
+      }
+
+      await startTrackingAndNavigate(createResponse.data.tripId);
+    } catch (error) {
+      console.error('Failed to start trip:', error);
+      Alert.alert('여행 시작 실패', '여행을 시작하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.');
+    }
+  };
+
+  const handleOpenMockTrip = () => {
+    if (!isFormComplete) {
+      setNoticeModalType('missing');
+      return;
+    }
+
+    startTrip({ ...tripDraft, tripId: 'mock-trip-preview' });
+    router.push('/trip/mock-recording');
+  };
+
   const handleStartTripImmediateNavigation = async () => {
     setNoticeModalType(null);
     if (isEditingActiveTrip) {
@@ -470,7 +541,7 @@ export default function TripStartScreen() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <TripStartHeader nickname={DUMMY_NICKNAME} isEditing={isEditingActiveTrip} />
+        <TripStartHeader nickname={headerNickname} isEditing={isEditingActiveTrip} />
 
         <View style={styles.formStack}>
           <TripStartInputField
@@ -558,6 +629,12 @@ export default function TripStartScreen() {
             <Text style={styles.primaryButtonText}>{isEditingActiveTrip ? '\uC218\uC815\uC644\uB8CC' : '\uB2E4\uC74C'}</Text>
           </TouchableOpacity>
         </View>
+
+        {__DEV__ ? (
+          <TouchableOpacity style={styles.mockButton} onPress={handleOpenMockTrip} activeOpacity={0.88}>
+            <Text style={styles.mockButtonText}>{'\uBAA9\uC5C5 \uBC84\uC804 \uD655\uC778'}</Text>
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
 
       <FieldNoticeModal
@@ -569,7 +646,7 @@ export default function TripStartScreen() {
         memberCount={memberCount}
         missingLabels={missingLabels}
         onClose={() => setNoticeModalType(null)}
-        onConfirm={handleStartTripImmediateNavigation}
+        onConfirm={handleConfirmStartTrip}
       />
     </SafeAreaView>
   );
@@ -621,6 +698,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Pretendard-SemiBold',
     fontSize: 16,
     color: '#1A211C',
+  },
+  mockButton: {
+    marginTop: 12,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F4F6F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D7E0D4',
+  },
+  mockButtonText: {
+    fontFamily: 'Pretendard-SemiBold',
+    fontSize: 14,
+    color: '#546154',
   },
   modalBackdrop: {
     flex: 1,

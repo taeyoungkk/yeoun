@@ -88,7 +88,7 @@ extract_image_tag() {
 
 verify_http_health() {
   local url="$1"
-  local max_attempts="${2:-30}"
+  local max_attempts="${2:-120}"
   local sleep_seconds="${3:-5}"
 
   log_info "Checking health endpoint: ${url}"

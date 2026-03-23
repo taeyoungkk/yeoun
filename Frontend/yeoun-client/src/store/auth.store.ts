@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface AuthState {
   /** JWT access token, null when logged out */
@@ -15,23 +17,34 @@ interface AuthState {
   setHydrated: (hydrated: boolean) => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  accessToken: null,
-  refreshToken: null,
-  isHydrated: false,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      accessToken: null,
+      refreshToken: null,
+      isHydrated: false,
 
-  setTokens: (accessToken, refreshToken) =>
-    set({ accessToken, refreshToken }),
+      setTokens: (accessToken, refreshToken) =>
+        set({ accessToken, refreshToken }),
 
-  setAccessToken: (accessToken) =>
-    set({ accessToken }),
+      setAccessToken: (accessToken) =>
+        set({ accessToken }),
 
-  clearTokens: () =>
-    set({ accessToken: null, refreshToken: null }),
+      clearTokens: () =>
+        set({ accessToken: null, refreshToken: null }),
 
-  setHydrated: (hydrated) =>
-    set({ isHydrated: hydrated }),
-}));
+      setHydrated: (hydrated) =>
+        set({ isHydrated: hydrated }),
+    }),
+    {
+      name: 'auth-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+      onRehydrateStorage: () => (state) => {
+        state?.setHydrated(true);
+      },
+    }
+  )
+);
 
 // ─── Selectors ────────────────────────────────────────────────────────────────
 /** True when the user has a valid access token */

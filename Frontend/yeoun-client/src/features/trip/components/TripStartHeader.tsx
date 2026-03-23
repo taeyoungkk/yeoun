@@ -7,12 +7,14 @@ type TripStartHeaderProps = {
 };
 
 export function TripStartHeader({ nickname, isEditing = false }: TripStartHeaderProps) {
+  const displayName = nickname.endsWith('\uB2D8') ? nickname : `${nickname}\uB2D8`;
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>
         {isEditing
           ? '\uC5EC\uD589 \uC815\uBCF4 \uC218\uC815'
-          : `${nickname}\uB2D8,\n\uC5EC\uD589\uC744 \uC2DC\uC791\uD574\uBCFC\uAE4C\uC694?`}
+          : `${displayName},\n\uC5EC\uD589\uC744 \uC2DC\uC791\uD574\uBCFC\uAE4C\uC694?`}
       </Text>
     </View>
   );

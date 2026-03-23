@@ -3,9 +3,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState, useCallback } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 
-import { useUserStore } from '@/src/store';
+import { useUserStore, useFavoriteStore } from '@/src/store';
 import { getMyInfo } from '@/src/api/user';
 import { getFriendsApi } from '@/src/api/friend';
+import { getTripsApi, TripListItem } from '@/src/api/trip';
 import { ProfileHeader } from '@/src/components/profile/ProfileHeader';
 import { UserInfoCard } from '@/src/components/profile/UserInfoCard';
 import { TripList } from '@/src/components/profile/TripList';
@@ -13,6 +14,8 @@ import { TripData } from '@/src/components/profile/TripCard';
 import { TravelMap } from '@/src/components/profile/TravelMap';
 import { TreeRingsChart } from '@/src/components/profile/TreeRingsChart';
 
+// We'll keep these as fallback/additional mock for now if needed, 
+// but we will primarily use server data.
 const MOCK_FAVORITE_TRIPS: TripData[] = [
   {
     id: '1',
@@ -32,50 +35,65 @@ const MOCK_FAVORITE_TRIPS: TripData[] = [
   },
 ];
 
-const MOCK_PAST_TRIPS: TripData[] = [
-  {
-    id: '3',
-    title: '부산 여행',
-    location: '부산, 대한민국',
-    dates: '2023.08.12 ~ 08.15',
-    imageSource: require('@/assets/images/trip_placeholder_3.png'),
-  },
-  {
-    id: '4',
-    title: '강릉 여행',
-    location: '강릉, 대한민국',
-    dates: '2022.07.01 ~ 07.03',
-    imageSource: require('@/assets/images/trip_placeholder_1.png'),
-  },
-];
-
 export default function MyPageScreen() {
   const { profile, setProfile } = useUserStore();
-  const [favoriteTrips, setFavoriteTrips] = useState<TripData[]>(MOCK_FAVORITE_TRIPS);
-  const [pastTrips, setPastTrips] = useState<TripData[]>(MOCK_PAST_TRIPS);
+  const { favoriteIds, toggleFavorite } = useFavoriteStore();
+  const [serverTrips, setServerTrips] = useState<TripListItem[]>([]);
   const [friendsCount, setFriendsCount] = useState(0);
+
+  // Helper to map API trip to UI TripData
+  const mapToTripData = (trip: TripListItem): TripData => ({
+    id: trip.tripId,
+    title: trip.title,
+    location: (trip.region && trip.country) ? `${trip.region}, ${trip.country}` : (trip.region || trip.country || '대한민국'),
+    dates: `${trip.startDate.replace(/-/g, '.')} ~ ${trip.endDate.split('-').pop()}`,
+    imageSource: require('@/assets/images/trip_placeholder_1.png'), // Placeholder
+    isFavorite: favoriteIds.includes(trip.tripId)
+  });
+
+  // Dynamic favorite trips based on store and both mock/server data
+  const favoriteTrips = [
+    ...MOCK_FAVORITE_TRIPS,
+    ...serverTrips.map(mapToTripData)
+  ].filter(trip => favoriteIds.includes(trip.id))
+   .filter((trip, index, self) => self.findIndex(t => t.id === trip.id) === index); // Unique
+
+  // Past trips from server (status ENDED)
+  const pastTrips = serverTrips
+    .filter(trip => trip.status === 'ENDED')
+    .map(mapToTripData);
 
   useFocusEffect(
     useCallback(() => {
       let isMounted = true;
 
-      const fetchProfile = async () => {
+      const fetchData = async () => {
         try {
-          const [profileResponse, friendsResponse] = await Promise.all([getMyInfo(), getFriendsApi()]);
+          const [profileResponse, friendsResponse, tripsResponse] = await Promise.all([
+            getMyInfo(),
+            getFriendsApi(),
+            getTripsApi()
+          ]);
 
-          if (profileResponse.success && isMounted) {
-            setProfile(profileResponse.data);
-          }
+          if (isMounted) {
+            if (profileResponse.success) {
+              setProfile(profileResponse.data);
+            }
 
-          if (friendsResponse.success && isMounted) {
-            setFriendsCount(friendsResponse.data.items.length);
+            if (friendsResponse.success) {
+              setFriendsCount(friendsResponse.data.items.length);
+            }
+
+            if (tripsResponse.success) {
+              setServerTrips(tripsResponse.data.items);
+            }
           }
         } catch (error) {
           console.error('Failed to fetch mypage data:', error);
         }
       };
 
-      fetchProfile();
+      fetchData();
 
       return () => {
         isMounted = false;
@@ -83,12 +101,8 @@ export default function MyPageScreen() {
     }, [setProfile])
   );
 
-  const handleToggleFavorite = (id: string, isFavList: boolean) => {
-    if (isFavList) {
-      setFavoriteTrips((prev) => prev.map((trip) => (trip.id === id ? { ...trip, isFavorite: !trip.isFavorite } : trip)));
-    } else {
-      setPastTrips((prev) => prev.map((trip) => (trip.id === id ? { ...trip, isFavorite: !trip.isFavorite } : trip)));
-    }
+  const handleToggleFavorite = (id: string) => {
+    toggleFavorite(id);
   };
 
   return (
@@ -113,15 +127,15 @@ export default function MyPageScreen() {
         <TripList
           title="좋아하는 여행"
           trips={favoriteTrips}
-          onViewMore={() => console.log('View more favorites')}
-          onToggleFavorite={(id) => handleToggleFavorite(id, true)}
+          onViewMore={() => router.push('/trip/liked')}
+          onToggleFavorite={handleToggleFavorite}
         />
 
         <TripList
           title="다녀온 여행"
           trips={pastTrips}
-          onViewMore={() => console.log('View more past trips')}
-          onToggleFavorite={(id) => handleToggleFavorite(id, false)}
+          onViewMore={() => router.push('/trip/past')}
+          onToggleFavorite={handleToggleFavorite}
         />
 
         <TravelMap />

@@ -93,7 +93,7 @@ class LocationConsumer:
                 (
                     "Processed GPS batch tripId=%s userId=%s accepted=%s stored=%s cleanPersisted=%s "
                     "preprocessed=%s staySegments=%s moveSegments=%s routeDays=%s places=%s "
-                    "routePersisted=%s placePersisted=%s timelineCandidates=%s "
+                    "routePersisted=%s placePersisted=%s timelineCandidates=%s timelineCandidatesPersisted=%s "
                     "filteredAccuracy=%s filteredDuplicate=%s filteredJump=%s"
                 ),
                 payload.trip_id,
@@ -109,6 +109,7 @@ class LocationConsumer:
                 result.route_persisted_count,
                 result.place_persisted_count,
                 result.timeline_candidate_count,
+                result.timeline_candidate_persisted_count,
                 result.filtered_accuracy_count,
                 result.filtered_duplicate_count,
                 result.filtered_jump_count,
@@ -162,6 +163,7 @@ class LocationConsumer:
             route_persisted_count=result.route_persisted_count,
             place_persisted_count=result.place_persisted_count,
             timeline_candidate_count=result.timeline_candidate_count,
+            timeline_candidate_persisted_count=result.timeline_candidate_persisted_count,
             filtered_accuracy_count=result.filtered_accuracy_count,
             filtered_duplicate_count=result.filtered_duplicate_count,
             filtered_jump_count=result.filtered_jump_count,

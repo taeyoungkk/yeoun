@@ -13,9 +13,35 @@ const apiClient = axios.create({
   },
 });
 
+const PUBLIC_API_PATH_PREFIXES = [
+  '/auth/signup',
+  '/auth/login',
+  '/auth/oauth/google',
+  '/auth/refresh',
+  '/auth/email/code',
+  '/auth/email/verify',
+  '/auth/password/reset/request',
+  '/auth/password/reset/confirm',
+  '/users/check-email',
+  '/users/check-nickname',
+];
+
+const isPublicApiRequest = (url?: string) => {
+  if (!url) return false;
+  return PUBLIC_API_PATH_PREFIXES.some((prefix) => url.startsWith(prefix));
+};
+
 // Request interceptor to add the access token to every request
 apiClient.interceptors.request.use(
   (config) => {
+    // Skip Authorization header for public endpoints or refresh endpoint
+    if (isPublicApiRequest(config.url)) {
+      if (config.headers?.Authorization) {
+        delete config.headers.Authorization;
+      }
+      return config;
+    }
+
     const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -27,22 +53,30 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle token refresh on 401
+// Response interceptor to handle token refresh on 401/403
 apiClient.interceptors.response.use(
   (response) => {
     return response;
   },
   async (error) => {
     const originalRequest = error.config;
+    const requestUrl = originalRequest?.url;
 
-    // If error is 401 and not already retrying
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // If error is 401/403 and NOT already retrying and NOT a public request
+    if (
+      (error.response?.status === 401 || error.response?.status === 403) && 
+      !originalRequest?._retry &&
+      !isPublicApiRequest(requestUrl)
+    ) {
       originalRequest._retry = true;
+
+      console.log(`[API Interceptor] Error ${error.response.status} on ${requestUrl}. Attempting token refresh...`);
 
       try {
         const { refreshToken, setTokens, clearTokens } = useAuthStore.getState();
         
         if (!refreshToken) {
+          console.log('[API Interceptor] No refresh token available. Clearing session.');
           clearTokens();
           return Promise.reject(error);
         }
@@ -52,6 +86,7 @@ apiClient.interceptors.response.use(
         const refreshResponse = await refreshApi(refreshToken);
 
         if (refreshResponse.success) {
+          console.log('[API Interceptor] Token refresh successful. Retrying original request.');
           const { accessToken: newAccess, refreshToken: newRefresh } = refreshResponse.data;
           setTokens(newAccess, newRefresh);
           
@@ -59,10 +94,12 @@ apiClient.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${newAccess}`;
           return apiClient(originalRequest);
         } else {
+          console.log('[API Interceptor] Token refresh failed. Clearing session.');
           clearTokens();
           return Promise.reject(error);
         }
       } catch (refreshError) {
+        console.error('[API Interceptor] Token refresh error:', refreshError);
         useAuthStore.getState().clearTokens();
         return Promise.reject(refreshError);
       }

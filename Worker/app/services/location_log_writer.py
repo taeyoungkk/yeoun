@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import psycopg
+from psycopg import Connection
 
 from app.config import Settings
 from app.schemas.location import LocationLogBatchStoredEvent
@@ -11,7 +12,12 @@ class LocationLogRawWriter:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    def save_batch(self, payload: LocationLogBatchStoredEvent) -> dict[str, int]:
+    def save_batch(
+        self,
+        payload: LocationLogBatchStoredEvent,
+        *,
+        connection: Connection | None = None,
+    ) -> dict[str, int]:
         if not self.settings.worker_database_url:
             raise RuntimeError("WORKER_DATABASE_URL is required for GPS raw persistence.")
 
@@ -19,7 +25,11 @@ class LocationLogRawWriter:
         duplicate_count = 0
         created_at = datetime.now(timezone.utc)
 
-        with psycopg.connect(self.settings.worker_database_url) as connection:
+        owns_connection = connection is None
+        if owns_connection:
+            connection = psycopg.connect(self.settings.worker_database_url)
+
+        try:
             with connection.cursor() as cursor:
                 for log in payload.logs:
                     cursor.execute(
@@ -73,8 +83,15 @@ class LocationLogRawWriter:
                         stored_count += 1
                     else:
                         duplicate_count += 1
-
-            connection.commit()
+            if owns_connection:
+                connection.commit()
+        except Exception:
+            if owns_connection:
+                connection.rollback()
+            raise
+        finally:
+            if owns_connection:
+                connection.close()
 
         return {
             "accepted_count": len(payload.logs),

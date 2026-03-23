@@ -1,3 +1,5 @@
+import psycopg
+
 from app.config import Settings
 from app.schemas.location import LocationLogBatchStoredEvent, LocationPreprocessSummary
 from app.services.location_clean_writer import LocationLogCleanWriter
@@ -26,28 +28,39 @@ class LocationPipelineService:
         self.status_writer.mark_processing(payload.trip_id, requested_at=payload.requested_at)
 
         try:
-            persisted = self.writer.save_batch(payload)
-            preprocess_result = self.preprocessor.preprocess(
-                payload.logs,
-                accepted_count=persisted["accepted_count"],
-                duplicate_count=persisted["duplicate_count"],
-                stored_count=persisted["stored_count"],
-            )
-            clean_persisted_count = self.clean_writer.save_batch(
-                payload.trip_id,
-                payload.user_id,
-                preprocess_result.clean_logs,
-            )
-            summary = preprocess_result.summary.model_copy(
-                update={"cleanPersistedCount": clean_persisted_count},
-            )
-            summary = await self.followup_pipeline.run(
-                payload,
-                preprocess_result.clean_logs,
-                summary,
-            )
-            self.status_writer.mark_ready(payload.trip_id, requested_at=payload.requested_at)
-            return summary
+            if not self.writer.settings.worker_database_url:
+                raise RuntimeError("WORKER_DATABASE_URL is required for GPS pipeline persistence.")
+
+            with psycopg.connect(self.writer.settings.worker_database_url) as connection:
+                persisted = self.writer.save_batch(payload, connection=connection)
+                preprocess_result = self.preprocessor.preprocess(
+                    payload.logs,
+                    accepted_count=persisted["accepted_count"],
+                    duplicate_count=persisted["duplicate_count"],
+                    stored_count=persisted["stored_count"],
+                )
+                clean_persisted_count = self.clean_writer.save_batch(
+                    payload.trip_id,
+                    payload.user_id,
+                    preprocess_result.clean_logs,
+                    connection=connection,
+                )
+                summary = preprocess_result.summary.model_copy(
+                    update={"cleanPersistedCount": clean_persisted_count},
+                )
+                summary = await self.followup_pipeline.run(
+                    payload,
+                    preprocess_result.clean_logs,
+                    summary,
+                    connection=connection,
+                )
+                self.status_writer.mark_ready(
+                    payload.trip_id,
+                    requested_at=payload.requested_at,
+                    connection=connection,
+                )
+                connection.commit()
+                return summary
         except Exception as exc:
             self.status_writer.mark_failed(payload.trip_id, str(exc), requested_at=payload.requested_at)
             raise

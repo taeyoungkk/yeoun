@@ -12,7 +12,7 @@ export type PhotoContributor = {
 
 export type TimelinePhotoItem = {
   id: string;
-  source: number;
+  source: number | string;
   memo?: string;
   contributorId?: string;
 };

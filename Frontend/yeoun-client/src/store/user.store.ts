@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface UserProfile {
   userId: string;
@@ -19,20 +21,28 @@ interface UserState {
   clearProfile: () => void;
 }
 
-export const useUserStore = create<UserState>((set) => ({
-  profile: null,
+export const useUserStore = create<UserState>()(
+  persist(
+    (set) => ({
+      profile: null,
 
-  setProfile: (profile) =>
-    set({ profile }),
+      setProfile: (profile) =>
+        set({ profile }),
 
-  updateProfile: (partial) =>
-    set((state) => ({
-      profile: state.profile ? { ...state.profile, ...partial } : null,
-    })),
+      updateProfile: (partial) =>
+        set((state) => ({
+          profile: state.profile ? { ...state.profile, ...partial } : null,
+        })),
 
-  clearProfile: () =>
-    set({ profile: null }),
-}));
+      clearProfile: () =>
+        set({ profile: null }),
+    }),
+    {
+      name: 'user-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+    }
+  )
+);
 
 // ─── Selectors ────────────────────────────────────────────────────────────────
 export const selectProfile = (s: UserState) => s.profile;
