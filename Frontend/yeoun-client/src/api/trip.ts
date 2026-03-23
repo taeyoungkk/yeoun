@@ -321,10 +321,13 @@ export const uploadLocationsApi = async (
   tripId: string,
   locations: LocationLog[],
 ): Promise<TripLocationResponse> => {
+  const endpoint = `/trips/${tripId}/location-logs/:batch`;
+  const payload = {
+    logs: locations.map(toLocationUploadItem),
+  };
+
   try {
-    const response = await apiClient.post<TripLocationResponse>(`/trips/${tripId}/location-logs:batch`, {
-      logs: locations.map(toLocationUploadItem),
-    });
+    const response = await apiClient.post<TripLocationResponse>(endpoint, payload);
     return response.data;
   } catch (error: any) {
     if (shouldMockInDev(error)) {
@@ -340,7 +343,60 @@ export const uploadLocationsApi = async (
       };
     }
 
-    console.error('Upload Locations API Error:', error);
+    const baseURL = error?.config?.baseURL ?? apiClient.defaults.baseURL ?? 'unknown';
+    const requestUrl = error?.config?.url ?? endpoint;
+    const requestMethod = error?.config?.method?.toUpperCase?.() ?? 'POST';
+    const status = error?.response?.status;
+    const responseData = error?.response?.data;
+    const errorCode = error?.code;
+    const isTimeout = errorCode === 'ECONNABORTED' || String(error?.message ?? '').toLowerCase().includes('timeout');
+    const hasResponse = Boolean(error?.response);
+    const hasRequest = Boolean(error?.request);
+
+    if (isTimeout) {
+      console.error('[LocationUpload] Request timed out.', {
+        tripId,
+        logsCount: locations.length,
+        method: requestMethod,
+        baseURL,
+        requestUrl,
+        errorCode,
+        message: error?.message,
+      });
+    } else if (!hasResponse && hasRequest) {
+      console.error('[LocationUpload] Network error: request sent but no response received.', {
+        tripId,
+        logsCount: locations.length,
+        method: requestMethod,
+        baseURL,
+        requestUrl,
+        errorCode,
+        message: error?.message,
+      });
+    } else if (hasResponse) {
+      console.error('[LocationUpload] HTTP error response received.', {
+        tripId,
+        logsCount: locations.length,
+        method: requestMethod,
+        baseURL,
+        requestUrl,
+        status,
+        errorCode,
+        message: error?.message,
+        responseData,
+      });
+    } else {
+      console.error('[LocationUpload] Request setup error.', {
+        tripId,
+        logsCount: locations.length,
+        method: requestMethod,
+        baseURL,
+        requestUrl,
+        errorCode,
+        message: error?.message,
+      });
+    }
+
     return {
       success: false,
       code: getErrorCode(error),
