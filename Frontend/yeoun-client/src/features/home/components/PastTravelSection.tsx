@@ -46,6 +46,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
   const router = useRouter();
   const activeTrip = useTripStore((state) => state.activeTrip);
   const currentTrip = useTripStore((state) => state.currentTrip);
+  const updateCurrentTrip = useTripStore((state) => state.updateCurrentTrip);
 
   const [pastTrips, setPastTrips] = useState<TripListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -106,6 +107,19 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
     fetchPastTrips();
   }, [activeTrip?.tripId, currentTrip?.tripId]);
 
+  const handleTripPress = (trip: TripListItem) => {
+    updateCurrentTrip({
+      tripId: trip.tripId,
+      tripName: trip.title,
+      startDate: trip.startDate,
+      endDate: trip.endDate,
+      memberCount: trip.memberCount,
+      origin: '---',
+      destination: trip.title,
+    });
+    router.push('/trip/report');
+  };
+
   return (
     <View className="w-full min-h-[600px] bg-[#EBF3EA] rounded-t-[200px] pt-20 px-6 items-center overflow-visible">
       <View className="items-center gap-4 mb-8">
@@ -157,6 +171,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
                 location="대한민국"
                 date={`${trip.startDate} ~ ${trip.endDate}`}
                 imageUrl={trip.tripId.includes('mock') ? require('@/assets/images/trip_placeholder_2.png') : undefined}
+                onPress={() => handleTripPress(trip)}
               />
             ))}
           </View>
