@@ -22,7 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { configureMapbox } from '@/src/lib/mapbox';
 import { getTripExpensesApi } from '@/src/api/expense';
 import { getTimelineDayDetailApi, getTripTimelineDaysApi, type TimelineDayDetail } from '@/src/api/timeline';
-import { startTripApi, endTripApi, leaveTripApi } from '@/src/api/trip';
+import { startTripApi, endTripApi, leaveTripApi, deleteTripApi } from '@/src/api/trip';
 import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 import {
   CURRENT_USER_ID,
@@ -56,6 +56,7 @@ type DayFilter = 'all' | DayKey;
 type TimelineEventType = 'location' | 'photo' | 'payment';
 type Coordinate = [number, number];
 type MapFilterKey = 'showPhotoPins' | 'showPaymentPins';
+type ActionConfirmKind = 'end' | 'leave' | 'delete';
 
 type TripDay = {
   id: DayKey;
@@ -389,6 +390,12 @@ export default function MockTripRecordingScreen({
     showPhotoPins: globalUserState.showPhotoPins,
     showPaymentPins: globalUserState.showPaymentPins,
   });
+  const [actionConfirm, setActionConfirm] = useState<{
+    kind: ActionConfirmKind;
+    title: string;
+    description: string;
+    confirmLabel: string;
+  } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [liveRoute, setLiveRoute] = useState<Coordinate[]>([]);
   const showMockRouteMetrics = useMockData;
@@ -499,6 +506,7 @@ export default function MockTripRecordingScreen({
   const activeTripId = currentTripId ?? currentTrip?.tripId ?? '';
   const tripTitle = currentTrip?.tripName || 'Trip';
   const isReviewMode = params.mode === 'review' || !isTripActive;
+  const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
 
   useEffect(() => {
@@ -649,11 +657,19 @@ export default function MockTripRecordingScreen({
     router.push(reportRoute);
   };
 
-  const handleEndTrip = async () => {
+  const performEndTrip = async () => {
     if (!activeTripId) {
       Alert.alert('No active trip', 'Could not find the trip to end.');
       return;
     }
+    setIsSyncing(true);
+    await locationService.syncLocations(activeTripId);
+    await endTripApi(activeTripId);
+    await locationService.stopTracking();
+    setIsSyncing(false);
+    endTrip();
+    router.push(reportRoute);
+    return;
 
     Alert.alert(
       '여행 종료',
@@ -684,13 +700,34 @@ export default function MockTripRecordingScreen({
     );
   };
 
-  const handleLeaveTrip = async () => {
+  const performLeaveTrip = async () => {
     if (!activeTripId) {
       Alert.alert('No active trip', 'Could not find the trip to leave.');
       return;
     }
 
-    if (activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId) {
+    if (isTripOwner) {
+      Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
+      return;
+    }
+
+    const response = await leaveTripApi(activeTripId);
+
+    if (!response.success) {
+      if (response.code === 'CONFLICT') {
+        Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
+        return;
+      }
+
+      Alert.alert('여행 떠나기 실패', response.message || '여행에서 나가지 못했습니다.');
+      return;
+    }
+
+    clearTrip();
+    router.replace('/(tabs)');
+    return;
+
+    if (isTripOwner) {
       Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
       return;
     }
@@ -718,6 +755,116 @@ export default function MockTripRecordingScreen({
         },
       },
     ]);
+  };
+
+  const performDeleteTrip = async () => {
+    if (!activeTripId) {
+      Alert.alert('여행 삭제 실패', '삭제할 여행 정보를 찾지 못했습니다.');
+      return;
+    }
+
+    Alert.alert(
+      '여행 삭제',
+      '여행을 삭제하면 여행에 초대된 사람들의 여행도 삭제됩니다.\n정말로 여행을 삭제할 건가요?\n되돌릴 수 없습니다.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            const response = await deleteTripApi(activeTripId);
+
+            if (!response.success) {
+              Alert.alert('여행 삭제 실패', response.message || '여행을 삭제하지 못했습니다.');
+              return;
+            }
+
+            clearTrip();
+            router.replace('/(tabs)');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleEndTrip = () => {
+    setActionConfirm({
+      kind: 'end',
+      title: '여행을 종료할까요?',
+      description: '현재까지 기록된 모든 경로가 저장됩니다.',
+      confirmLabel: '종료하기',
+    });
+  };
+
+  const handleLeaveTrip = () => {
+    if (isTripOwner) {
+      Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
+      return;
+    }
+
+    setActionConfirm({
+      kind: 'leave',
+      title: '여행에서 떠나시겠습니까?',
+      description: '떠나면 이 여행의 진행 화면에서 나가게 됩니다.',
+      confirmLabel: '떠나기',
+    });
+  };
+
+  const handleDeleteTrip = () => {
+    setActionConfirm({
+      kind: 'delete',
+      title: '여행을 삭제할까요?',
+      description: '여행을 삭제하면 여행에 초대된 사람들의 여행도 삭제됩니다.\n정말로 여행을 삭제할 건가요?\n되돌릴 수 없습니다.',
+      confirmLabel: '삭제하기',
+    });
+  };
+
+  const handleConfirmAction = async () => {
+    const currentAction = actionConfirm;
+    setActionConfirm(null);
+
+    if (!currentAction) {
+      return;
+    }
+
+    if (currentAction.kind === 'end') {
+      setIsSyncing(true);
+      await locationService.syncLocations(activeTripId);
+      await endTripApi(activeTripId);
+      await locationService.stopTracking();
+      setIsSyncing(false);
+      endTrip();
+      router.push(reportRoute);
+      return;
+    }
+
+    if (currentAction.kind === 'leave') {
+      const response = await leaveTripApi(activeTripId);
+
+      if (!response.success) {
+        if (response.code === 'CONFLICT') {
+          Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
+          return;
+        }
+
+        Alert.alert('여행 떠나기 실패', response.message || '여행에서 나가지 못했습니다.');
+        return;
+      }
+
+      clearTrip();
+      router.replace('/(tabs)');
+      return;
+    }
+
+    const response = await deleteTripApi(activeTripId);
+
+    if (!response.success) {
+      Alert.alert('여행 삭제 실패', response.message || '여행을 삭제하지 못했습니다.');
+      return;
+    }
+
+    clearTrip();
+    router.replace('/(tabs)');
   };
 
   const handleMapReady = () => {
@@ -1064,10 +1211,16 @@ export default function MockTripRecordingScreen({
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, isTripOwner && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85}>
               <MaterialIcons name="logout" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 떠나기</Text>
             </TouchableOpacity>
+            {isTripOwner ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleDeleteTrip(); }} activeOpacity={0.85}>
+                <MaterialIcons name="delete-outline" size={18} color="#244934" />
+                <Text style={styles.menuItemText}>여행 삭제</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); router.push('/trip/start'); }} activeOpacity={0.85}>
               <MaterialIcons name="edit" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 수정</Text>
@@ -1095,6 +1248,48 @@ export default function MockTripRecordingScreen({
             <Text style={styles.modalBody}>
               지도 위 필터를 이용해 표시 항목을 줄이거나 동선만 깔끔하게 볼 수 있어요.
             </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={Boolean(actionConfirm)} transparent animationType="fade" onRequestClose={() => setActionConfirm(null)}>
+        <Pressable style={styles.actionConfirmBackdrop} onPress={() => setActionConfirm(null)}>
+          <Pressable style={styles.actionConfirmCard} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.actionConfirmIconWrap}>
+              <MaterialIcons
+                name={actionConfirm?.kind === 'delete' ? 'delete-outline' : actionConfirm?.kind === 'leave' ? 'logout' : 'flag'}
+                size={26}
+                color={actionConfirm?.kind === 'delete' ? '#6E4336' : '#355D49'}
+              />
+            </View>
+            <Text style={styles.actionConfirmTitle}>
+              {actionConfirm?.kind === 'end'
+                ? '여행을 종료할까요?'
+                : actionConfirm?.kind === 'leave'
+                  ? '여행에서 떠나시겠습니까?'
+                  : '여행을 삭제할까요?'}
+            </Text>
+            <Text style={styles.actionConfirmDescription}>
+              {actionConfirm?.kind === 'end'
+                ? '현재까지 기록된 모든 경로가 저장됩니다.'
+                : actionConfirm?.kind === 'leave'
+                  ? '떠나면 이 여행의 진행 화면에서 나가게 됩니다.'
+                  : '여행을 삭제하면 여행에 초대된 사람들의 여행도 삭제됩니다.\n정말로 여행을 삭제할 건가요?\n되돌릴 수 없습니다.'}
+            </Text>
+            <View style={styles.actionConfirmRow}>
+              <TouchableOpacity style={styles.actionConfirmSecondaryButton} onPress={() => setActionConfirm(null)} activeOpacity={0.88}>
+                <Text style={styles.actionConfirmSecondaryText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionConfirmPrimaryButton} onPress={handleConfirmAction} activeOpacity={0.88}>
+                <Text style={styles.actionConfirmPrimaryText}>
+                  {actionConfirm?.kind === 'end'
+                    ? '종료하기'
+                    : actionConfirm?.kind === 'leave'
+                      ? '떠나기'
+                      : '삭제하기'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1923,6 +2118,76 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   deleteDialogPrimaryButtonText: { fontFamily: 'Pretendard-Bold', fontSize: 15, color: '#FFF8F6' },
+  actionConfirmBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17, 24, 18, 0.28)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  actionConfirmCard: {
+    width: '100%',
+    borderRadius: 30,
+    backgroundColor: '#F7FAF4',
+    paddingHorizontal: 24,
+    paddingTop: 26,
+    paddingBottom: 22,
+  },
+  actionConfirmIconWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#E4EDE1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
+  actionConfirmTitle: {
+    marginTop: 16,
+    textAlign: 'center',
+    fontFamily: 'Pretendard-Bold',
+    fontSize: 22,
+    color: '#17201A',
+  },
+  actionConfirmDescription: {
+    marginTop: 10,
+    textAlign: 'center',
+    fontFamily: 'Pretendard-Medium',
+    fontSize: 14,
+    lineHeight: 22,
+    color: '#5F6E65',
+  },
+  actionConfirmRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  actionConfirmSecondaryButton: {
+    flex: 1,
+    height: 54,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F4F6F2',
+  },
+  actionConfirmSecondaryText: {
+    fontFamily: 'Pretendard-Bold',
+    fontSize: 16,
+    color: '#465346',
+  },
+  actionConfirmPrimaryButton: {
+    flex: 1,
+    height: 54,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#DCE6D9',
+  },
+  actionConfirmPrimaryText: {
+    fontFamily: 'Pretendard-Bold',
+    fontSize: 16,
+    color: '#1A211C',
+  },
   sheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(14, 20, 16, 0.32)',

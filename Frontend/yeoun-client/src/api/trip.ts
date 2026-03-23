@@ -31,6 +31,13 @@ export interface TripLeaveData {
 
 export type TripLeaveResponse = CommonApiResponse<TripLeaveData>;
 
+export interface TripDeleteData {
+  tripId: string;
+  deleted: boolean;
+}
+
+export type TripDeleteResponse = CommonApiResponse<TripDeleteData>;
+
 export interface LocationLog {
   latitude: number;
   longitude: number;
@@ -413,6 +420,35 @@ export const leaveTripApi = async (tripId: string): Promise<TripLeaveResponse> =
       code: normalizedCode,
       message: getErrorMessage(error, 'Failed to leave trip.'),
       data: {} as TripLeaveData,
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const deleteTripApi = async (tripId: string): Promise<TripDeleteResponse> => {
+  try {
+    const response = await apiClient.delete<TripDeleteResponse>(`/trips/${tripId}`);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Trip deleted (MOCK)',
+        data: {
+          tripId,
+          deleted: true,
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Delete Trip API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to delete trip.'),
+      data: {} as TripDeleteData,
       timestamp: new Date().toISOString(),
     };
   }
