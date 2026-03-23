@@ -14,7 +14,7 @@ public record PhotoDetailResponse(
         @Schema(description = "여행 ID")
         UUID tripId,
         @Schema(description = "원본 이미지 key")
-        String storageUrl,
+        String originalUrl,
         @Schema(description = "썸네일 key")
         String thumbnailUrl,
         @Schema(description = "파일명")
