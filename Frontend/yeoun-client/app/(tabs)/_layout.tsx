@@ -1,15 +1,18 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-import { PillNav } from '@/src/components/ui/pill-navbar';
+import { RegularNav } from '@/src/components/ui/regular-navbar';
 import { HouseSvg } from '@/src/components/icons/HouseSvg';
 import { MapLocationPinSvg } from '@/src/components/icons/MapLocationPinSvg';
 import { ProfileRoundSvg } from '@/src/components/icons/ProfileRoundSvg';
 import { CreditCardSvg } from '@/src/components/icons/CreditCardSvg';
+import { BellSvg } from '@/src/components/icons/BellSvg';
 import { useColorScheme } from '@/src/hooks/use-color-scheme';
+import { useNotificationStore } from '@/src/store/notification.store';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const hasUnread = useNotificationStore((state) => state.hasUnread);
 
   const navItems = [
     { 
@@ -28,6 +31,12 @@ export default function TabLayout() {
       icon: ({ color, size }: { color: string; size: number }) => <CreditCardSvg color={color} size={size} />
     },
     { 
+      label: 'Notice', 
+      href: '/notifications', 
+      icon: ({ color, size }: { color: string; size: number }) => <BellSvg color={color} size={size} />,
+      showBadge: hasUnread
+    },
+    { 
       label: 'My Page', 
       href: '/mypage', 
       icon: ({ color, size }: { color: string; size: number }) => <ProfileRoundSvg color={color} size={size} />
@@ -37,12 +46,11 @@ export default function TabLayout() {
   return (
     <Tabs
       tabBar={() => (
-        <PillNav 
+        <RegularNav 
           items={navItems} 
-          baseColor={colorScheme === 'dark' ? '#111' : '#fff'}
-          pillColor={colorScheme === 'dark' ? '#fff' : '#000'}
-          activeTextColor={colorScheme === 'dark' ? '#000' : '#fff'}
-          inactiveTextColor={colorScheme === 'dark' ? '#999' : '#666'}
+          backgroundColor={colorScheme === 'dark' ? '#111' : '#fff'}
+          activeColor={colorScheme === 'dark' ? '#EBF3EA' : '#244934'}
+          inactiveColor={colorScheme === 'dark' ? '#666' : '#94A098'}
         />
       )}
       screenOptions={{
@@ -64,6 +72,12 @@ export default function TabLayout() {
         name="cards"
         options={{
           title: 'Cards',
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Notice',
         }}
       />
       <Tabs.Screen
