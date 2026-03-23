@@ -1,17 +1,21 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { uploadLocationsApi, LocationLog } from '../api/trip';
+import { Linking } from 'react-native';
+
+import { LocationLog, uploadLocationsApi } from '../api/trip';
 
 const LOCATION_TRACKING_TASK = 'LOCATION_TRACKING_TASK';
 const STORAGE_KEY_PREFIX = 'pending_location_logs_chunk_';
 const STORAGE_INDEX_KEY = 'pending_location_logs_index';
 const MAX_LOGS_PER_CHUNK = 100;
 
-/**
- * Task manager definition for background location updates.
- * This MUST be defined in the global scope (outside of any hooks or components).
- */
+export type StartTrackingResult = {
+  success: boolean;
+  foregroundGranted: boolean;
+  backgroundGranted: boolean;
+};
+
 TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
   if (error) {
     console.error('Background Location Task Error:', error.message);
@@ -21,7 +25,7 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
   if (data) {
     const { locations } = data as { locations: Location.LocationObject[] };
     if (locations && locations.length > 0) {
-      const newLogs = locations.map(loc => ({
+      const newLogs = locations.map((loc) => ({
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
         accuracy: loc.coords.accuracy,
@@ -33,9 +37,6 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
   }
 });
 
-/**
- * Appends new location logs to AsyncStorage for later batch upload.
- */
 async function appendLogsToStorage(newLogs: any[]) {
   try {
     const existingIndexRaw = await AsyncStorage.getItem(STORAGE_INDEX_KEY);
@@ -50,98 +51,128 @@ async function appendLogsToStorage(newLogs: any[]) {
     }
 
     await AsyncStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(chunkKeys));
-  } catch (e) {
-    console.error('Failed to save location logs to storage:', e);
+  } catch (error) {
+    console.error('Failed to save location logs to storage:', error);
   }
 }
 
 type LocationListener = (location: LocationLog) => void;
+
 let listeners: LocationListener[] = [];
 let foregroundSubscription: Location.LocationSubscription | null = null;
 
-/**
- * Service to manage high-precision GPS tracking.
- */
+const startForegroundWatcher = async () => {
+  if (foregroundSubscription) {
+    return;
+  }
+
+  foregroundSubscription = await Location.watchPositionAsync(
+    {
+      accuracy: Location.Accuracy.High,
+      timeInterval: 5000,
+      distanceInterval: 5,
+    },
+    (loc) => {
+      const newLog = {
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+        accuracy: loc.coords.accuracy ?? undefined,
+        recordedAt: new Date(loc.timestamp).toISOString(),
+      };
+      listeners.forEach((listener) => listener(newLog));
+    },
+  );
+  console.log('Foreground location watcher started');
+};
+
+const startBackgroundWatcher = async () => {
+  const isStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
+  if (isStarted) {
+    return;
+  }
+
+  await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, {
+    accuracy: Location.Accuracy.High,
+    timeInterval: 10000,
+    distanceInterval: 10,
+    foregroundService: {
+      notificationTitle: '여행 기록 중',
+      notificationBody: '백그라운드 위치를 수집해 여행 경로를 기록하고 있습니다.',
+      notificationColor: '#344966',
+    },
+    pausesUpdatesAutomatically: false,
+  });
+  console.log('Background location tracking started');
+};
+
 export const locationService = {
-  /**
-   * Subscribes to live location updates (foreground only).
-   */
   subscribe: (callback: LocationListener) => {
     listeners.push(callback);
     return () => {
-      listeners = listeners.filter(l => l !== callback);
+      listeners = listeners.filter((listener) => listener !== callback);
     };
   },
-  /**
-   * Checks permissions and starts high-accuracy background tracking.
-   */
-  startTracking: async () => {
+
+  startTracking: async (): Promise<StartTrackingResult> => {
     try {
-      // 1. Request foreground permission
-      const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
-      if (fgStatus !== 'granted') {
+      const currentForeground = await Location.getForegroundPermissionsAsync();
+      const foregroundPermission =
+        currentForeground.status === 'granted'
+          ? currentForeground
+          : await Location.requestForegroundPermissionsAsync();
+
+      if (foregroundPermission.status !== 'granted') {
         console.warn('Foreground location permission denied');
-        return false;
+        return {
+          success: false,
+          foregroundGranted: false,
+          backgroundGranted: false,
+        };
       }
 
-      // 2. Request background permission
-      let hasBackgroundPermission = true;
-      const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
-      if (bgStatus !== 'granted') {
+      const currentBackground = await Location.getBackgroundPermissionsAsync();
+      const backgroundPermission =
+        currentBackground.status === 'granted'
+          ? currentBackground
+          : await Location.requestBackgroundPermissionsAsync();
+
+      const backgroundGranted = backgroundPermission.status === 'granted';
+
+      if (!backgroundGranted) {
         console.warn('Background location permission denied. Falling back to foreground tracking only.');
-        hasBackgroundPermission = false;
       }
 
-      // 3. Start high-accuracy background tracking
-      if (hasBackgroundPermission) {
-        const isStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
-        if (!isStarted) {
-          await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 10000, // 10 seconds
-            distanceInterval: 10, // 10 meters
-            foregroundService: {
-              notificationTitle: '여행 기록 중',
-              notificationBody: '현재 위치를 기반으로 여행 경로를 기록하고 있습니다.',
-              notificationColor: '#344966',
-            },
-            pausesUpdatesAutomatically: false,
-          });
-          console.log('Background location tracking started');
-        }
+      if (backgroundGranted) {
+        await startBackgroundWatcher();
       }
 
-      // 4. Start foreground watching for instant UI updates
-      if (!foregroundSubscription) {
-        foregroundSubscription = await Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 5000,
-            distanceInterval: 5,
-          },
-          (loc) => {
-            const newLog = {
-              latitude: loc.coords.latitude,
-              longitude: loc.coords.longitude,
-              accuracy: loc.coords.accuracy ?? undefined,
-              recordedAt: new Date(loc.timestamp).toISOString(),
-            };
-            listeners.forEach(l => l(newLog));
-          }
-        );
-        console.log('Foreground location watcher started');
-      }
+      await startForegroundWatcher();
 
-      return true;
+      return {
+        success: true,
+        foregroundGranted: true,
+        backgroundGranted,
+      };
     } catch (error) {
       console.error('Failed to start tracking:', error);
+      return {
+        success: false,
+        foregroundGranted: false,
+        backgroundGranted: false,
+      };
+    }
+  },
+
+  openLocationSettings: async () => {
+    try {
+      await Linking.openSettings();
+      return true;
+    } catch (error) {
+      console.error('Failed to open app settings:', error);
       return false;
     }
   },
 
-  /**
-   * Stops background tracking.
-   */
   stopTracking: async () => {
     try {
       const isStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
@@ -160,9 +191,6 @@ export const locationService = {
     }
   },
 
-  /**
-   * Retrieves all pending logs and clears the storage.
-   */
   flushLogs: async (): Promise<LocationLog[]> => {
     try {
       const existingIndexRaw = await AsyncStorage.getItem(STORAGE_INDEX_KEY);
@@ -187,15 +215,12 @@ export const locationService = {
           return [];
         }
       });
-    } catch (e) {
-      console.error('Failed to flush logs:', e);
+    } catch (error) {
+      console.error('Failed to flush logs:', error);
       return [];
     }
   },
 
-  /**
-   * Syncs pending logs to the server.
-   */
   syncLocations: async (tripId: string) => {
     try {
       const logs = await locationService.flushLogs();
@@ -206,9 +231,8 @@ export const locationService = {
 
       console.log(`Syncing ${logs.length} location logs for trip ${tripId}...`);
       const response = await uploadLocationsApi(tripId, logs);
-      
+
       if (!response.success) {
-        // If upload fails, put them back in the queue
         await appendLogsToStorage(logs);
         console.error('Failed to sync logs, re-queued:', response.message);
         return false;
@@ -220,5 +244,5 @@ export const locationService = {
       console.error('Sync process error:', error);
       return false;
     }
-  }
+  },
 };

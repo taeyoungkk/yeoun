@@ -37,7 +37,7 @@ import {
   updateTripPhoto,
   type TimelineEvent,
 } from '@/src/features/trip/store/tripMockStore';
-import { locationService } from '@/src/services/locationService';
+import { locationService } from '../../../services/locationService';
 import { useTripStore } from '@/src/store/trip.store';
 import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
 
@@ -983,6 +983,7 @@ export default function MockTripRecordingScreen({
           </View>
         </View>
         <View style={styles.headerActions}>
+          <View style={styles.headerActionsTopRow}>
           <TouchableOpacity 
             style={styles.syncHeaderButton} 
             activeOpacity={0.88}
@@ -994,6 +995,13 @@ export default function MockTripRecordingScreen({
           <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev) => !prev)} activeOpacity={0.85}>
             <MaterialIcons name="more-horiz" size={22} color="#274232" />
           </TouchableOpacity>
+          </View>
+          {!isReviewMode ? (
+            <TouchableOpacity style={styles.hiddenAction} onPress={() => router.push('/trip/invite')} activeOpacity={0.88}>
+              <MaterialIcons name="group-add" size={16} color="#274232" />
+              <Text style={styles.inviteQuickButtonText}>친구 초대하기</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
@@ -1004,6 +1012,12 @@ export default function MockTripRecordingScreen({
               <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleOpenReport(); }} activeOpacity={0.85}>
                 <MaterialIcons name="article" size={18} color="#244934" />
                 <Text style={styles.menuItemText}>여행 리포트 확인</Text>
+              </TouchableOpacity>
+            ) : null}
+            {!isReviewMode ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); router.push('/trip/invite'); }} activeOpacity={0.85}>
+                <MaterialIcons name="group-add" size={18} color="#244934" />
+                <Text style={styles.menuItemText}>친구 초대하기</Text>
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity style={[styles.menuItem, isReviewMode && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
@@ -1744,6 +1758,18 @@ const styles = StyleSheet.create({
   backButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', marginRight: 2 },
   headerTextWrap: { flex: 1 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  inviteQuickButton: {
+    alignSelf: 'flex-end',
+    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#E3EBDD',
+  },
+  inviteQuickButtonText: { fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#274232' },
   recordingInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   headerMeta: { marginTop: 4, fontFamily: 'Pretendard-Medium', fontSize: 12, color: '#5F6E65' },
   recordingDot: { width: 7, height: 7, borderRadius: 999, backgroundColor: '#F35B4F' },
@@ -1753,6 +1779,7 @@ const styles = StyleSheet.create({
   recordingStatusTextCompleted: { color: '#4C8E5E' },
   headerTitle: { fontFamily: 'Pretendard-Bold', fontSize: 22, color: '#17201A' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerActionsTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   syncHeaderButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 18, backgroundColor: '#E3EBDD', paddingHorizontal: 12, height: 36 },
   syncHeaderButtonText: { fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#274232' },
   moreButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E3EBDD', alignItems: 'center', justifyContent: 'center' },
