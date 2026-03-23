@@ -89,7 +89,7 @@ public class TripInviteService {
 
         Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(invite.getTripId(), TripStatus.DELETED)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
-        if (trip.getStatus() != TripStatus.DRAFT) {
+        if (!isInviteAcceptAllowedStatus(trip.getStatus())) {
             throw new BaseException(ErrorCode.TRIP_INVITE_ACCEPT_NOT_ALLOWED);
         }
 
@@ -162,5 +162,9 @@ public class TripInviteService {
         }
 
         return new TripInviteDeclineResponse(invite.getTripId(), "DECLINED");
+    }
+
+    private boolean isInviteAcceptAllowedStatus(TripStatus status) {
+        return status == TripStatus.DRAFT || status == TripStatus.ACTIVE;
     }
 }

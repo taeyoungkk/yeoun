@@ -131,7 +131,7 @@ public class TripService {
             throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
         }
 
-        if (trip.getStatus() != TripStatus.DRAFT) {
+        if (!isInviteAllowedStatus(trip.getStatus())) {
             throw new BaseException(ErrorCode.TRIP_INVITE_NOT_ALLOWED);
         }
 
@@ -201,7 +201,7 @@ public class TripService {
         Trip trip = findNonDeletedTripOrThrow(tripId);
         validateTripOwner(requesterUserId, trip);
 
-        if (trip.getStatus() != TripStatus.DRAFT) {
+        if (!isInviteAllowedStatus(trip.getStatus())) {
             throw new BaseException(ErrorCode.TRIP_INVITE_NOT_ALLOWED);
         }
 
@@ -418,7 +418,7 @@ public class TripService {
     @Transactional
     public TripLeaveResponse leaveTrip(UUID requesterUserId, UUID tripId) {
         Trip trip = findNonDeletedTripOrThrow(tripId);
-        if (trip.getStatus() != TripStatus.DRAFT) {
+        if (!isLeaveAllowedStatus(trip.getStatus())) {
             throw new BaseException(ErrorCode.TRIP_LEAVE_NOT_ALLOWED);
         }
         if (trip.getOwnerUserId().equals(requesterUserId)) {
@@ -468,6 +468,14 @@ public class TripService {
         if (!isOwner && !isCurrentMember) {
             throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
         }
+    }
+
+    private boolean isInviteAllowedStatus(TripStatus status) {
+        return status == TripStatus.DRAFT || status == TripStatus.ACTIVE;
+    }
+
+    private boolean isLeaveAllowedStatus(TripStatus status) {
+        return status == TripStatus.DRAFT || status == TripStatus.ACTIVE;
     }
 
     private String generateUniqueInviteToken() {
