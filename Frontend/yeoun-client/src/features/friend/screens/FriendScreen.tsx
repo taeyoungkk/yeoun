@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -107,6 +107,20 @@ export default function FriendScreen() {
       setSearchResults([]);
     }
   }, []);
+
+  useEffect(() => {
+    if (!trimmedKeyword) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      void handleSearch();
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [handleSearch, trimmedKeyword]);
 
   const handleSendRequest = useCallback(
     async (friendUserId: string) => {
