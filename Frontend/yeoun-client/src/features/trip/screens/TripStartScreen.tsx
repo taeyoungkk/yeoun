@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -14,28 +14,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { searchFriendsApi } from '@/src/api/friend';
-import {
-  createTripApi,
-  createTripInviteLinkApi,
-  getTripDetailApi,
-  inviteUsersToTripApi,
-  startTripApi,
-} from '@/src/api/trip';
-import { locationService } from '../../../services/locationService';
+import { createTripApi, getTripDetailApi, startTripApi } from '@/src/api/trip';
 import { useTripStore } from '@/src/store/trip.store';
 import { useUserStore } from '@/src/store/user.store';
+import { locationService } from '../../../services/locationService';
 
-import { InviteCandidate, InviteMember, TripInviteScreen } from '../components/TripInviteScreen';
 import { TripStartCalendar } from '../components/TripStartCalendar';
 import { TripMemberCounter, TripStartField, TripStartInputField } from '../components/TripStartField';
 import { TripStartHeader } from '../components/TripStartHeader';
 
-type ScreenMode = 'form' | 'invite';
 type PickerMode = 'month' | 'year' | null;
 type NoticeModalType = 'missing' | 'start' | null;
 
-const PENDING_INVITE_LINK = '여행 생성 후 초대 링크가 만들어집니다.';
 const WEEK_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 const MONTH_LABELS = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
 
@@ -109,11 +99,10 @@ function FieldNoticeModal({
               color={type === 'missing' ? '#5D6C63' : '#355D49'}
             />
           </View>
-
           {type === 'missing' ? (
             <>
-              <Text style={styles.modalTitle}>입력 정보를 확인해 주세요</Text>
-              <Text style={styles.modalDescription}>여행을 시작하려면 아래 항목을 모두 입력해야 합니다.</Text>
+              <Text style={styles.modalTitle}>입력 정보가 부족합니다</Text>
+              <Text style={styles.modalDescription}>아래 항목을 채운 뒤 다시 진행해 주세요.</Text>
 
               <View style={styles.modalTagWrap}>
                 {missingLabels.map((label) => (
@@ -129,9 +118,9 @@ function FieldNoticeModal({
             </>
           ) : (
             <>
-              <Text style={styles.modalTitle}>{isEditing ? '여행 정보 수정' : '여행을 시작할까요?'}</Text>
+              <Text style={styles.modalTitle}>{isEditing ? '여행 정보를 수정할까요?' : '이 여행을 시작할까요?'}</Text>
               <Text style={styles.modalDescription}>
-                {isEditing ? '입력한 정보를 반영하고 기록 화면으로 돌아갑니다.' : '여행을 생성하고 위치 기록을 시작합니다.'}
+                {isEditing ? '현재 입력한 내용으로 여행 정보를 갱신합니다.' : '여행을 생성하고 바로 기록을 시작합니다.'}
               </Text>
 
               <View style={styles.summaryCard}>
@@ -140,7 +129,7 @@ function FieldNoticeModal({
                   <Text style={styles.summaryValue}>{tripName}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>여행 날짜</Text>
+                  <Text style={styles.summaryLabel}>여행 일정</Text>
                   <Text style={styles.summaryValue}>{dateLabel}</Text>
                 </View>
                 <View style={styles.summaryRow}>
@@ -151,11 +140,11 @@ function FieldNoticeModal({
 
               <View style={styles.modalActionRow}>
                 <TouchableOpacity style={styles.modalSecondaryButton} onPress={onClose} activeOpacity={0.88}>
-                  <Text style={styles.modalSecondaryButtonText}>이전</Text>
+                  <Text style={styles.modalSecondaryButtonText}>취소</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.modalPrimaryHalfButton} onPress={onConfirm} activeOpacity={0.88}>
-                  <Text style={styles.modalPrimaryButtonText}>{isEditing ? '수정 완료' : '기록 시작'}</Text>
+                  <Text style={styles.modalPrimaryButtonText}>{isEditing ? '수정하기' : '시작하기'}</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -182,13 +171,9 @@ export default function TripStartScreen() {
   const [startDate, setStartDate] = useState<Date | null>(currentTrip?.startDate ? new Date(currentTrip.startDate) : null);
   const [endDate, setEndDate] = useState<Date | null>(currentTrip?.endDate ? new Date(currentTrip.endDate) : null);
   const [memberCount, setMemberCount] = useState(currentTrip?.memberCount ?? 2);
-  const [screenMode, setScreenMode] = useState<ScreenMode>('form');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<InviteCandidate[]>([]);
-  const [inviteMembers, setInviteMembers] = useState<InviteMember[]>([]);
   const [noticeModalType, setNoticeModalType] = useState<NoticeModalType>(null);
 
-  const headerNickname = profileNickname?.trim() || '지우';
+  const headerNickname = profileNickname?.trim() || '여행자';
   const calendarDays = useMemo(() => getCalendarDays(calendarMonth), [calendarMonth]);
   const hasTripName = tripName.trim().length > 0;
   const hasDateRange = Boolean(startDate && endDate);
@@ -196,39 +181,10 @@ export default function TripStartScreen() {
   const isFormComplete = hasTripName && hasDateRange && hasMemberCount;
   const isEditingActiveTrip = Boolean(currentTrip?.tripId && isTripActive);
 
-  useEffect(() => {
-    const query = searchQuery.trim();
-
-    if (query.length === 0) {
-      setSearchResults([]);
-      return;
-    }
-
-    const timeoutId = setTimeout(async () => {
-      try {
-        const response = await searchFriendsApi(query);
-        const invitedUserIds = new Set(inviteMembers.map((member) => member.id));
-        const mapped = response.data.items
-          .filter((item) => !invitedUserIds.has(item.userId))
-          .map((item) => ({
-            id: item.userId,
-            name: item.nickname,
-            nickname: item.nickname,
-          }));
-        setSearchResults(mapped);
-      } catch (error) {
-        console.error('Failed to search friends:', error);
-        setSearchResults([]);
-      }
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
-  }, [inviteMembers, searchQuery]);
-
   const missingLabels = useMemo(() => {
     const nextMissing: string[] = [];
     if (!hasTripName) nextMissing.push('여행 이름');
-    if (!hasDateRange) nextMissing.push('여행 날짜');
+    if (!hasDateRange) nextMissing.push('여행 일정');
     if (!hasMemberCount) nextMissing.push('인원');
     return nextMissing;
   }, [hasDateRange, hasMemberCount, hasTripName]);
@@ -267,46 +223,25 @@ export default function TripStartScreen() {
     setEndDate(date);
   };
 
-  const handleInviteMember = (candidate: InviteCandidate) => {
-    setInviteMembers((prev) => [
-      {
-        id: candidate.id,
-        name: candidate.name,
-        nickname: candidate.nickname,
-        status: 'pending',
-      },
-      ...prev,
-    ]);
-    setSearchQuery('');
-    setSearchResults([]);
-  };
-
-  const handleCancelInvite = (memberId: string) => {
-    setInviteMembers((prev) => prev.filter((member) => member.id !== memberId));
-  };
-
   const handlePressNext = () => {
     setNoticeModalType(isFormComplete ? 'start' : 'missing');
   };
 
   const startTrackingAndNavigate = async (tripId: string) => {
     const trackingResult = await locationService.startTracking();
+
     if (!trackingResult.success) {
-      Alert.alert('위치 권한 필요', '여행 기록을 위해 위치 권한을 허용해 주세요.');
+      Alert.alert('위치 추적 실패', '여행 기록을 시작했지만 위치 추적 권한을 확인하지 못했습니다.');
     } else if (!trackingResult.backgroundGranted) {
-      Alert.alert(
-        '백그라운드 위치 권한 필요',
-        '앱이 꺼져 있거나 화면이 꺼진 상태에서도 위치를 수집하려면 위치 권한을 항상 허용으로 바꿔야 합니다.',
-        [
-          { text: '나중에' },
-          {
-            text: '설정 열기',
-            onPress: () => {
-              void locationService.openLocationSettings();
-            },
+      Alert.alert('백그라운드 위치 권한 필요', '앱이 꺼져 있어도 기록하려면 설정에서 항상 허용으로 변경해 주세요.', [
+        { text: '나중에' },
+        {
+          text: '설정 열기',
+          onPress: () => {
+            void locationService.openLocationSettings();
           },
-        ],
-      );
+        },
+      ]);
     }
 
     startTrip({ ...tripDraft, tripId });
@@ -337,47 +272,6 @@ export default function TripStartScreen() {
     router.replace('/trip/recording');
   };
 
-  const showInviteLinkPrompt = async (inviteUrl: string) => {
-    Alert.alert(
-      '초대 링크 준비 완료',
-      '여행이 시작되었습니다. 초대 링크를 바로 복사할까요?',
-      [
-        { text: '나중에' },
-        {
-          text: '복사',
-          onPress: async () => {
-            const Clipboard = await import('expo-clipboard');
-            await Clipboard.setStringAsync(inviteUrl);
-            Alert.alert('복사 완료', '초대 링크를 클립보드에 복사했습니다.');
-          },
-        },
-      ],
-    );
-  };
-
-  const syncInvitesAfterCreate = async (tripId: string) => {
-    const pendingInvites = inviteMembers.filter((member) => member.status === 'pending');
-
-    const inviteResults = await Promise.allSettled(
-      pendingInvites.map((member) =>
-        inviteUsersToTripApi(tripId, {
-          targetUserId: member.id,
-        }),
-      ),
-    );
-
-    const failedInviteCount = inviteResults.filter(
-      (result) => result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.success),
-    ).length;
-
-    const inviteLinkResponse = await createTripInviteLinkApi(tripId);
-
-    return {
-      failedInviteCount,
-      inviteLinkResponse,
-    };
-  };
-
   const handleConfirmStartTrip = async () => {
     setNoticeModalType(null);
 
@@ -404,7 +298,7 @@ export default function TripStartScreen() {
           message: createResponse.message,
           code: createResponse.code,
         });
-        Alert.alert('여행 생성 실패', createResponse.message || '여행 생성에 실패했습니다.');
+        Alert.alert('여행 생성 실패', createResponse.message || '여행을 생성하지 못했습니다.');
         return;
       }
 
@@ -425,7 +319,7 @@ export default function TripStartScreen() {
           message: startResponse.message,
           code: startResponse.code,
         });
-        Alert.alert('여행 시작 실패', startResponse.message || '여행 시작 요청에 실패했습니다.');
+        Alert.alert('여행 시작 실패', startResponse.message || '여행을 시작하지 못했습니다.');
         return;
       }
 
@@ -435,35 +329,10 @@ export default function TripStartScreen() {
         startedAt: startResponse.data.startedAt,
       });
 
-      const inviteSummary = await syncInvitesAfterCreate(tripId);
-
-      if (inviteSummary.failedInviteCount > 0) {
-        Alert.alert(
-          '일부 초대 실패',
-          `여행은 정상적으로 시작됐지만 ${inviteSummary.failedInviteCount}명의 초대 전송에 실패했습니다.`,
-        );
-      }
-
-      if (inviteSummary.inviteLinkResponse.success && inviteSummary.inviteLinkResponse.data?.inviteUrl) {
-        void showInviteLinkPrompt(inviteSummary.inviteLinkResponse.data.inviteUrl);
-      } else if (inviteSummary.inviteLinkResponse.code === 'CONFLICT' || inviteSummary.inviteLinkResponse.message?.includes('already')) {
-        console.log('[TripStart] Invite link already exists or duplicate creation is blocked.', {
-          tripId,
-          code: inviteSummary.inviteLinkResponse.code,
-          message: inviteSummary.inviteLinkResponse.message,
-        });
-      } else if (!inviteSummary.inviteLinkResponse.success) {
-        console.warn('[TripStart] Invite link creation failed, but trip start will continue.', {
-          tripId,
-          code: inviteSummary.inviteLinkResponse.code,
-          message: inviteSummary.inviteLinkResponse.message,
-        });
-      }
-
       await startTrackingAndNavigate(tripId);
     } catch (error) {
       console.error('[TripStart] Failed during create/start flow.', error);
-      Alert.alert('여행 시작 실패', '여행 생성 또는 시작 처리 중 오류가 발생했습니다.');
+      Alert.alert('여행 시작 실패', '여행을 생성하거나 시작하는 중 오류가 발생했습니다.');
     }
   };
 
@@ -477,22 +346,6 @@ export default function TripStartScreen() {
     router.push('/trip/mock-recording');
   };
 
-  if (screenMode === 'invite') {
-    return (
-      <TripInviteScreen
-        query={searchQuery}
-        candidates={searchResults}
-        members={inviteMembers}
-        inviteLink={PENDING_INVITE_LINK}
-        isInviteLinkReady={false}
-        onBack={() => setScreenMode('form')}
-        onChangeQuery={setSearchQuery}
-        onInviteMember={handleInviteMember}
-        onCancelInvite={handleCancelInvite}
-      />
-    );
-  }
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
@@ -504,7 +357,7 @@ export default function TripStartScreen() {
 
           <TripStartField
             icon="calendar-today"
-            label="여행 날짜"
+            label="여행 일정"
             value={dateLabel}
             onPress={() => {
               setPickerMode(null);
@@ -545,19 +398,11 @@ export default function TripStartScreen() {
               />
             }
           />
-
-          <TripStartField
-            icon="group-add"
-            label="여행 멤버 초대"
-            value={inviteMembers.length > 0 ? `${inviteMembers.length}명 선택됨` : '여행 멤버 초대'}
-            onPress={() => setScreenMode('invite')}
-            rightSlot={<MaterialIcons name="chevron-right" size={22} color="#151A17" />}
-          />
         </View>
 
         <View style={styles.actionRow}>
           <TouchableOpacity style={styles.secondaryButton} onPress={() => router.back()} activeOpacity={0.88}>
-            <Text style={styles.secondaryButtonText}>이전</Text>
+            <Text style={styles.secondaryButtonText}>취소</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -565,13 +410,13 @@ export default function TripStartScreen() {
             onPress={handlePressNext}
             activeOpacity={0.88}
           >
-            <Text style={styles.primaryButtonText}>{isEditingActiveTrip ? '수정 완료' : '다음'}</Text>
+            <Text style={styles.primaryButtonText}>{isEditingActiveTrip ? '수정하기' : '시작하기'}</Text>
           </TouchableOpacity>
         </View>
 
         {__DEV__ ? (
           <TouchableOpacity style={styles.mockButton} onPress={handleOpenMockTrip} activeOpacity={0.88}>
-            <Text style={styles.mockButtonText}>Mock 버전 확인</Text>
+            <Text style={styles.mockButtonText}>Mock 기록 화면 열기</Text>
           </TouchableOpacity>
         ) : null}
       </ScrollView>
@@ -613,48 +458,48 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 54,
     borderRadius: 27,
-    backgroundColor: '#F4F6F2',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#F4F6F2',
   },
   secondaryButtonText: {
-    fontFamily: 'Pretendard-SemiBold',
     fontSize: 16,
+    fontWeight: '700',
     color: '#465346',
   },
   primaryButton: {
     flex: 1,
     height: 54,
     borderRadius: 27,
-    backgroundColor: '#DCE6D9',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#DCE6D9',
   },
   primaryButtonDisabled: {
     backgroundColor: '#E7ECE5',
   },
   primaryButtonText: {
-    fontFamily: 'Pretendard-SemiBold',
     fontSize: 16,
+    fontWeight: '700',
     color: '#1A211C',
   },
   mockButton: {
     marginTop: 18,
     paddingVertical: 15,
     borderRadius: 24,
-    backgroundColor: '#40503F',
     alignItems: 'center',
+    backgroundColor: '#40503F',
   },
   mockButtonText: {
-    color: '#F5F8F3',
     fontSize: 14,
     fontWeight: '700',
+    color: '#F5F8F3',
   },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(17, 24, 18, 0.28)',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 24,
   },
   modalCard: {
@@ -707,39 +552,6 @@ const styles = StyleSheet.create({
     color: '#4E5A54',
     fontWeight: '600',
   },
-  modalPrimaryButton: {
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#355D49',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalPrimaryHalfButton: {
-    flex: 1,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#355D49',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalPrimaryButtonText: {
-    color: '#F7FBF5',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  modalSecondaryButton: {
-    flex: 1,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#E6ECE3',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalSecondaryButtonText: {
-    color: '#425047',
-    fontSize: 15,
-    fontWeight: '700',
-  },
   summaryCard: {
     marginTop: 18,
     marginBottom: 22,
@@ -768,5 +580,38 @@ const styles = StyleSheet.create({
   modalActionRow: {
     flexDirection: 'row',
     gap: 12,
+  },
+  modalSecondaryButton: {
+    flex: 1,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#E6ECE3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSecondaryButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#425047',
+  },
+  modalPrimaryButton: {
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#355D49',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalPrimaryHalfButton: {
+    flex: 1,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#355D49',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalPrimaryButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#F7FBF5',
   },
 });
