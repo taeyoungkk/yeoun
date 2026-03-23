@@ -18,32 +18,54 @@ public class PhotoProcessingImageUrlService {
     private final S3Presigner s3Presigner;
     private final String bucket;
     private final int presignedUrlExpireSeconds;
+    private final int thumbnailPresignedUrlExpireSeconds;
+    private final int originalPresignedUrlExpireSeconds;
 
     public PhotoProcessingImageUrlService(
             S3Presigner s3Presigner,
             @Value("${AWS_S3_BUCKET:${aws.s3.bucket}}") String bucket,
-            @Value("${app.photo-processing.presigned-url-expire-seconds:900}") int presignedUrlExpireSeconds
+            @Value("${app.photo-processing.presigned-url-expire-seconds:900}") int presignedUrlExpireSeconds,
+            @Value("${app.photo.thumbnail-presigned-url-expire-seconds:900}") int thumbnailPresignedUrlExpireSeconds,
+            @Value("${app.photo.original-presigned-url-expire-seconds:600}") int originalPresignedUrlExpireSeconds
     ) {
         this.s3Presigner = s3Presigner;
         this.bucket = bucket;
         this.presignedUrlExpireSeconds = presignedUrlExpireSeconds;
+        this.thumbnailPresignedUrlExpireSeconds = thumbnailPresignedUrlExpireSeconds;
+        this.originalPresignedUrlExpireSeconds = originalPresignedUrlExpireSeconds;
     }
 
     public String createDownloadUrl(String storageKey) {
+        return createPresignedDownloadUrl(storageKey, presignedUrlExpireSeconds);
+    }
+
+    public String createThumbnailUrl(String thumbnailKey) {
+        return createPresignedDownloadUrl(thumbnailKey, thumbnailPresignedUrlExpireSeconds);
+    }
+
+    public String createOriginalUrl(String storageKey) {
+        return createPresignedDownloadUrl(storageKey, originalPresignedUrlExpireSeconds);
+    }
+
+    private String createPresignedDownloadUrl(String objectKey, int expireSeconds) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return null;
+        }
+
         try {
             GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                     .bucket(bucket)
-                    .key(storageKey)
+                    .key(objectKey)
                     .build();
 
             GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-                    .signatureDuration(Duration.ofSeconds(presignedUrlExpireSeconds))
+                    .signatureDuration(Duration.ofSeconds(expireSeconds))
                     .getObjectRequest(getObjectRequest)
                     .build();
 
             return s3Presigner.presignGetObject(presignRequest).url().toString();
         } catch (Exception exception) {
-            log.warn("Failed to create presigned image URL for storageKey={}", storageKey, exception);
+            log.warn("Failed to create presigned image URL for objectKey={}", objectKey, exception);
             return null;
         }
     }

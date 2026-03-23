@@ -31,17 +31,20 @@ public class PhotoQueryService {
     private final PhotoMemoRepository photoMemoRepository;
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
+    private final PhotoProcessingImageUrlService photoProcessingImageUrlService;
 
     public PhotoQueryService(
             PhotoRepository photoRepository,
             PhotoMemoRepository photoMemoRepository,
             TripRepository tripRepository,
-            TripMemberRepository tripMemberRepository
+            TripMemberRepository tripMemberRepository,
+            PhotoProcessingImageUrlService photoProcessingImageUrlService
     ) {
         this.photoRepository = photoRepository;
         this.photoMemoRepository = photoMemoRepository;
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
+        this.photoProcessingImageUrlService = photoProcessingImageUrlService;
     }
 
     public TripPhotoListResponse getTripPhotos(UUID requesterUserId, UUID tripId) {
@@ -67,8 +70,8 @@ public class PhotoQueryService {
                 photo.getPhotoId(),
                 photo.getOwnerUserId(),
                 photo.getTripId(),
-                photo.getStorageKey(),
-                photo.getThumbnailKey(),
+                photoProcessingImageUrlService.createOriginalUrl(photo.getStorageKey()),
+                photoProcessingImageUrlService.createThumbnailUrl(photo.getThumbnailKey()),
                 photo.getFileName(),
                 photo.getMimeType(),
                 photo.getWidth(),
@@ -140,7 +143,7 @@ public class PhotoQueryService {
     private TripPhotoListItemResponse toTripPhotoListItemResponse(Photo photo) {
         return new TripPhotoListItemResponse(
                 photo.getPhotoId(),
-                photo.getThumbnailKey(),
+                photoProcessingImageUrlService.createThumbnailUrl(photo.getThumbnailKey()),
                 photo.getTakenAt(),
                 photo.isExcluded()
         );
