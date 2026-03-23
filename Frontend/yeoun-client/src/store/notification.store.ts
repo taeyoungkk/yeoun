@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { FriendRequestItem, getReceivedFriendRequestsApi } from '@/src/api/friend';
 
 /** 알림 타입: 여행 초대, 영수증 인증 요청, 정산 요청 */
 export type NotificationType = 'INVITATION' | 'RECEIPT_REMINDER' | 'PAYMENT_REQUEST';
@@ -23,6 +24,7 @@ export interface Notification {
 
 interface NotificationState {
   notifications: Notification[];
+  friendRequests: FriendRequestItem[];
   unreadCount: number;
   hasUnread: boolean;
   
@@ -31,6 +33,9 @@ interface NotificationState {
   markAsRead: (id: string) => void;
   removeNotification: (id: string) => void;
   clearUnreadCount: () => void;
+
+  fetchFriendRequests: () => Promise<void>;
+  removeFriendRequest: (friendshipId: string) => void;
 }
 
 /** 초기 데모를 위한 목업 데이터 */
@@ -78,15 +83,16 @@ const MOCK_NOTIFICATIONS: Notification[] = [
 
 export const useNotificationStore = create<NotificationState>((set) => ({
   notifications: MOCK_NOTIFICATIONS,
+  friendRequests: [],
   unreadCount: MOCK_NOTIFICATIONS.length,
   hasUnread: MOCK_NOTIFICATIONS.length > 0,
 
   setNotifications: (notifications) => 
-    set({ 
+    set((state) => ({ 
       notifications, 
-      unreadCount: notifications.filter(n => !n.isRead).length,
-      hasUnread: notifications.some(n => !n.isRead)
-    }),
+      unreadCount: notifications.filter(n => !n.isRead).length + state.friendRequests.length,
+      hasUnread: notifications.some(n => !n.isRead) || state.friendRequests.length > 0
+    })),
 
   markAsRead: (id) =>
     set((state) => {
@@ -95,8 +101,8 @@ export const useNotificationStore = create<NotificationState>((set) => ({
       );
       return {
         notifications: updated,
-        unreadCount: updated.filter(n => !n.isRead).length,
-        hasUnread: updated.some(n => !n.isRead)
+        unreadCount: updated.filter(n => !n.isRead).length + state.friendRequests.length,
+        hasUnread: updated.some(n => !n.isRead) || state.friendRequests.length > 0
       };
     }),
 
@@ -105,17 +111,45 @@ export const useNotificationStore = create<NotificationState>((set) => ({
       const updated = state.notifications.filter((n) => n.id !== id);
       return {
         notifications: updated,
-        unreadCount: updated.filter(n => !n.isRead).length,
-        hasUnread: updated.some(n => !n.isRead)
+        unreadCount: updated.filter(n => !n.isRead).length + state.friendRequests.length,
+        hasUnread: updated.some(n => !n.isRead) || state.friendRequests.length > 0
       };
     }),
     
   clearUnreadCount: () => 
     set((state) => ({ 
       notifications: state.notifications.map(n => ({ ...n, isRead: true })),
-      unreadCount: 0, 
-      hasUnread: false 
+      unreadCount: state.friendRequests.length, 
+      hasUnread: state.friendRequests.length > 0 
     })),
+
+  fetchFriendRequests: async () => {
+    try {
+      const res = await getReceivedFriendRequestsApi();
+      if (res.success) {
+        set((state) => {
+          const newRequests = res.data.items || [];
+          return {
+            friendRequests: newRequests,
+            unreadCount: state.notifications.filter(n => !n.isRead).length + newRequests.length,
+            hasUnread: state.notifications.some(n => !n.isRead) || newRequests.length > 0
+          };
+        });
+      }
+    } catch (e) {
+      console.error('Failed to fetch friend requests', e);
+    }
+  },
+
+  removeFriendRequest: (friendshipId) =>
+    set((state) => {
+      const updated = state.friendRequests.filter(r => r.friendshipId !== friendshipId);
+      return {
+        friendRequests: updated,
+        unreadCount: state.notifications.filter(n => !n.isRead).length + updated.length,
+        hasUnread: state.notifications.some(n => !n.isRead) || updated.length > 0
+      };
+    }),
 }));
 
 export const selectUnreadCount = (s: NotificationState) => s.unreadCount;

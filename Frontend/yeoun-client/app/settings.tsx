@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Animated, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 
@@ -67,6 +67,7 @@ const IosSwitch = ({
 };
 
 export default function SettingsScreen() {
+  const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState({ ...globalUserState });
 
   useEffect(() => {
@@ -140,7 +141,7 @@ export default function SettingsScreen() {
 
       <ScrollView 
         className="flex-1" 
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
       >
         <Text className="text-xl font-bold text-[#1A1A1A] mb-4">알림</Text>
@@ -211,22 +212,24 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* 로그아웃 버튼 (더 차분한 스타일) */}
-        <TouchableOpacity 
-          onPress={handleLogout}
-          className="mt-4 flex-row items-center justify-center p-4"
-        >
-          <Text className="text-[16px] font-medium text-[#8E8E8E] underline">로그아웃</Text>
-        </TouchableOpacity>
-
-        {/* 회원 탈퇴 버튼 (밝은 빨간색, 강조된 스타일) */}
-        <TouchableOpacity 
-          onPress={handleWithdraw}
-          className="mt-2 flex-row items-center justify-center bg-[#FF5252] rounded-3xl p-5"
-        >
-          <Ionicons name="trash-outline" size={24} color="#FFFFFF" />
-          <Text className="text-lg font-bold text-white ml-2">회원 탈퇴</Text>
-        </TouchableOpacity>
+        <Text className="text-xl font-bold text-[#1A1A1A] mb-4 mt-2">계정 관리</Text>
+        <View className="bg-white rounded-[32px] p-5 mb-8">
+          <TouchableOpacity 
+            onPress={handleLogout}
+            className="flex-row justify-between items-center mb-6 px-1"
+          >
+            <Text className="text-lg font-medium text-[#FF5252]">로그아웃</Text>
+            <Ionicons name="log-out-outline" size={24} color="#FF5252" />
+          </TouchableOpacity>
+          <View className="w-full h-[1px] bg-[#F0F0F0] mb-6" />
+          <TouchableOpacity 
+            onPress={handleWithdraw}
+            className="flex-row justify-between items-center px-1"
+          >
+            <Text className="text-lg font-medium text-[#1A1A1A]">회원 탈퇴</Text>
+            <Ionicons name="trash-outline" size={24} color="#C4C4C4" />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
