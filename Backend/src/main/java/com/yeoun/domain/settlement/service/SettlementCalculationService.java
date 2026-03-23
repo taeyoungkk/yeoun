@@ -104,6 +104,7 @@ public class SettlementCalculationService {
                 tripId,
                 currencyCode,
                 expenses,
+                currentParticipantUserIds.size(),
                 netAmounts,
                 paidAmounts,
                 shareAmounts,
@@ -266,6 +267,7 @@ public class SettlementCalculationService {
             UUID tripId,
             String currencyCode,
             List<Expense> expenses,
+            int memberCount,
             Map<UUID, BigDecimal> netAmounts,
             Map<UUID, BigDecimal> paidAmounts,
             Map<UUID, BigDecimal> shareAmounts,
@@ -303,6 +305,7 @@ public class SettlementCalculationService {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("tripId", tripId);
         snapshot.put("currencyCode", currencyCode);
+        snapshot.put("memberCount", memberCount);
         snapshot.put("confirmedExpenseCount", expenses.size());
         snapshot.put("totalConfirmedAmount", normalizeMoney(totalConfirmedAmount));
         snapshot.put("transferCount", transferDrafts.size());

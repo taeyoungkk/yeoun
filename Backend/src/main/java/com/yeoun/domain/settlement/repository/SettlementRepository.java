@@ -17,4 +17,6 @@ public interface SettlementRepository extends JpaRepository<Settlement, UUID> {
     Optional<Settlement> findTopByTripIdOrderByVersionNoDesc(UUID tripId);
 
     Optional<Settlement> findByTripIdAndStatus(UUID tripId, SettlementStatus status);
+
+    boolean existsByTripIdAndStatus(UUID tripId, SettlementStatus status);
 }

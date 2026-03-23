@@ -12,4 +12,6 @@ public interface SettlementTransferRepository extends JpaRepository<SettlementTr
     Optional<SettlementTransfer> findBySettlementTransferId(UUID settlementTransferId);
 
     List<SettlementTransfer> findBySettlementIdOrderByCreatedAtAsc(UUID settlementId);
+
+    long countBySettlementId(UUID settlementId);
 }
