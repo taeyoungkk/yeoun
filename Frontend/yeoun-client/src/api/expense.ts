@@ -21,7 +21,42 @@ export interface TripExpenseItem {
   payerUserId: string;
   splitType: string;
   sourceType: string;
+  memo?: string;
+  participantUserIds?: string[];
   status: 'PENDING' | 'CONFIRMED' | 'DELETED';
+}
+
+export interface ExpenseSplit {
+  userId: string;
+  amount: number;
+}
+
+export interface ExpenseDetail extends TripExpenseItem {
+  splits: ExpenseSplit[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ExpenseCreateData {
+  merchantName: string;
+  category: string;
+  currencyCode: string;
+  totalAmount: number;
+  paidAt: string;
+  payerUserId: string;
+  memo: string;
+  participantUserIds: string[];
+}
+
+export interface ExpenseUpdateData {
+  merchantName?: string;
+  category?: string;
+  currencyCode?: string;
+  totalAmount?: number;
+  paidAt?: string;
+  payerUserId?: string;
+  memo?: string;
+  participantUserIds?: string[];
 }
 
 const API_MOCKS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_API_MOCKS === 'true';
@@ -62,6 +97,70 @@ export const getTripExpensesApi = async (tripId: string): Promise<ApiResponse<{ 
       return {
         success: true,
         data: { items: [] },
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
+
+export const getExpenseDetailApi = async (expenseId: string): Promise<ApiResponse<ExpenseDetail>> => {
+  try {
+    const response = await apiClient.get<ApiResponse<ExpenseDetail>>(`/expenses/${expenseId}`);
+    return response.data;
+  } catch (error) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        data: {} as ExpenseDetail,
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
+
+export const createExpenseApi = async (tripId: string, data: ExpenseCreateData): Promise<ApiResponse<any>> => {
+  try {
+    const response = await apiClient.post<ApiResponse<any>>(`/trips/${tripId}/expenses`, data);
+    return response.data;
+  } catch (error) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        data: { expenseId: `mock-expense-${Date.now()}` },
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
+
+export const updateExpenseApi = async (expenseId: string, data: ExpenseUpdateData): Promise<ApiResponse<any>> => {
+  try {
+    const response = await apiClient.patch<ApiResponse<any>>(`/expenses/${expenseId}`, data);
+    return response.data;
+  } catch (error) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        data: { expenseId },
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
+
+export const deleteExpenseApi = async (expenseId: string): Promise<ApiResponse<any>> => {
+  try {
+    const response = await apiClient.delete<ApiResponse<any>>(`/expenses/${expenseId}`);
+    return response.data;
+  } catch (error) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        data: { expenseId },
         timestamp: new Date().toISOString(),
       };
     }

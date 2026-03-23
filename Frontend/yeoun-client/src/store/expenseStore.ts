@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { getTripExpensesApi, updateExpenseApi, ExpenseUpdateData } from '../api/expense';
+import { useTripStore } from './trip.store';
 
 export interface Member {
   id: string;
@@ -16,15 +18,21 @@ export interface ExpenseItem {
   memberIds: string[]; // IDs of members participating in this expense
   subItems?: ExpenseItem[]; // For nested items like drinks under a cafe
   isExpanded?: boolean; // UI state for nested items
+  sourceData?: any; // Keep original item data for PATCH
 }
 
 interface ExpenseStore {
   members: Member[];
   expenses: ExpenseItem[];
+  isLoading: boolean;
+  error: string | null;
+
+  fetchExpenses: (tripId: string) => Promise<void>;
+
   addMember: (member: Omit<Member, 'id'>) => void;
   removeMember: (memberId: string) => void;
-  toggleMemberInExpense: (expenseId: string, memberId: string) => void;
-  addMemberToExpense: (expenseId: string, memberId: string) => void;
+  toggleMemberInExpense: (expenseId: string, memberId: string) => Promise<void>;
+  addMemberToExpense: (expenseId: string, memberId: string) => Promise<void>;
   toggleExpandExpense: (expenseId: string) => void;
   getMemberTotals: () => Record<string, number>;
   draggingMemberId: string | null;
@@ -35,7 +43,7 @@ interface ExpenseStore {
   registerDropZone: (id: string, layout: { x: number; y: number; width: number; height: number }) => void;
   unregisterDropZone: (id: string) => void;
   findDropTarget: (x: number, y: number) => string | null;
-  updateExpenseCategory: (expenseId: string, category: '식비' | '숙소비' | '교통비' | '기타') => void;
+  updateExpenseCategory: (expenseId: string, category: '식비' | '숙소비' | '교통비' | '기타') => Promise<void>;
 }
 
 // Initial mock data based on the provided UI design
@@ -115,6 +123,42 @@ const initialExpenses: ExpenseItem[] = [
 export const useExpenseStore = create<ExpenseStore>((set, get) => ({
   members: initialMembers,
   expenses: initialExpenses,
+  isLoading: false,
+  error: null,
+
+  fetchExpenses: async (tripId: string) => {
+    try {
+      set({ isLoading: true, error: null });
+      const response = await getTripExpensesApi(tripId);
+      
+      if (response.success && response.data.items) {
+        const mappedExpenses: ExpenseItem[] = response.data.items.map(item => {
+          const paidDate = new Date(item.paidAt);
+          return {
+            id: item.expenseId,
+            name: item.merchantName || '지출 내역',
+            time: `${paidDate.getHours().toString().padStart(2, '0')}:${paidDate.getMinutes().toString().padStart(2, '0')}`,
+            date: `${paidDate.getMonth() + 1}/${paidDate.getDate().toString().padStart(2, '0')}`,
+            amount: item.totalAmount,
+            category: (item.category as any) || '기타',
+            memberIds: item.participantUserIds || get().members.map(m => m.id), // fallback if empty
+            sourceData: item,
+          };
+        });
+        
+        // If API returns valid items, update it. Otherwise keep the mock for testing UI
+        if (mappedExpenses.length > 0) {
+          set({ expenses: mappedExpenses });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch expenses:', error);
+      set({ error: 'Failed to fetch expenses' });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
   addMember: (member) => 
     set((state) => ({
       members: [...state.members, { ...member, id: Math.random().toString(36).substring(7) }]
@@ -136,50 +180,114 @@ export const useExpenseStore = create<ExpenseStore>((set, get) => ({
       };
     }),
 
-  toggleMemberInExpense: (expenseId, memberId) =>
-    set((state) => {
-      // Recursive function to find and toggle member in main or sub items
-      const updateExpenses = (items: ExpenseItem[]): ExpenseItem[] => {
-        return items.map(item => {
-          if (item.id === expenseId) {
-            const hasMember = item.memberIds.includes(memberId);
-            return {
-              ...item,
-              memberIds: hasMember 
-                ? item.memberIds.filter(id => id !== memberId)
-                : [...item.memberIds, memberId]
-            };
-          }
-          if (item.subItems) {
-            return { ...item, subItems: updateExpenses(item.subItems) };
-          }
-          return item;
-        });
-      };
-      
-      return { expenses: updateExpenses(state.expenses) };
-    }),
+  toggleMemberInExpense: async (expenseId, memberId) => {
+    const { expenses } = get();
+    // 1. Find the target expense
+    const findTarget = (items: ExpenseItem[]): ExpenseItem | null => {
+      for (const item of items) {
+        if (item.id === expenseId) return item;
+        if (item.subItems) {
+          const found = findTarget(item.subItems);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
     
-  addMemberToExpense: (expenseId, memberId) =>
-    set((state) => {
-      const updateExpenses = (items: ExpenseItem[]): ExpenseItem[] => {
+    const targetExpense = findTarget(expenses);
+    if (!targetExpense) return;
+    const oldMemberIds = [...targetExpense.memberIds];
+
+    // 2. Decide new member IDs optimistically
+    const hasMember = targetExpense.memberIds.includes(memberId);
+    const newMemberIds = hasMember 
+      ? targetExpense.memberIds.filter(id => id !== memberId)
+      : [...targetExpense.memberIds, memberId];
+
+    // 3. Apply optimistic update
+    const updateExpensesOptimistic = (items: ExpenseItem[]): ExpenseItem[] => {
+      return items.map(item => {
+        if (item.id === expenseId) {
+          return { ...item, memberIds: newMemberIds };
+        }
+        if (item.subItems) return { ...item, subItems: updateExpensesOptimistic(item.subItems) };
+        return item;
+      });
+    };
+    set({ expenses: updateExpensesOptimistic(expenses) });
+
+    // 4. API Call
+    try {
+      const updateData: ExpenseUpdateData = {
+        participantUserIds: newMemberIds,
+        merchantName: targetExpense.sourceData?.merchantName,
+        category: targetExpense.sourceData?.category,
+        totalAmount: targetExpense.sourceData?.totalAmount,
+      };
+      // Minimal data might fail if API requires all fields, but fallback to sourceData if available
+      await updateExpenseApi(expenseId, updateData);
+    } catch (error) {
+      console.log('Failed to update member in expense, reverting...', error);
+      // Revert optimism
+      const revertExpenses = (items: ExpenseItem[]): ExpenseItem[] => {
         return items.map(item => {
           if (item.id === expenseId) {
-            if (item.memberIds.includes(memberId)) return item;
-            return {
-              ...item,
-              memberIds: [...item.memberIds, memberId]
-            };
+            return { ...item, memberIds: oldMemberIds };
           }
-          if (item.subItems) {
-            return { ...item, subItems: updateExpenses(item.subItems) };
-          }
+          if (item.subItems) return { ...item, subItems: revertExpenses(item.subItems) };
           return item;
         });
       };
-      
-      return { expenses: updateExpenses(state.expenses) };
-    }),
+      set({ expenses: revertExpenses(get().expenses) });
+    }
+  },
+    
+  addMemberToExpense: async (expenseId, memberId) => {
+    // Similar to toggle, but only adds
+    const { expenses } = get();
+    const findTarget = (items: ExpenseItem[]): ExpenseItem | null => {
+      for (const item of items) {
+        if (item.id === expenseId) return item;
+        if (item.subItems) {
+          const found = findTarget(item.subItems);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    
+    const targetExpense = findTarget(expenses);
+    if (!targetExpense || targetExpense.memberIds.includes(memberId)) return;
+    const oldMemberIds = [...targetExpense.memberIds];
+
+    const newMemberIds = [...targetExpense.memberIds, memberId];
+
+    const updateExpensesOptimistic = (items: ExpenseItem[]): ExpenseItem[] => {
+      return items.map(item => {
+        if (item.id === expenseId) return { ...item, memberIds: newMemberIds };
+        if (item.subItems) return { ...item, subItems: updateExpensesOptimistic(item.subItems) };
+        return item;
+      });
+    };
+    set({ expenses: updateExpensesOptimistic(expenses) });
+
+    try {
+      const updateData: ExpenseUpdateData = {
+        participantUserIds: newMemberIds,
+      };
+      await updateExpenseApi(expenseId, updateData);
+    } catch (error) {
+      console.log('Failed to add member to expense, reverting...', error);
+      const revertExpenses = (items: ExpenseItem[]): ExpenseItem[] => {
+        return items.map(item => {
+          if (item.id === expenseId) return { ...item, memberIds: oldMemberIds };
+          if (item.subItems) return { ...item, subItems: revertExpenses(item.subItems) };
+          return item;
+        });
+      };
+      set({ expenses: revertExpenses(get().expenses) });
+    }
+  },
     
   toggleExpandExpense: (expenseId) =>
     set((state) => ({
@@ -235,19 +343,52 @@ export const useExpenseStore = create<ExpenseStore>((set, get) => ({
     }
     return null;
   },
-  updateExpenseCategory: (expenseId, category) =>
-    set((state) => {
-      const updateExpenses = (items: ExpenseItem[]): ExpenseItem[] => {
+  updateExpenseCategory: async (expenseId, category) => {
+    const { expenses } = get();
+    
+    const findTarget = (items: ExpenseItem[]): ExpenseItem | null => {
+      for (const item of items) {
+        if (item.id === expenseId) return item;
+        if (item.subItems) {
+          const found = findTarget(item.subItems);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const targetExpense = findTarget(expenses);
+    if (!targetExpense) return;
+    
+    const oldCategory = targetExpense.category;
+    
+    // optimistic update
+    const updateExpensesOptimistic = (items: ExpenseItem[]): ExpenseItem[] => {
+      return items.map(item => {
+        if (item.id === expenseId) {
+          return { ...item, category };
+        }
+        if (item.subItems) {
+          return { ...item, subItems: updateExpensesOptimistic(item.subItems) };
+        }
+        return item;
+      });
+    };
+    
+    set({ expenses: updateExpensesOptimistic(expenses) });
+
+    try {
+      // PATCH API
+      await updateExpenseApi(expenseId, { category });
+    } catch (error) {
+      console.log('Failed to update category, reverting...', error);
+      const revertExpenses = (items: ExpenseItem[]): ExpenseItem[] => {
         return items.map(item => {
-          if (item.id === expenseId) {
-            return { ...item, category };
-          }
-          if (item.subItems) {
-            return { ...item, subItems: updateExpenses(item.subItems) };
-          }
+          if (item.id === expenseId) return { ...item, category: oldCategory };
+          if (item.subItems) return { ...item, subItems: revertExpenses(item.subItems) };
           return item;
         });
       };
-      return { expenses: updateExpenses(state.expenses) };
-    }),
+      set({ expenses: revertExpenses(get().expenses) });
+    }
+  },
 }));
