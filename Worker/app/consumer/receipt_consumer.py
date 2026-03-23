@@ -4,9 +4,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from pydantic import ValidationError
+
 from app.config import Settings
 from app.schemas.receipt import ReceiptOcrDlqMessage, ReceiptOcrRequest, ReceiptOcrResultMessage
 from app.services.receipt_ocr import ReceiptOcrService
+from app.services.receipt_processing_status import ReceiptProcessingStatusWriter
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,7 @@ class ReceiptConsumer:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.service = ReceiptOcrService(settings)
+        self.status_writer = ReceiptProcessingStatusWriter(settings)
         self._consumer: Any = None
         self._producer: Any = None
         self._task: asyncio.Task | None = None
@@ -70,8 +74,19 @@ class ReceiptConsumer:
                 raise
 
     async def _process_message(self, message: Any) -> None:
-        payload = ReceiptOcrRequest.model_validate(message.value)
+        try:
+            payload = ReceiptOcrRequest.model_validate(message.value)
+        except ValidationError as exc:
+            await self._handle_invalid_payload(message, exc)
+            await self._consumer.commit()
+            return
 
+        self.status_writer.mark_processing(
+            payload.receipt_id,
+            payload.trip_id,
+            requested_at=payload.requested_at,
+            attempt=payload.attempt,
+        )
         try:
             result = await self.service.extract(payload)
             result_message = ReceiptOcrResultMessage(
@@ -85,6 +100,12 @@ class ReceiptConsumer:
                 line_items=result.line_items,
                 raw_text=result.raw_text,
                 processed_at=self._utcnow(),
+                attempt=payload.attempt,
+            )
+            self.status_writer.mark_ready(
+                payload.receipt_id,
+                payload.trip_id,
+                requested_at=payload.requested_at,
                 attempt=payload.attempt,
             )
             await self._publish(
@@ -108,6 +129,14 @@ class ReceiptConsumer:
 
         if next_attempt <= self.settings.kafka_max_retry_attempts:
             retry_payload = payload.model_copy(update={"attempt": next_attempt})
+            self.status_writer.mark_retry_scheduled(
+                payload.receipt_id,
+                payload.trip_id,
+                requested_at=payload.requested_at,
+                attempt=next_attempt,
+                error_code=type(exc).__name__,
+                error_message=str(exc),
+            )
             await self._publish(
                 self.settings.kafka_receipt_retry_topic,
                 retry_payload.receipt_id,
@@ -147,6 +176,14 @@ class ReceiptConsumer:
             payload.receipt_id,
             failed_result.model_dump(mode="json", by_alias=True),
         )
+        self.status_writer.mark_dlq(
+            payload.receipt_id,
+            payload.trip_id,
+            requested_at=payload.requested_at,
+            attempt=payload.attempt,
+            error_code=type(exc).__name__,
+            error_message=str(exc),
+        )
         await self._publish(
             self.settings.kafka_receipt_dlq_topic,
             payload.receipt_id,
@@ -157,6 +194,42 @@ class ReceiptConsumer:
             payload.receipt_id,
             payload.attempt,
             exc_info=exc,
+        )
+
+    async def _handle_invalid_payload(self, message: Any, exc: ValidationError) -> None:
+        payload_dict = message.value if isinstance(message.value, dict) else {"raw": message.value}
+        receipt_id = payload_dict.get("receiptId") if isinstance(payload_dict, dict) else None
+        trip_id = payload_dict.get("tripId") if isinstance(payload_dict, dict) else None
+        attempt = int(payload_dict.get("attempt", 0)) if isinstance(payload_dict, dict) else 0
+        dlq_message = ReceiptOcrDlqMessage(
+            receipt_id=receipt_id,
+            topic=message.topic,
+            partition=message.partition,
+            offset=message.offset,
+            attempt=attempt,
+            payload=payload_dict,
+            error_code="ValidationError",
+            error_message=str(exc),
+            failed_at=self._utcnow(),
+        )
+
+        self.status_writer.mark_dlq(
+            receipt_id,
+            trip_id,
+            attempt=attempt,
+            error_code="ValidationError",
+            error_message=str(exc),
+        )
+        await self._publish(
+            self.settings.kafka_receipt_dlq_topic,
+            receipt_id or "unknown-receipt",
+            dlq_message.model_dump(mode="json", by_alias=True),
+        )
+        logger.warning(
+            "Moved invalid receipt OCR payload to DLQ receiptId=%s tripId=%s offset=%s",
+            receipt_id,
+            trip_id,
+            message.offset,
         )
 
     async def _publish(self, topic: str, key: str, value: dict[str, Any]) -> None:
