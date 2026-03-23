@@ -9,6 +9,7 @@ import com.yeoun.domain.locationlog.event.LocationLogBatchStoredEventPublisher;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripStatus;
 import com.yeoun.domain.trip.repository.TripRepository;
+import com.yeoun.domain.tripprocessing.service.TripProcessingStatusService;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -25,13 +26,16 @@ public class LocationLogService {
 
     private final TripRepository tripRepository;
     private final LocationLogBatchStoredEventPublisher locationLogBatchStoredEventPublisher;
+    private final TripProcessingStatusService tripProcessingStatusService;
 
     public LocationLogService(
             TripRepository tripRepository,
-            LocationLogBatchStoredEventPublisher locationLogBatchStoredEventPublisher
+            LocationLogBatchStoredEventPublisher locationLogBatchStoredEventPublisher,
+            TripProcessingStatusService tripProcessingStatusService
     ) {
         this.tripRepository = tripRepository;
         this.locationLogBatchStoredEventPublisher = locationLogBatchStoredEventPublisher;
+        this.tripProcessingStatusService = tripProcessingStatusService;
     }
 
     @Transactional
@@ -56,6 +60,7 @@ public class LocationLogService {
         }
 
         Instant now = Instant.now();
+        tripProcessingStatusService.markPending(tripId, now);
 
         // raw 저장은 더 이상 API 서버가 하지 않고, 컨슈머가 저장할 수 있도록 GPS batch 본문을 Kafka에 싣는다.
         locationLogBatchStoredEventPublisher.publish(new LocationLogBatchStoredEvent(
@@ -66,6 +71,7 @@ public class LocationLogService {
                         .map(this::toEventItem)
                         .toList()
         ));
+        tripProcessingStatusService.markQueued(tripId, now);
 
         return new LocationLogBatchUploadResponse(
                 tripId,

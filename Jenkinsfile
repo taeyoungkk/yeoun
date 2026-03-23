@@ -100,12 +100,19 @@ REDIS_HOST=${REDIS_IP}
 REDIS_PORT=6379
 JWT_SECRET=c2VjcmV0LWtleS1mb3ItdGVzdGluZy1wdXJwb3Nlcw==
 SPRING_PROFILES_ACTIVE=ci
-
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
 # AWS Dummy Keys (빈 생성 실패 방지용)
 AWS_ACCESS_KEY_ID=dummy_key
 AWS_SECRET_ACCESS_KEY=dummy_secret
 AWS_REGION=ap-northeast-2
-S3_BUCKET_NAME=dummy-bucket
+AWS_S3_BUCKET=dummy-bucket
+
+# Mail & OAuth & Others Dummy Configs
+MAIL_USERNAME=dummy_user
+MAIL_PASSWORD=dummy_pass
+MAIL_FROM=dummy@yeoun.com
+APP_INVITE_BASE_URL=http://localhost:3000
+GOOGLE_CLIENT_ID=dummy_google_client_id
 EOT
 
               # 젠킨스 터미널의 환경변수로 완벽하게 밀어넣기
@@ -118,7 +125,7 @@ EOT
 
               # 4. 테스트 실행
               chmod +x mvnw || true
-              ./mvnw test -DskipTests -Dmaven.repo.local=.m2/repository -Djava.security.egd=file:/dev/./urandom -T 1C -ntp
+              ./mvnw test -Dmaven.repo.local=.m2/repository -Djava.security.egd=file:/dev/./urandom -T 1C -ntp
             '''
           }
         }
