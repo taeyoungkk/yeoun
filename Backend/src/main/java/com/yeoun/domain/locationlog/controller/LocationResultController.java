@@ -2,6 +2,7 @@ package com.yeoun.domain.locationlog.controller;
 
 import com.yeoun.domain.locationlog.dto.response.LocationPlaceListResponse;
 import com.yeoun.domain.locationlog.dto.response.LocationRouteDayListResponse;
+import com.yeoun.domain.locationlog.dto.response.LocationRouteResponse;
 import com.yeoun.domain.locationlog.service.LocationResultQueryService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -10,11 +11,13 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 @RestController
@@ -36,6 +39,17 @@ public class LocationResultController {
             @PathVariable("tripId") UUID tripId
     ) {
         LocationRouteDayListResponse response = locationResultQueryService.getRouteDays(principal.userId(), tripId);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/days/{dayDate}/route")
+    @Operation(summary = "일자별 이동 경로 조회", description = "특정 날짜의 이동 경로를 지도에 그리기 위해 불러옵니다.")
+    public ApiResponse<LocationRouteResponse> getRouteByDay(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") UUID tripId,
+            @PathVariable("dayDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dayDate
+    ) {
+        LocationRouteResponse response = locationResultQueryService.getRouteByDay(principal.userId(), tripId, dayDate);
         return ApiResponse.ok(response);
     }
 

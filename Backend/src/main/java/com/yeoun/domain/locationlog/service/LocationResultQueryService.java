@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yeoun.domain.locationlog.dto.response.LocationPlaceItemResponse;
 import com.yeoun.domain.locationlog.dto.response.LocationPlaceListResponse;
+import com.yeoun.domain.locationlog.dto.response.LocationRouteResponse;
 import com.yeoun.domain.locationlog.dto.response.LocationRouteDayItemResponse;
 import com.yeoun.domain.locationlog.dto.response.LocationRouteDayListResponse;
 import com.yeoun.domain.locationlog.entity.LocationPlace;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -61,6 +63,17 @@ public class LocationResultQueryService {
                 .toList();
 
         return new LocationRouteDayListResponse(items);
+    }
+
+    public LocationRouteResponse getRouteByDay(UUID requesterUserId, UUID tripId, LocalDate dayDate) {
+        Trip trip = findAccessibleTrip(requesterUserId, tripId);
+
+        List<LocationRouteDayItemResponse> items = locationRouteDayRepository.findByTripIdAndDayOrderByUserIdAsc(trip.getTripId(), dayDate)
+                .stream()
+                .map(this::toRouteDayItemResponse)
+                .toList();
+
+        return new LocationRouteResponse(dayDate, items);
     }
 
     public LocationPlaceListResponse getPlaces(UUID requesterUserId, UUID tripId) {
