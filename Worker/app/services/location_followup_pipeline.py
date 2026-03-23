@@ -9,6 +9,7 @@ from app.services.location_place_writer import LocationPlaceWriter
 from app.services.location_route_builder import LocationRouteBuilder
 from app.services.location_route_writer import LocationRouteDayWriter
 from app.services.location_stay_detector import LocationStayDetector
+from app.services.location_timeline_candidate_writer import LocationTimelineCandidateWriter
 from app.services.location_timeline_linker import LocationTimelineLinker
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ class LocationFollowupPipeline:
         self.route_writer = LocationRouteDayWriter(settings)
         self.place_writer = LocationPlaceWriter(settings)
         self.timeline_linker = LocationTimelineLinker()
+        self.timeline_writer = LocationTimelineCandidateWriter(settings)
 
     async def run(
         self,
@@ -62,6 +64,10 @@ class LocationFollowupPipeline:
             route_days,
             places,
         )
+        timeline_candidate_persisted_count = self.timeline_writer.save_batch(
+            timeline_candidates,
+            connection=connection,
+        )
         updated_summary = summary.model_copy(
             update={
                 "staySegmentCount": len(stay_segments),
@@ -71,13 +77,14 @@ class LocationFollowupPipeline:
                 "routePersistedCount": route_persisted_count,
                 "placePersistedCount": place_persisted_count,
                 "timelineCandidateCount": len(timeline_candidates),
+                "timelineCandidatePersistedCount": timeline_candidate_persisted_count,
             }
         )
         logger.info(
             (
                 "Location follow-up pipeline placeholder tripId=%s "
                 "preprocessed=%s stored=%s staySegments=%s moveSegments=%s routeDays=%s places=%s "
-                "routePersisted=%s placePersisted=%s timelineCandidates=%s"
+                "routePersisted=%s placePersisted=%s timelineCandidates=%s timelineCandidatesPersisted=%s"
             ),
             payload.trip_id,
             updated_summary.preprocessed_count,
@@ -89,5 +96,6 @@ class LocationFollowupPipeline:
             updated_summary.route_persisted_count,
             updated_summary.place_persisted_count,
             updated_summary.timeline_candidate_count,
+            updated_summary.timeline_candidate_persisted_count,
         )
         return updated_summary
