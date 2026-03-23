@@ -113,15 +113,16 @@ export interface TripMemberItem {
 export type TripMembersResponse = CommonApiResponse<{ items: TripMemberItem[] }>;
 
 export interface TripInviteUsersRequest {
-  targetUserId: string;
+  inviteeUserIds: string[];
 }
 
 export interface TripInviteUsersData {
-  tripInviteId: string;
+  tripInviteId?: string;
   tripId: string;
-  targetUserId: string;
-  inviteType: string;
-  status: string;
+  targetUserId?: string;
+  inviteeUserIds?: string[];
+  inviteType?: string;
+  status?: string;
   expiresAt?: string | null;
 }
 
@@ -483,7 +484,8 @@ export const inviteUsersToTripApi = async (
         data: {
           tripInviteId: `mock-invite-${Date.now()}`,
           tripId,
-          targetUserId: request.targetUserId,
+          targetUserId: request.inviteeUserIds[0],
+          inviteeUserIds: request.inviteeUserIds,
           inviteType: 'USER',
           status: 'SENT',
         },

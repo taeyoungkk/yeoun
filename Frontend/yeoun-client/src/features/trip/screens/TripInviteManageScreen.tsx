@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { searchFriendsApi } from '@/src/api/friend';
+import { getFriendsApi, type FriendListItem } from '@/src/api/friend';
 import { createTripInviteLinkApi, getTripMembersApi, inviteUsersToTripApi } from '@/src/api/trip';
 import { useTripStore } from '@/src/store/trip.store';
 
@@ -38,6 +38,7 @@ export default function TripInviteManageScreen() {
   const [inviteMembers, setInviteMembers] = useState<InviteMember[]>([]);
   const [inviteLink, setInviteLink] = useState(INVITE_LINK_PLACEHOLDER);
   const [isInviteLinkReady, setIsInviteLinkReady] = useState(false);
+  const [friendCandidates, setFriendCandidates] = useState<FriendListItem[]>([]);
 
   useEffect(() => {
     if (!tripId) {
@@ -50,9 +51,10 @@ export default function TripInviteManageScreen() {
     const load = async () => {
       setIsLoading(true);
       try {
-        const [membersResponse, linkResponse] = await Promise.all([
+        const [membersResponse, linkResponse, friendsResponse] = await Promise.all([
           getTripMembersApi(tripId),
           createTripInviteLinkApi(tripId),
+          getFriendsApi(),
         ]);
 
         if (isMounted && membersResponse.success) {
@@ -68,6 +70,12 @@ export default function TripInviteManageScreen() {
 
         if (!isMounted) {
           return;
+        }
+
+        if (friendsResponse.success) {
+          setFriendCandidates(friendsResponse.data.items);
+        } else {
+          setFriendCandidates([]);
         }
 
         if (linkResponse.success && linkResponse.data?.inviteUrl) {
@@ -107,11 +115,11 @@ export default function TripInviteManageScreen() {
 
     const timeoutId = setTimeout(async () => {
       try {
-        const response = await searchFriendsApi(query);
         const existingIds = new Set(inviteMembers.map((member) => member.id));
         setSearchResults(
-          response.data.items
+          friendCandidates
             .filter((item) => !existingIds.has(item.userId))
+            .filter((item) => item.nickname.toLowerCase().includes(query.toLowerCase()))
             .map((item) => ({
               id: item.userId,
               name: item.nickname,
@@ -125,14 +133,14 @@ export default function TripInviteManageScreen() {
     }, 250);
 
     return () => clearTimeout(timeoutId);
-  }, [inviteMembers, searchQuery, tripId]);
+  }, [friendCandidates, inviteMembers, searchQuery, tripId]);
 
   const handleInviteMember = async (candidate: InviteCandidate) => {
     if (!tripId) {
       return;
     }
 
-    const response = await inviteUsersToTripApi(tripId, { targetUserId: candidate.id });
+    const response = await inviteUsersToTripApi(tripId, { inviteeUserIds: [candidate.id] });
     if (!response.success) {
       Alert.alert('초대 실패', response.message || '친구를 초대하지 못했습니다.');
       return;
