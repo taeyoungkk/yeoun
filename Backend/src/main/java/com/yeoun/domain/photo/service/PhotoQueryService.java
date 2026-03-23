@@ -19,13 +19,19 @@ import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 @Transactional(readOnly = true)
 public class PhotoQueryService {
+
+    private static final int DEFAULT_PHOTO_LIST_LIMIT = 30;
+    private static final int MAX_PHOTO_LIST_LIMIT = 100;
 
     private final PhotoRepository photoRepository;
     private final PhotoMemoRepository photoMemoRepository;
@@ -47,17 +53,39 @@ public class PhotoQueryService {
         this.photoProcessingImageUrlService = photoProcessingImageUrlService;
     }
 
-    public TripPhotoListResponse getTripPhotos(UUID requesterUserId, UUID tripId) {
+    public TripPhotoListResponse getTripPhotos(UUID requesterUserId, UUID tripId, String cursor, int limit) {
         Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
 
         validateTripAccessible(requesterUserId, trip);
 
-        List<TripPhotoListItemResponse> items = photoRepository.findByTripIdOrderByTakenAtAscCreatedAtAsc(tripId).stream()
+        int safeLimit = normalizeLimit(limit);
+        PhotoListCursor decodedCursor = decodeCursor(cursor);
+        List<Photo> photos = decodedCursor.isEmpty()
+                ? photoRepository.findTripPhotosFirstPage(tripId, safeLimit + 1)
+                : photoRepository.findTripPhotosNextPage(
+                        tripId,
+                        decodedCursor.sortAt(),
+                        decodedCursor.photoId(),
+                        safeLimit + 1
+                );
+
+        boolean hasNext = photos.size() > safeLimit;
+        List<Photo> pagePhotos = hasNext
+                ? new ArrayList<>(photos.subList(0, safeLimit))
+                : photos;
+
+        String nextCursor = null;
+        if (hasNext && !pagePhotos.isEmpty()) {
+            Photo lastPhoto = pagePhotos.get(pagePhotos.size() - 1);
+            nextCursor = encodeCursor(lastPhoto);
+        }
+
+        List<TripPhotoListItemResponse> items = pagePhotos.stream()
                 .map(this::toTripPhotoListItemResponse)
                 .toList();
 
-        return new TripPhotoListResponse(items);
+        return new TripPhotoListResponse(items, nextCursor, hasNext);
     }
 
     public PhotoDetailResponse getPhotoDetail(UUID requesterUserId, UUID photoId) {
@@ -147,5 +175,54 @@ public class PhotoQueryService {
                 photo.getTakenAt(),
                 photo.isExcluded()
         );
+    }
+
+    private int normalizeLimit(int limit) {
+        if (limit <= 0) {
+            return DEFAULT_PHOTO_LIST_LIMIT;
+        }
+        return Math.min(limit, MAX_PHOTO_LIST_LIMIT);
+    }
+
+    private PhotoListCursor decodeCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return new PhotoListCursor(null, null);
+        }
+
+        try {
+            byte[] decoded = Base64.getUrlDecoder().decode(cursor);
+            String raw = new String(decoded, StandardCharsets.UTF_8);
+            String[] parts = raw.split("\\|");
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("Invalid cursor format");
+            }
+            Instant sortAt = Instant.parse(parts[0]);
+            UUID photoId = UUID.fromString(parts[1]);
+            return new PhotoListCursor(sortAt, photoId);
+        } catch (Exception exception) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Invalid cursor value.");
+        }
+    }
+
+    private String encodeCursor(Photo photo) {
+        Instant sortAt = resolveSortTime(photo);
+        if (sortAt == null || photo.getPhotoId() == null) {
+            return null;
+        }
+
+        String raw = sortAt + "|" + photo.getPhotoId();
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private Instant resolveSortTime(Photo photo) {
+        return photo.getTakenAt() != null ? photo.getTakenAt() : photo.getCreatedAt();
+    }
+
+    private record PhotoListCursor(Instant sortAt, UUID photoId) {
+        boolean isEmpty() {
+            return sortAt == null || photoId == null;
+        }
     }
 }

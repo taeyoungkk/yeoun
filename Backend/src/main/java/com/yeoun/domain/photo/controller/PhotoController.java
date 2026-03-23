@@ -34,6 +34,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -72,9 +73,13 @@ public class PhotoController {
     @Operation(summary = "여행 사진 목록 조회", description = "여행에 연결된 사진 목록을 조회합니다.")
     public ApiResponse<TripPhotoListResponse> getTripPhotos(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
-            @PathVariable("tripId") UUID tripId
+            @PathVariable("tripId") UUID tripId,
+            @Parameter(description = "다음 페이지 조회용 커서(Base64 인코딩 값). 첫 조회 시 생략")
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @Parameter(description = "한 번에 조회할 사진 개수(기본 30, 최대 100)")
+            @RequestParam(value = "limit", defaultValue = "30") int limit
     ) {
-        TripPhotoListResponse response = photoQueryService.getTripPhotos(principal.userId(), tripId);
+        TripPhotoListResponse response = photoQueryService.getTripPhotos(principal.userId(), tripId, cursor, limit);
         return ApiResponse.ok(response);
     }
 
