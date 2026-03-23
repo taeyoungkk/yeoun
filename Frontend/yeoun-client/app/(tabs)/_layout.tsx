@@ -1,34 +1,43 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-import { PillNav } from '@/src/components/ui/pill-navbar';
+import { RegularNav } from '@/src/components/ui/regular-navbar';
 import { HouseSvg } from '@/src/components/icons/HouseSvg';
 import { MapLocationPinSvg } from '@/src/components/icons/MapLocationPinSvg';
 import { ProfileRoundSvg } from '@/src/components/icons/ProfileRoundSvg';
 import { CreditCardSvg } from '@/src/components/icons/CreditCardSvg';
+import { BellSvg } from '@/src/components/icons/BellSvg';
 import { useColorScheme } from '@/src/hooks/use-color-scheme';
+import { useNotificationStore } from '@/src/store/notification.store';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const hasUnread = useNotificationStore((state) => state.hasUnread);
 
   const navItems = [
     { 
-      label: 'Home', 
+      label: '홈', 
       href: '/', 
       icon: ({ color, size }: { color: string; size: number }) => <HouseSvg color={color} size={size} />
     },
     { 
-      label: 'Explore', 
+      label: '탐색', 
       href: '/explore', 
       icon: ({ color, size }: { color: string; size: number }) => <MapLocationPinSvg color={color} size={size} />
     },
     { 
-      label: 'Cards', 
+      label: '카드', 
       href: '/cards', 
       icon: ({ color, size }: { color: string; size: number }) => <CreditCardSvg color={color} size={size} />
     },
     { 
-      label: 'My Page', 
+      label: '알림', 
+      href: '/notifications', 
+      icon: ({ color, size }: { color: string; size: number }) => <BellSvg color={color} size={size} />,
+      showBadge: hasUnread
+    },
+    { 
+      label: '마이페이지', 
       href: '/mypage', 
       icon: ({ color, size }: { color: string; size: number }) => <ProfileRoundSvg color={color} size={size} />
     },
@@ -37,12 +46,11 @@ export default function TabLayout() {
   return (
     <Tabs
       tabBar={() => (
-        <PillNav 
+        <RegularNav 
           items={navItems} 
-          baseColor={colorScheme === 'dark' ? '#111' : '#fff'}
-          pillColor={colorScheme === 'dark' ? '#fff' : '#000'}
-          activeTextColor={colorScheme === 'dark' ? '#000' : '#fff'}
-          inactiveTextColor={colorScheme === 'dark' ? '#999' : '#666'}
+          backgroundColor={colorScheme === 'dark' ? '#111' : '#fff'}
+          activeColor={colorScheme === 'dark' ? '#EBF3EA' : '#244934'}
+          inactiveColor={colorScheme === 'dark' ? '#666' : '#94A098'}
         />
       )}
       screenOptions={{
@@ -51,25 +59,31 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: '홈',
         }}
       />
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Explore',
+          title: '탐색',
         }}
       />
       <Tabs.Screen
         name="cards"
         options={{
-          title: 'Cards',
+          title: '카드',
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: '알림',
         }}
       />
       <Tabs.Screen
         name="mypage"
         options={{
-          title: 'My Page',
+          title: '마이페이지',
         }}
       />
     </Tabs>
