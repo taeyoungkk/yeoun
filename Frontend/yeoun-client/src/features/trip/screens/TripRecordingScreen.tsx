@@ -211,7 +211,7 @@ export default function TripRecordingScreen() {
         return;
       }
 
-      const response = await inviteUsersToTripApi(tripId, { targetUserId: candidate.id });
+      const response = await inviteUsersToTripApi(tripId, { inviteeUserIds: [candidate.id] });
       if (!response.success) {
         Alert.alert('초대 실패', response.message || '친구를 초대하지 못했습니다.');
         return;

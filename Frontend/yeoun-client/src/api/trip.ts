@@ -23,6 +23,21 @@ export interface TripStartData {
 
 export type TripStartResponse = CommonApiResponse<TripStartData>;
 
+export interface TripLeaveData {
+  tripId: string;
+  left: boolean;
+  leftAt: string;
+}
+
+export type TripLeaveResponse = CommonApiResponse<TripLeaveData>;
+
+export interface TripDeleteData {
+  tripId: string;
+  deleted: boolean;
+}
+
+export type TripDeleteResponse = CommonApiResponse<TripDeleteData>;
+
 export interface LocationLog {
   latitude: number;
   longitude: number;
@@ -100,6 +115,24 @@ export interface TripCreateData {
 
 export type TripCreateResponse = CommonApiResponse<TripCreateData>;
 
+export interface UpdateTripRequest {
+  title: string;
+  startDate: string;
+  endDate: string;
+  visibility?: 'PRIVATE' | 'PARTIAL_PUBLIC' | 'PUBLIC';
+}
+
+export interface UpdateTripData {
+  tripId: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  visibility?: string;
+  updatedAt?: string;
+}
+
+export type UpdateTripResponse = CommonApiResponse<UpdateTripData>;
+
 export interface TripMemberItem {
   tripInviteId?: string;
   tripMemberId?: string;
@@ -142,16 +175,31 @@ export interface CreateTripInviteLinkData {
 
 export type CreateTripInviteLinkResponse = CommonApiResponse<CreateTripInviteLinkData>;
 
-export interface TripRoutePoint {
-  lat: number;
-  lng: number;
-  recordedAt: string;
+export interface TripLocationLogStatusData {
+  tripId: string;
+  status: string;
+  lastRequestedAt?: string | null;
+  lastProcessedAt?: string | null;
+  lastErrorMessage?: string | null;
+}
+
+export type TripLocationLogStatusResponse = CommonApiResponse<TripLocationLogStatusData>;
+
+export interface TripRouteDay {
+  routeDayId: string;
+  tripId: string;
+  userId: string;
+  day: string;
+  pointCount: number;
+  distanceM: number;
+  coordinates: number[][];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface TripRouteData {
-  date: string;
-  distanceM: number;
-  points: TripRoutePoint[];
+  dayDate: string;
+  routeDays: TripRouteDay[];
 }
 
 export type TripRouteResponse = CommonApiResponse<TripRouteData>;
@@ -248,6 +296,49 @@ export const createTripApi = async (data: CreateTripRequest): Promise<TripCreate
   }
 };
 
+export const updateTripApi = async (
+  tripId: string,
+  data: UpdateTripRequest,
+): Promise<UpdateTripResponse> => {
+  const payload = {
+    title: data.title,
+    startDate: formatApiDate(data.startDate),
+    endDate: formatApiDate(data.endDate),
+    visibility: data.visibility ?? 'PRIVATE',
+  };
+
+  try {
+    const response = await apiClient.patch<UpdateTripResponse>(`/trips/${tripId}`, payload);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Trip updated (MOCK)',
+        data: {
+          tripId,
+          title: payload.title,
+          startDate: payload.startDate,
+          endDate: payload.endDate,
+          visibility: payload.visibility,
+          updatedAt: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Update Trip API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to update trip.'),
+      data: {} as UpdateTripData,
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
 export const startTripApi = async (tripId: string): Promise<TripStartResponse> => {
   try {
     const response = await apiClient.post<TripStartResponse>(`/trips/${tripId}/start`);
@@ -313,6 +404,66 @@ export const endTripApi = async (tripId: string): Promise<TripStartResponse> => 
       code: getErrorCode(error),
       message: getErrorMessage(error, 'Failed to end trip.'),
       data: {} as TripStartData,
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const leaveTripApi = async (tripId: string): Promise<TripLeaveResponse> => {
+  try {
+    const response = await apiClient.post<TripLeaveResponse>(`/trips/${tripId}/leave`);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Trip left (MOCK)',
+        data: {
+          tripId,
+          left: true,
+          leftAt: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Leave Trip API Error:', error);
+    const normalizedCode = error?.response?.status === 409 ? 'CONFLICT' : getErrorCode(error);
+    return {
+      success: false,
+      code: normalizedCode,
+      message: getErrorMessage(error, 'Failed to leave trip.'),
+      data: {} as TripLeaveData,
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const deleteTripApi = async (tripId: string): Promise<TripDeleteResponse> => {
+  try {
+    const response = await apiClient.delete<TripDeleteResponse>(`/trips/${tripId}`);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Trip deleted (MOCK)',
+        data: {
+          tripId,
+          deleted: true,
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Delete Trip API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to delete trip.'),
+      data: {} as TripDeleteData,
       timestamp: new Date().toISOString(),
     };
   }
@@ -419,9 +570,8 @@ export const getTripRouteByDayApi = async (tripId: string, dayDate: string): Pro
         code: 'SUCCESS',
         message: 'Trip route fetched (MOCK)',
         data: {
-          date: dayDate,
-          distanceM: 0,
-          points: [],
+          dayDate,
+          routeDays: [],
         },
         timestamp: new Date().toISOString(),
       };
@@ -433,9 +583,46 @@ export const getTripRouteByDayApi = async (tripId: string, dayDate: string): Pro
       code: getErrorCode(error),
       message: getErrorMessage(error, 'Failed to fetch trip route.'),
       data: {
-        date: dayDate,
-        distanceM: 0,
-        points: [],
+        dayDate,
+        routeDays: [],
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const getTripLocationLogStatusApi = async (tripId: string): Promise<TripLocationLogStatusResponse> => {
+  try {
+    const response = await apiClient.get<TripLocationLogStatusResponse>(`/trips/${tripId}/location-log-status`);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Location log status fetched (MOCK)',
+        data: {
+          tripId,
+          status: 'SUCCESS',
+          lastRequestedAt: new Date().toISOString(),
+          lastProcessedAt: new Date().toISOString(),
+          lastErrorMessage: null,
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Get Location Log Status API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch location log status.'),
+      data: {
+        tripId,
+        status: 'UNKNOWN',
+        lastRequestedAt: null,
+        lastProcessedAt: null,
+        lastErrorMessage: null,
       },
       timestamp: new Date().toISOString(),
     };

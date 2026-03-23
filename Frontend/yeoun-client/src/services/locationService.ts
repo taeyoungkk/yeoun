@@ -3,7 +3,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Linking } from 'react-native';
 
-import { LocationLog, uploadLocationsApi } from '../api/trip';
+import { getTripLocationLogStatusApi, LocationLog, uploadLocationsApi } from '../api/trip';
 
 const LOCATION_TRACKING_TASK = 'LOCATION_TRACKING_TASK';
 const STORAGE_KEY_PREFIX = 'pending_location_logs_chunk_';
@@ -60,6 +60,8 @@ type LocationListener = (location: LocationLog) => void;
 
 let listeners: LocationListener[] = [];
 let foregroundSubscription: Location.LocationSubscription | null = null;
+const LOCATION_STATUS_POLL_INTERVAL_MS = 1500;
+const LOCATION_STATUS_POLL_TIMEOUT_MS = 20000;
 
 const startForegroundWatcher = async () => {
   if (foregroundSubscription) {
@@ -103,6 +105,46 @@ const startBackgroundWatcher = async () => {
     pausesUpdatesAutomatically: false,
   });
   console.log('Background location tracking started');
+};
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isLocationProcessingComplete = (status?: string | null) => {
+  const normalizedStatus = String(status ?? '').toUpperCase();
+  return normalizedStatus === 'SUCCESS' || normalizedStatus === 'COMPLETED' || normalizedStatus === 'DONE';
+};
+
+const isLocationProcessingFailed = (status?: string | null) => {
+  const normalizedStatus = String(status ?? '').toUpperCase();
+  return normalizedStatus === 'FAILED' || normalizedStatus === 'ERROR';
+};
+
+const pollLocationProcessingStatus = async (tripId: string) => {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < LOCATION_STATUS_POLL_TIMEOUT_MS) {
+    const response = await getTripLocationLogStatusApi(tripId);
+
+    if (!response.success) {
+      console.warn('Failed to poll location processing status:', response.message);
+      return false;
+    }
+
+    if (isLocationProcessingComplete(response.data.status)) {
+      console.log('Location processing completed:', response.data.status);
+      return true;
+    }
+
+    if (isLocationProcessingFailed(response.data.status)) {
+      console.error('Location processing failed:', response.data.lastErrorMessage ?? response.data.status);
+      return false;
+    }
+
+    await wait(LOCATION_STATUS_POLL_INTERVAL_MS);
+  }
+
+  console.warn('Location processing status polling timed out');
+  return false;
 };
 
 export const locationService = {
@@ -239,7 +281,13 @@ export const locationService = {
       }
 
       console.log('Successfully synced logs to server');
-      return true;
+      const processed = await pollLocationProcessingStatus(tripId);
+
+      if (!processed) {
+        console.warn('Location logs uploaded but processing is not complete yet.');
+      }
+
+      return processed;
     } catch (error) {
       console.error('Sync process error:', error);
       return false;
