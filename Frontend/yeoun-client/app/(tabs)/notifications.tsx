@@ -7,6 +7,7 @@ import { useNotificationStore, Notification } from '@/src/store/notification.sto
 import { acceptTripInviteApi, declineTripInviteApi } from '@/src/api/invite';
 import { acceptFriendRequestApi, declineFriendRequestApi } from '@/src/api/friend';
 import { useUIStore } from '@/src/store/ui.store';
+import { ReceiptOcrButton } from '@/src/features/payment/components/ReceiptOcrButton';
 
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -91,8 +92,8 @@ export default function NotificationsScreen() {
         }
         break;
       case 'RECEIPT_REMINDER':
-        // 사진첩/카메라 화면으로 이동
-        router.push('/trip/photo-album' as any);
+        // 영수증 스캔 화면으로 이동
+        router.push('/receipt-ocr');
         break;
       case 'PAYMENT_REQUEST':
         // 포인트/결제 화면으로 이동
@@ -239,6 +240,11 @@ export default function NotificationsScreen() {
         </>
       )}
       </ScrollView>
+
+      {/* OCR FAB */}
+      <View className="absolute bottom-6 right-6 z-50">
+        <ReceiptOcrButton />
+      </View>
     </SafeAreaView>
   );
 }

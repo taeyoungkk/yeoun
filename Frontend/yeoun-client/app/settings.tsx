@@ -110,6 +110,9 @@ export default function SettingsScreen() {
       useAuthStore.getState().clearTokens();
       // 3. 사용자 프로필 정보 제거
       useUserStore.getState().clearProfile();
+      
+      // 명시적으로 로그인 화면으로 이동
+      router.replace('/(auth)/login');
     }
   };
 
@@ -121,7 +124,8 @@ export default function SettingsScreen() {
         // 2. 상태 및 토큰 초기화
         useAuthStore.getState().clearTokens();
         useUserStore.getState().clearProfile();
-        // 네비게이션은 루트 레이아웃의 Redirect에 의해 처리됨
+        // 명시적으로 로그인 화면으로 이동
+        router.replace('/(auth)/login');
       }
     } catch (error) {
       console.log('Withdrawal error:', error);
