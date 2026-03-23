@@ -16,6 +16,8 @@ import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +27,8 @@ import java.util.UUID;
 @Service
 @Transactional(readOnly = true)
 public class ExpenseQueryService {
+
+    private static final Logger log = LoggerFactory.getLogger(ExpenseQueryService.class);
 
     private final ExpenseRepository expenseRepository;
     private final ExpenseSplitRepository expenseSplitRepository;
@@ -44,6 +48,7 @@ public class ExpenseQueryService {
     }
 
     public ExpenseListResponse getTripExpenses(UUID requesterUserId, UUID tripId) {
+        log.info("Loading trip expenses. requesterUserId={}, tripId={}", requesterUserId, tripId);
         Trip trip = findNonDeletedTripOrThrow(tripId);
         validateTripAccessible(requesterUserId, trip);
 
@@ -65,10 +70,12 @@ public class ExpenseQueryService {
                 ))
                 .toList();
 
+        log.info("Loaded trip expenses. requesterUserId={}, tripId={}, expenseCount={}", requesterUserId, tripId, items.size());
         return new ExpenseListResponse(items);
     }
 
     public ExpenseDetailResponse getExpenseDetail(UUID requesterUserId, UUID expenseId) {
+        log.info("Loading expense detail. requesterUserId={}, expenseId={}", requesterUserId, expenseId);
         Expense expense = expenseRepository.findByExpenseIdAndStatusNot(expenseId, ExpenseStatus.DELETED)
                 .orElseThrow(() -> new BaseException(ErrorCode.EXPENSE_NOT_FOUND));
 
