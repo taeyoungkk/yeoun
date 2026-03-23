@@ -10,6 +10,7 @@ from app.config import Settings
 from app.schemas.receipt import ReceiptOcrDlqMessage, ReceiptOcrRequest, ReceiptOcrResultMessage
 from app.services.receipt_ocr import ReceiptOcrService
 from app.services.receipt_processing_status import ReceiptProcessingStatusWriter
+from app.services.receipt_result_writer import ReceiptResultWriter
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class ReceiptConsumer:
         self.settings = settings
         self.service = ReceiptOcrService(settings)
         self.status_writer = ReceiptProcessingStatusWriter(settings)
+        self.result_writer = ReceiptResultWriter(settings)
         self._consumer: Any = None
         self._producer: Any = None
         self._task: asyncio.Task | None = None
@@ -102,6 +104,7 @@ class ReceiptConsumer:
                 processed_at=self._utcnow(),
                 attempt=payload.attempt,
             )
+            self.result_writer.persist_result(payload, result_message)
             self.status_writer.mark_ready(
                 payload.receipt_id,
                 payload.trip_id,
@@ -159,6 +162,7 @@ class ReceiptConsumer:
             processed_at=self._utcnow(),
             attempt=payload.attempt,
         )
+        self.result_writer.persist_result(payload, failed_result)
         dlq_message = ReceiptOcrDlqMessage(
             receipt_id=payload.receipt_id,
             topic=message.topic,
