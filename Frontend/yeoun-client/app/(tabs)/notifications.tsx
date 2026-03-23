@@ -2,20 +2,23 @@ import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, SafeAreaView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useNotificationStore, Notification } from '@/src/store/notification.store';
 import { acceptTripInviteApi, declineTripInviteApi } from '@/src/api/invite';
+import { acceptFriendRequestApi, declineFriendRequestApi } from '@/src/api/friend';
 import { useUIStore } from '@/src/store/ui.store';
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const { notifications, removeNotification, clearUnreadCount } = useNotificationStore();
+  const { notifications, friendRequests, removeNotification, clearUnreadCount, fetchFriendRequests, removeFriendRequest } = useNotificationStore();
   const showToast = useUIStore((state) => state.showToast);
   const setLoading = useUIStore((state) => state.setLoading);
 
   useEffect(() => {
-    // 알림 화면에 진입하면 읽지 않은 알림 배지를 초기화합니다
+    // 알림 화면에 진입하면 받은 친구 요청을 불러오고 읽지 않은 알림 배지를 초기화합니다
+    fetchFriendRequests();
     clearUnreadCount();
-  }, [clearUnreadCount]);
+  }, [clearUnreadCount, fetchFriendRequests]);
 
   const handleInviteAction = async (id: string, token: string, action: 'accept' | 'decline') => {
     try {
@@ -33,6 +36,30 @@ export default function NotificationsScreen() {
         if (res.success) {
           showToast('여행 초대를 거절했습니다.', 'info');
           removeNotification(id);
+        }
+      }
+    } catch (error) {
+      showToast('처리에 실패했습니다. 다시 시도해주세요.', 'error');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFriendAction = async (friendshipId: string, action: 'accept' | 'decline') => {
+    try {
+      setLoading(true);
+      if (action === 'accept') {
+        const res = await acceptFriendRequestApi(friendshipId);
+        if (res.success) {
+          showToast('친구 요청을 수락했습니다!', 'success');
+          removeFriendRequest(friendshipId);
+        }
+      } else {
+        const res = await declineFriendRequestApi(friendshipId);
+        if (res.success) {
+          showToast('친구 요청을 거절했습니다.', 'info');
+          removeFriendRequest(friendshipId);
         }
       }
     } catch (error) {
@@ -90,17 +117,66 @@ export default function NotificationsScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        {notifications.length === 0 ? (
+        {notifications.length === 0 && friendRequests.length === 0 ? (
           <View className="flex-1 items-center justify-center pt-20">
             <View className="w-16 h-16 bg-gray-50 rounded-full items-center justify-center mb-4">
               <MaterialIcons name="notifications-none" size={32} color="#D1D5DB" />
             </View>
-            <Text className="text-lg text-gray-400 font-medium text-center">
-              새로운 알림이 없습니다.
-            </Text>
-          </View>
-        ) : (
-          notifications.map((item) => (
+          <Text className="text-lg text-gray-400 font-medium text-center">
+            새로운 알림이 없습니다.
+          </Text>
+        </View>
+      ) : (
+        <>
+          {/* 받은 친구 요청 목록 렌더링 */}
+          {friendRequests.map((req) => (
+            <View 
+              key={req.friendshipId} 
+              className="mb-4 p-4 rounded-3xl border border-gray-100 bg-blue-50/30"
+              style={{
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.03,
+                shadowRadius: 8,
+                elevation: 2,
+              }}
+            >
+              <View className="flex-row items-start mb-3">
+                <View className="w-10 h-10 rounded-full bg-gray-50 items-center justify-center mr-3 overflow-hidden border border-gray-200">
+                  {req.profileImageUrl ? (
+                    <Image source={{ uri: req.profileImageUrl }} className="w-full h-full" contentFit="cover" />
+                  ) : (
+                    <MaterialIcons name="person" size={24} color="#3B82F6" />
+                  )}
+                </View>
+                <View className="flex-1">
+                  <Text className="text-base font-bold text-gray-900">새로운 친구 요청</Text>
+                  <Text className="text-sm text-gray-600 mt-1 leading-5">
+                    '<Text className="font-bold">{req.nickname}</Text>'님이 친구 요청을 보냈습니다.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row justify-end items-center mt-1 gap-2">
+                <TouchableOpacity 
+                  className="px-4 py-2 rounded-xl bg-gray-100"
+                  onPress={() => handleFriendAction(req.friendshipId, 'decline')}
+                >
+                  <Text className="text-sm font-semibold text-gray-600">거절</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  className="px-6 py-2 rounded-xl bg-blue-500"
+                  onPress={() => handleFriendAction(req.friendshipId, 'accept')}
+                >
+                  <Text className="text-sm font-bold text-white">수락</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+
+          {/* 일반 알림 내역 렌더링 */}
+          {notifications.map((item) => (
             <View 
               key={item.id} 
               className={`mb-4 p-4 rounded-3xl border border-gray-100 bg-white ${!item.isRead ? 'bg-blue-50/30' : ''}`}
@@ -159,8 +235,9 @@ export default function NotificationsScreen() {
                 </View>
               </View>
             </View>
-          ))
-        )}
+          ))}
+        </>
+      )}
       </ScrollView>
     </SafeAreaView>
   );
