@@ -91,8 +91,8 @@ class ReceiptConsumer:
         )
         try:
             result = await self.service.extract(payload)
-            result_message = ReceiptOcrResultMessage(
-                receipt_id=payload.receipt_id,
+            result_message = self.build_result_message(
+                payload,
                 status="COMPLETED",
                 merchant_name=result.merchant_name,
                 paid_at=result.paid_at,
@@ -101,8 +101,6 @@ class ReceiptConsumer:
                 tax_amount=result.tax_amount,
                 line_items=result.line_items,
                 raw_text=result.raw_text,
-                processed_at=self._utcnow(),
-                attempt=payload.attempt,
             )
             self.result_writer.persist_result(payload, result_message)
             self.status_writer.mark_ready(
@@ -132,6 +130,13 @@ class ReceiptConsumer:
 
         if next_attempt <= self.settings.kafka_max_retry_attempts:
             retry_payload = payload.model_copy(update={"attempt": next_attempt})
+            retry_result = self.build_failed_result(
+                payload,
+                exc,
+                status="RETRY_SCHEDULED",
+                attempt=next_attempt,
+            )
+            self.result_writer.persist_result(payload, retry_result)
             self.status_writer.mark_retry_scheduled(
                 payload.receipt_id,
                 payload.trip_id,
@@ -139,6 +144,11 @@ class ReceiptConsumer:
                 attempt=next_attempt,
                 error_code=type(exc).__name__,
                 error_message=str(exc),
+            )
+            await self._publish(
+                self.settings.kafka_receipt_result_topic,
+                payload.receipt_id,
+                retry_result.model_dump(mode="json", by_alias=True),
             )
             await self._publish(
                 self.settings.kafka_receipt_retry_topic,
@@ -153,27 +163,9 @@ class ReceiptConsumer:
             )
             return
 
-        failed_result = ReceiptOcrResultMessage(
-            receipt_id=payload.receipt_id,
-            status="FAILED",
-            currency_code=payload.currency_code,
-            error_code=type(exc).__name__,
-            error_message=str(exc),
-            processed_at=self._utcnow(),
-            attempt=payload.attempt,
-        )
+        failed_result = self.build_failed_result(payload, exc)
         self.result_writer.persist_result(payload, failed_result)
-        dlq_message = ReceiptOcrDlqMessage(
-            receipt_id=payload.receipt_id,
-            topic=message.topic,
-            partition=message.partition,
-            offset=message.offset,
-            attempt=payload.attempt,
-            payload=message.value,
-            error_code=type(exc).__name__,
-            error_message=str(exc),
-            failed_at=self._utcnow(),
-        )
+        dlq_message = self.build_dlq_message(message, self._payload_to_dict(payload), exc)
 
         await self._publish(
             self.settings.kafka_receipt_result_topic,
@@ -200,22 +192,85 @@ class ReceiptConsumer:
             exc_info=exc,
         )
 
-    async def _handle_invalid_payload(self, message: Any, exc: ValidationError) -> None:
-        payload_dict = message.value if isinstance(message.value, dict) else {"raw": message.value}
-        receipt_id = payload_dict.get("receiptId") if isinstance(payload_dict, dict) else None
-        trip_id = payload_dict.get("tripId") if isinstance(payload_dict, dict) else None
-        attempt = int(payload_dict.get("attempt", 0)) if isinstance(payload_dict, dict) else 0
-        dlq_message = ReceiptOcrDlqMessage(
-            receipt_id=receipt_id,
+    def build_result_message(
+        self,
+        payload: ReceiptOcrRequest,
+        *,
+        status: str,
+        merchant_name: str | None = None,
+        paid_at: str | None = None,
+        currency_code: str | None = None,
+        total_amount: Any = None,
+        tax_amount: Any = None,
+        line_items: list[Any] | None = None,
+        raw_text: str | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        attempt: int | None = None,
+    ) -> ReceiptOcrResultMessage:
+        return ReceiptOcrResultMessage(
+            receipt_id=payload.receipt_id,
+            trip_id=payload.trip_id,
+            image_url=payload.image_url,
+            status=status,
+            requested_at=payload.requested_at,
+            merchant_name=merchant_name,
+            paid_at=paid_at,
+            currency_code=currency_code,
+            total_amount=total_amount,
+            tax_amount=tax_amount,
+            line_items=[] if line_items is None else line_items,
+            raw_text=raw_text,
+            error_code=error_code,
+            error_message=error_message,
+            processed_at=self._utcnow(),
+            attempt=payload.attempt if attempt is None else attempt,
+        )
+
+    def build_failed_result(
+        self,
+        payload: ReceiptOcrRequest,
+        exc: Exception,
+        *,
+        status: str = "FAILED",
+        attempt: int | None = None,
+    ) -> ReceiptOcrResultMessage:
+        return self.build_result_message(
+            payload,
+            status=status,
+            currency_code=payload.currency_code,
+            error_code=type(exc).__name__,
+            error_message=str(exc),
+            attempt=payload.attempt if attempt is None else attempt,
+        )
+
+    def build_dlq_message(
+        self,
+        message: Any,
+        payload: dict[str, Any],
+        exc: Exception,
+    ) -> ReceiptOcrDlqMessage:
+        return ReceiptOcrDlqMessage(
+            receipt_id=payload.get("receiptId"),
+            trip_id=payload.get("tripId"),
+            image_url=payload.get("imageUrl"),
+            requested_at=payload.get("requestedAt"),
             topic=message.topic,
             partition=message.partition,
             offset=message.offset,
-            attempt=attempt,
-            payload=payload_dict,
-            error_code="ValidationError",
+            attempt=self._resolve_attempt(payload),
+            payload=payload,
+            error_code=type(exc).__name__,
             error_message=str(exc),
             failed_at=self._utcnow(),
         )
+
+    async def _handle_invalid_payload(self, message: Any, exc: ValidationError) -> None:
+        payload_dict = self._ensure_payload_dict(message.value)
+        receipt_id = payload_dict.get("receiptId")
+        trip_id = payload_dict.get("tripId")
+        attempt = self._resolve_attempt(payload_dict)
+        dlq_message = self.build_dlq_message(message, payload_dict, exc)
 
         self.status_writer.mark_dlq(
             receipt_id,
@@ -235,6 +290,16 @@ class ReceiptConsumer:
             trip_id,
             message.offset,
         )
+
+    def _payload_to_dict(self, payload: ReceiptOcrRequest) -> dict[str, Any]:
+        return payload.model_dump(mode="json", by_alias=True)
+
+    def _ensure_payload_dict(self, payload: Any) -> dict[str, Any]:
+        return payload if isinstance(payload, dict) else {"raw": payload}
+
+    def _resolve_attempt(self, payload: dict[str, Any]) -> int:
+        attempt = payload.get("attempt", 0)
+        return attempt if isinstance(attempt, int) and attempt >= 0 else 0
 
     async def _publish(self, topic: str, key: str, value: dict[str, Any]) -> None:
         await self._producer.send_and_wait(topic, key=key, value=value)
