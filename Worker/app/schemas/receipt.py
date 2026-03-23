@@ -43,7 +43,10 @@ class ReceiptOcrResultMessage(BaseModel):
     model_config = {"populate_by_name": True}
 
     receipt_id: str = Field(alias="receiptId")
+    trip_id: str = Field(alias="tripId")
+    image_url: HttpUrl = Field(alias="imageUrl")
     status: str
+    requested_at: datetime | None = Field(alias="requestedAt", default=None)
     merchant_name: str | None = Field(alias="merchantName", default=None)
     paid_at: str | None = Field(alias="paidAt", default=None)
     currency_code: str | None = Field(alias="currencyCode", default=None)
@@ -61,6 +64,9 @@ class ReceiptOcrDlqMessage(BaseModel):
     model_config = {"populate_by_name": True}
 
     receipt_id: str | None = Field(alias="receiptId", default=None)
+    trip_id: str | None = Field(alias="tripId", default=None)
+    image_url: HttpUrl | None = Field(alias="imageUrl", default=None)
+    requested_at: datetime | None = Field(alias="requestedAt", default=None)
     topic: str
     partition: int
     offset: int

@@ -3,6 +3,8 @@ import { View, StyleSheet, Text } from 'react-native';
 import { BarChart } from 'react-native-gifted-charts';
 import { useExpenseStore } from '@/src/store/expenseStore';
 
+import { useTripStore } from '@/src/store/trip.store';
+
 const CATEGORIES = [
   { label: '식비', color: '#ADC178' },
   { label: '숙소비', color: '#A98467' },
@@ -10,13 +12,34 @@ const CATEGORIES = [
   { label: '기타', color: '#DDE5B6' },
 ];
 
+const generateDateRange = (startStr: string, endStr: string) => {
+  const dates = [];
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+  
+  for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
+    const month = dt.getMonth() + 1;
+    const day = dt.getDate().toString().padStart(2, '0');
+    dates.push(`${month}/${day}`);
+  }
+  return dates;
+};
+
 export function ExpenseGraph() {
   const { expenses } = useExpenseStore();
+  const currentTrip = useTripStore(s => s.currentTrip);
 
   // Group real expenses by date for stackData
   const stackData = useMemo(() => {
     const dailyMap: Record<string, Record<string, number>> = {};
-    const dates = ['3/07', '3/08', '3/09', '3/10', '3/11']; // Target date range
+    let dates = ['3/07', '3/08', '3/09', '3/10', '3/11']; // Default fallback
+
+    if (currentTrip?.startDate && currentTrip?.endDate) {
+       const genDates = generateDateRange(currentTrip.startDate, currentTrip.endDate);
+       if (genDates.length > 0) dates = genDates;
+    }
 
     // Initialize map
     dates.forEach(d => {
@@ -25,9 +48,18 @@ export function ExpenseGraph() {
 
     // Aggregate expenses by date and category
     expenses.forEach(exp => {
-      if (dailyMap[exp.date]) {
-        dailyMap[exp.date][exp.category] += exp.amount;
+      if (!dailyMap[exp.date]) {
+        dailyMap[exp.date] = { '식비': 0, '숙소비': 0, '교통비': 0, '기타': 0 };
+        dates.push(exp.date);
       }
+      dailyMap[exp.date][exp.category] += exp.amount;
+    });
+
+    // Sort dates properly (MM/DD)
+    dates.sort((a, b) => {
+      const [mA, dA] = a.split('/').map(Number);
+      const [mB, dB] = b.split('/').map(Number);
+      return mA === mB ? dA - dB : mA - mB;
     });
 
     // Map to stackData format
@@ -41,7 +73,7 @@ export function ExpenseGraph() {
 
       return { label: date, stacks };
     });
-  }, [expenses]);
+  }, [expenses, currentTrip]);
 
   const [activeItem, setActiveItem] = useState<any>(stackData[stackData.length - 1]);
 

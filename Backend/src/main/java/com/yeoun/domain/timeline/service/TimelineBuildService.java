@@ -1,5 +1,7 @@
 package com.yeoun.domain.timeline.service;
 
+import com.yeoun.domain.locationlog.entity.LocationPlace;
+import com.yeoun.domain.locationlog.repository.LocationPlaceRepository;
 import com.yeoun.domain.photo.entity.Photo;
 import com.yeoun.domain.photo.repository.PhotoRepository;
 import com.yeoun.domain.timeline.dto.response.TimelineBuildJobResponse;
@@ -31,6 +33,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 
 @Service
@@ -42,6 +45,7 @@ public class TimelineBuildService {
 
     private final TripRepository tripRepository;
     private final PhotoRepository photoRepository;
+    private final LocationPlaceRepository locationPlaceRepository;
     private final TimelineDayRepository timelineDayRepository;
     private final EventRepository eventRepository;
     private final EventPhotoRepository eventPhotoRepository;
@@ -50,6 +54,7 @@ public class TimelineBuildService {
     public TimelineBuildService(
             TripRepository tripRepository,
             PhotoRepository photoRepository,
+            LocationPlaceRepository locationPlaceRepository,
             TimelineDayRepository timelineDayRepository,
             EventRepository eventRepository,
             EventPhotoRepository eventPhotoRepository,
@@ -57,6 +62,7 @@ public class TimelineBuildService {
     ) {
         this.tripRepository = tripRepository;
         this.photoRepository = photoRepository;
+        this.locationPlaceRepository = locationPlaceRepository;
         this.timelineDayRepository = timelineDayRepository;
         this.eventRepository = eventRepository;
         this.eventPhotoRepository = eventPhotoRepository;
@@ -86,8 +92,9 @@ public class TimelineBuildService {
                     .filter(photo -> !photo.isExcluded())
                     .sorted(Comparator.comparing(this::effectivePhotoTime))
                     .toList();
+            List<LocationPlace> places = locationPlaceRepository.findByTripIdOrderByStartedAtAscUserIdAsc(tripId);
 
-            BuildResult result = rebuildTimeline(tripId, photos, now);
+            BuildResult result = rebuildTimeline(tripId, places, photos, now);
             tripProcessingStatusService.markReady(tripId, now);
 
             return new TimelineBuildJobResponse(
@@ -104,39 +111,58 @@ public class TimelineBuildService {
         }
     }
 
-    private BuildResult rebuildTimeline(UUID tripId, List<Photo> photos, Instant now) {
-        if (photos.isEmpty()) {
+    public TimelineBuildJobResponse buildTimelineFromLocationProcessing(UUID tripId) {
+        Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
+        return buildTimelineFromPhotos(trip.getOwnerUserId(), tripId);
+    }
+
+    private BuildResult rebuildTimeline(UUID tripId, List<LocationPlace> places, List<Photo> photos, Instant now) {
+        if (places.isEmpty() && photos.isEmpty()) {
             return new BuildResult(0, 0);
         }
 
-        Map<LocalDate, List<Photo>> photosByDay = new LinkedHashMap<>();
-        for (Photo photo : photos) {
-            photosByDay.computeIfAbsent(resolveDayDate(photo), ignored -> new ArrayList<>()).add(photo);
+        List<EventDraft> eventDrafts = createLocationEventDrafts(places);
+        List<Photo> unassignedPhotos = assignPhotosToLocationEvents(eventDrafts, photos);
+        eventDrafts.addAll(createPhotoEventDrafts(unassignedPhotos));
+
+        if (eventDrafts.isEmpty()) {
+            return new BuildResult(0, 0);
+        }
+
+        Map<LocalDate, List<EventDraft>> eventsByDay = new TreeMap<>();
+        for (EventDraft eventDraft : eventDrafts) {
+            eventsByDay.computeIfAbsent(resolveDayDate(eventDraft), ignored -> new ArrayList<>()).add(eventDraft);
         }
 
         int timelineDayCount = 0;
         int eventCount = 0;
 
-        for (Map.Entry<LocalDate, List<Photo>> entry : photosByDay.entrySet()) {
-            List<List<Photo>> eventPhotoGroups = splitIntoEventGroups(entry.getValue());
+        for (Map.Entry<LocalDate, List<EventDraft>> entry : eventsByDay.entrySet()) {
+            List<EventDraft> dayEvents = entry.getValue().stream()
+                    .sorted(Comparator
+                            .comparing(EventDraft::startAt)
+                            .thenComparing(EventDraft::endAt)
+                            .thenComparing(EventDraft::createdAt))
+                    .toList();
             TimelineDay timelineDay = TimelineDay.builder()
                     .timelineDayId(UUID.randomUUID())
                     .tripId(tripId)
                     .dayDate(entry.getKey())
                     .summaryText(null)
                     .distanceM((BigDecimal) null)
-                    .photoCount(entry.getValue().size())
-                    .eventCount(eventPhotoGroups.size())
+                    .photoCount(dayEvents.stream().mapToInt(event -> event.photos().size()).sum())
+                    .eventCount(dayEvents.size())
                     .createdAt(now)
                     .updatedAt(now)
                     .build();
             timelineDayRepository.save(timelineDay);
             timelineDayCount++;
 
-            for (List<Photo> eventPhotos : eventPhotoGroups) {
-                Event event = createEvent(tripId, timelineDay.getTimelineDayId(), eventPhotos, now);
+            for (EventDraft eventDraft : dayEvents) {
+                Event event = createEvent(tripId, timelineDay.getTimelineDayId(), eventDraft, now);
                 eventRepository.save(event);
-                saveEventPhotos(event.getEventId(), eventPhotos, now);
+                saveEventPhotos(event.getEventId(), eventDraft.photos(), now);
                 eventCount++;
             }
         }
@@ -144,23 +170,20 @@ public class TimelineBuildService {
         return new BuildResult(timelineDayCount, eventCount);
     }
 
-    private Event createEvent(UUID tripId, UUID timelineDayId, List<Photo> eventPhotos, Instant now) {
-        Photo firstPhoto = eventPhotos.get(0);
-        Photo lastPhoto = eventPhotos.get(eventPhotos.size() - 1);
-
+    private Event createEvent(UUID tripId, UUID timelineDayId, EventDraft eventDraft, Instant now) {
         return Event.builder()
                 .eventId(UUID.randomUUID())
                 .tripId(tripId)
                 .timelineDayId(timelineDayId)
                 .createdBy(EventCreatedBy.SYSTEM)
-                .eventType(EventType.OTHER)
-                .title(null)
-                .placeName(null)
-                .placeExternalId(null)
-                .startAt(effectivePhotoTime(firstPhoto))
-                .endAt(effectivePhotoTime(lastPhoto))
-                .centerLatitude(firstPhoto.getExifLatitude())
-                .centerLongitude(firstPhoto.getExifLongitude())
+                .eventType(eventDraft.eventType())
+                .title(eventDraft.title())
+                .placeName(eventDraft.placeName())
+                .placeExternalId(eventDraft.placeExternalId())
+                .startAt(eventDraft.startAt())
+                .endAt(eventDraft.endAt())
+                .centerLatitude(eventDraft.centerLatitude())
+                .centerLongitude(eventDraft.centerLongitude())
                 .radiusM(null)
                 .hidden(false)
                 .createdAt(now)
@@ -183,7 +206,81 @@ public class TimelineBuildService {
         }
     }
 
-    private List<List<Photo>> splitIntoEventGroups(List<Photo> dayPhotos) {
+    private List<EventDraft> createLocationEventDrafts(List<LocationPlace> places) {
+        List<EventDraft> drafts = new ArrayList<>();
+        for (LocationPlace place : places) {
+                drafts.add(new EventDraft(
+                        EventType.PLACE_VISIT,
+                        null,
+                        null,
+                        place.getPlaceId().toString(),
+                        place.getStartedAt(),
+                        place.getEndedAt(),
+                        place.getCenterLatitude(),
+                        place.getCenterLongitude(),
+                    new ArrayList<>(),
+                    place.getCreatedAt()
+            ));
+        }
+        return drafts;
+    }
+
+    private List<Photo> assignPhotosToLocationEvents(List<EventDraft> locationEventDrafts, List<Photo> photos) {
+        List<Photo> unassignedPhotos = new ArrayList<>();
+        for (Photo photo : photos) {
+            EventDraft matchedEvent = findMatchingLocationEvent(locationEventDrafts, photo);
+            if (matchedEvent == null) {
+                unassignedPhotos.add(photo);
+                continue;
+            }
+            matchedEvent.photos().add(photo);
+        }
+        for (EventDraft eventDraft : locationEventDrafts) {
+            eventDraft.photos().sort(Comparator.comparing(this::effectivePhotoTime));
+        }
+        return unassignedPhotos;
+    }
+
+    private EventDraft findMatchingLocationEvent(List<EventDraft> locationEventDrafts, Photo photo) {
+        Instant photoTime = effectivePhotoTime(photo);
+        for (EventDraft eventDraft : locationEventDrafts) {
+            if (!photoTime.isBefore(eventDraft.startAt()) && !photoTime.isAfter(eventDraft.endAt())) {
+                return eventDraft;
+            }
+        }
+        return null;
+    }
+
+    private List<EventDraft> createPhotoEventDrafts(List<Photo> photos) {
+        Map<LocalDate, List<Photo>> photosByDay = new LinkedHashMap<>();
+        for (Photo photo : photos) {
+            photosByDay.computeIfAbsent(resolveDayDate(photo), ignored -> new ArrayList<>()).add(photo);
+        }
+
+        List<EventDraft> drafts = new ArrayList<>();
+        for (List<Photo> dayPhotos : photosByDay.values()) {
+            List<List<Photo>> photoGroups = splitIntoPhotoGroups(dayPhotos);
+            for (List<Photo> photoGroup : photoGroups) {
+                Photo firstPhoto = photoGroup.get(0);
+                Photo lastPhoto = photoGroup.get(photoGroup.size() - 1);
+                drafts.add(new EventDraft(
+                        EventType.OTHER,
+                        null,
+                        null,
+                        null,
+                        effectivePhotoTime(firstPhoto),
+                        effectivePhotoTime(lastPhoto),
+                        firstPhoto.getExifLatitude(),
+                        firstPhoto.getExifLongitude(),
+                        new ArrayList<>(photoGroup),
+                        firstPhoto.getCreatedAt()
+                ));
+            }
+        }
+        return drafts;
+    }
+
+    private List<List<Photo>> splitIntoPhotoGroups(List<Photo> dayPhotos) {
         List<List<Photo>> groups = new ArrayList<>();
         List<Photo> currentGroup = new ArrayList<>();
         Instant previousTime = null;
@@ -202,6 +299,10 @@ public class TimelineBuildService {
             groups.add(currentGroup);
         }
         return groups;
+    }
+
+    private LocalDate resolveDayDate(EventDraft eventDraft) {
+        return eventDraft.startAt().atZone(DEFAULT_ZONE_ID).toLocalDate();
     }
 
     private LocalDate resolveDayDate(Photo photo) {
@@ -224,5 +325,19 @@ public class TimelineBuildService {
     }
 
     private record BuildResult(int timelineDayCount, int eventCount) {
+    }
+
+    private record EventDraft(
+            EventType eventType,
+            String title,
+            String placeName,
+            String placeExternalId,
+            Instant startAt,
+            Instant endAt,
+            BigDecimal centerLatitude,
+            BigDecimal centerLongitude,
+            List<Photo> photos,
+            Instant createdAt
+    ) {
     }
 }

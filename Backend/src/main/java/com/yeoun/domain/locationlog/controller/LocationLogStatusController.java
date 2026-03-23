@@ -18,7 +18,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/trips/{tripId}/location-log-status")
-@Tag(name = "LocationLog", description = "?꾩튂 濡쒓렇 ?섏쭛 API")
+@Tag(name = "LocationLog", description = "위치 로그 처리 상태 조회 API")
 @SecurityRequirement(name = "bearerAuth")
 public class LocationLogStatusController {
 
@@ -29,7 +29,7 @@ public class LocationLogStatusController {
     }
 
     @GetMapping
-    @Operation(summary = "?꾩튂 濡쒓렇 泥섎━ ?곹깭 議고쉶", description = "?ъ슜??泥⑥닔 ?섏쭛 ?붿껌 ?대썑 trip_processing_statuses 湲곕컲 ?곹깭瑜?polling ?⑸땲??")
+    @Operation(summary = "위치 로그 처리 상태 조회", description = "위치 로그 업로드 이후 trip_processing_statuses 기준 상태를 polling 할 때 사용합니다.")
     public ApiResponse<LocationLogProcessingStatusResponse> getStatus(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @PathVariable("tripId") UUID tripId

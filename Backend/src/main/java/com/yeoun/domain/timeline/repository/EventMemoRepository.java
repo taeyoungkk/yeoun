@@ -8,4 +8,6 @@ import java.util.UUID;
 
 public interface EventMemoRepository extends JpaRepository<EventMemo, UUID> {
     Optional<EventMemo> findByEventIdAndUserId(UUID eventId, UUID userId);
+
+    boolean existsByEventId(UUID eventId);
 }
