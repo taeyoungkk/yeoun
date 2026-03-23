@@ -216,6 +216,23 @@ const shouldMockInDev = (error: unknown) => {
 
 const formatApiDate = (value: string) => value.replace(/\./g, '-').slice(0, 10);
 
+const toFiniteNumber = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return value;
+};
+
+const roundTo = (value: number | undefined, digits: number): number | undefined => {
+  if (value == null) {
+    return undefined;
+  }
+
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+};
+
 const getErrorMessage = (error: any, fallback: string) =>
   error?.response?.data?.message ??
   error?.response?.data?.error?.message ??
@@ -250,9 +267,9 @@ const toLocationUploadItem = (location: LocationLog, index: number) => ({
   recordedAt: location.recordedAt,
   latitude: location.latitude,
   longitude: location.longitude,
-  accuracyM: location.accuracyM ?? location.accuracy ?? 10,
-  speedMps: location.speedMps,
-  heading: location.heading,
+  accuracyM: roundTo(toFiniteNumber(location.accuracyM ?? location.accuracy ?? 10), 2) ?? 10,
+  speedMps: roundTo(toFiniteNumber(location.speedMps), 2),
+  heading: roundTo(toFiniteNumber(location.heading), 2),
   source: location.source ?? 'GPS',
 });
 
