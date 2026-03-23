@@ -11,6 +11,8 @@ public interface EventPhotoRepository extends JpaRepository<EventPhoto, UUID> {
 
     List<EventPhoto> findByEventIdInOrderByEventIdAscSortOrderAsc(List<UUID> eventIds);
 
+    List<EventPhoto> findByPhotoIdIn(List<UUID> photoIds);
+
     void deleteByEventId(UUID eventId);
 
     long countByEventId(UUID eventId);

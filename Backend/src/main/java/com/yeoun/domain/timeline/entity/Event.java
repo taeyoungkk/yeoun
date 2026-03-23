@@ -103,4 +103,9 @@ public class Event {
         this.timelineDayId = timelineDayId;
         this.updatedAt = now;
     }
+
+    public void changeEventType(EventType eventType, Instant now) {
+        this.eventType = eventType;
+        this.updatedAt = now;
+    }
 }
