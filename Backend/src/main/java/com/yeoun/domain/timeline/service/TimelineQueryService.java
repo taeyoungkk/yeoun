@@ -24,6 +24,8 @@ import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +41,8 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class TimelineQueryService {
+
+    private static final Logger log = LoggerFactory.getLogger(TimelineQueryService.class);
 
     private final TimelineDayRepository timelineDayRepository;
     private final EventRepository eventRepository;
@@ -67,6 +71,7 @@ public class TimelineQueryService {
     }
 
     public TimelineDayListResponse getTimelineDays(UUID requesterUserId, UUID tripId) {
+        log.info("Loading timeline days. requesterUserId={}, tripId={}", requesterUserId, tripId);
         Trip trip = getAccessibleTrip(tripId, requesterUserId);
 
         List<TimelineDayListItemResponse> items = timelineDayRepository.findByTripIdOrderByDayDateAsc(trip.getTripId()).stream()
@@ -82,13 +87,17 @@ public class TimelineQueryService {
                 ))
                 .toList();
 
+        log.info("Loaded timeline days. requesterUserId={}, tripId={}, timelineDayCount={}", requesterUserId, tripId, items.size());
         return new TimelineDayListResponse(items);
     }
 
     public TimelineDayDetailResponse getTimelineDayDetail(UUID requesterUserId, UUID timelineDayId) {
+        log.info("Loading timeline day detail. requesterUserId={}, timelineDayId={}", requesterUserId, timelineDayId);
         TimelineDay timelineDay = timelineDayRepository.findById(timelineDayId)
                 .orElseThrow(() -> new BaseException(ErrorCode.TIMELINE_DAY_NOT_FOUND));
 
+        log.info("Resolved timeline day. requesterUserId={}, timelineDayId={}, tripId={}",
+                requesterUserId, timelineDayId, timelineDay.getTripId());
         getAccessibleTrip(timelineDay.getTripId(), requesterUserId);
 
         List<Event> events = eventRepository.findByTimelineDayIdAndHiddenFalseOrderByStartAtAscEndAtAscCreatedAtAsc(timelineDayId);
@@ -133,6 +142,7 @@ public class TimelineQueryService {
     }
 
     public EventDetailResponse getEventDetail(UUID requesterUserId, UUID eventId) {
+        log.info("Loading event detail. requesterUserId={}, eventId={}", requesterUserId, eventId);
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new BaseException(ErrorCode.EVENT_NOT_FOUND));
 
