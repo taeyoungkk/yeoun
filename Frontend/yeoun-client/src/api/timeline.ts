@@ -2,7 +2,7 @@ import axios from 'axios';
 
 import apiClient from './client';
 
-interface ApiResponse<T> {
+export interface ApiResponse<T> {
   success: boolean;
   code?: string;
   message?: string;

@@ -75,6 +75,7 @@ export function RegularNav({
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
 
+  /** 현재 활성화된 탭인지 확인하는 함수 */
   const isTabActive = (href: string) => {
     if (href === '/') return pathname === '/' || pathname === '/index';
     const normalizedPath = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
@@ -87,6 +88,7 @@ export function RegularNav({
       className="absolute bottom-0 w-full border-t border-gray-100"
       style={{ 
         backgroundColor, 
+        /** 기기별 하단 안전영역(Safe Area)을 고려하여 패딩을 설정합니다 */
         paddingBottom: Math.max(insets.bottom, 16),
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -2 },

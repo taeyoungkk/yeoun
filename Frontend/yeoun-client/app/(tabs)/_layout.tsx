@@ -16,28 +16,28 @@ export default function TabLayout() {
 
   const navItems = [
     { 
-      label: 'Home', 
+      label: '홈', 
       href: '/', 
       icon: ({ color, size }: { color: string; size: number }) => <HouseSvg color={color} size={size} />
     },
     { 
-      label: 'Explore', 
+      label: '탐색', 
       href: '/explore', 
       icon: ({ color, size }: { color: string; size: number }) => <MapLocationPinSvg color={color} size={size} />
     },
     { 
-      label: 'Cards', 
+      label: '카드', 
       href: '/cards', 
       icon: ({ color, size }: { color: string; size: number }) => <CreditCardSvg color={color} size={size} />
     },
     { 
-      label: 'Notice', 
+      label: '알림', 
       href: '/notifications', 
       icon: ({ color, size }: { color: string; size: number }) => <BellSvg color={color} size={size} />,
       showBadge: hasUnread
     },
     { 
-      label: 'My Page', 
+      label: '마이페이지', 
       href: '/mypage', 
       icon: ({ color, size }: { color: string; size: number }) => <ProfileRoundSvg color={color} size={size} />
     },
@@ -59,31 +59,31 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: '홈',
         }}
       />
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Explore',
+          title: '탐색',
         }}
       />
       <Tabs.Screen
         name="cards"
         options={{
-          title: 'Cards',
+          title: '카드',
         }}
       />
       <Tabs.Screen
         name="notifications"
         options={{
-          title: 'Notice',
+          title: '알림',
         }}
       />
       <Tabs.Screen
         name="mypage"
         options={{
-          title: 'My Page',
+          title: '마이페이지',
         }}
       />
     </Tabs>
