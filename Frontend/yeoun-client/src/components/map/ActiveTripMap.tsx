@@ -8,6 +8,10 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { FogOverlay } from './FogOverlay';
 import { PastRoutesLayer } from './PastRoutesLayer';
 import { matchMapTrace } from '@/src/api/mapbox';
+import { PhotoMarker, PaymentMarker, LocationMarker } from './EventMarkers';
+import { useTripStore } from '@/src/store/trip.store';
+import { getTripEvents, subscribeTripEvents, TimelineEvent } from '@/src/features/trip/store/tripMockStore';
+import { globalUserState, subscribeUser } from '@/src/store/userStore';
 
 // TODO: 실제 서버에서 지난 여행 기록을 가져오도록 수정해야 합니다.
 // 현재는 안개 걷히는(스크래치 오프) 기능 테스트를 위한 하드코딩된 더미 데이터입니다.
@@ -37,6 +41,38 @@ export function ActiveTripMap() {
   const [isCentred, setIsCentred] = useState(false);
   const [isFollowing, setIsFollowing] = useState(true);
   const lastMatchedIndex = useRef(0);
+
+  const currentTripId = useTripStore((state) => state.currentTripId);
+  const activeTripId = currentTripId ?? 'trip-demo-uuid';
+  const [tripEvents, setTripEvents] = useState<TimelineEvent[]>(() => getTripEvents());
+  const [mapPreferences, setMapPreferences] = useState({
+    showPhotoPins: globalUserState.showPhotoPins,
+    showPaymentPins: globalUserState.showPaymentPins,
+  });
+
+  useEffect(() => {
+    const unsubscribe = subscribeTripEvents(() => {
+      setTripEvents(getTripEvents());
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeUser(() => {
+      setMapPreferences({
+        showPhotoPins: globalUserState.showPhotoPins,
+        showPaymentPins: globalUserState.showPaymentPins,
+      });
+    });
+    return unsubscribe;
+  }, []);
+
+  const filteredMapEvents = tripEvents.filter((event) => {
+    if (!event.coordinate) return false;
+    if (event.type === 'photo') return mapPreferences.showPhotoPins;
+    if (event.type === 'payment') return mapPreferences.showPaymentPins;
+    return true;
+  });
 
   // 여행 중 실시간 위치 업데이트를 구독합니다. 즉각적으로 선을 그어줍니다.
   useEffect(() => {
@@ -73,14 +109,20 @@ export function ActiveTripMap() {
   // 일정 포인트 이상 쌓이면 맵 매칭 API를 호출하여 경로를 보정합니다. (실시간 스냅)
   useEffect(() => {
     const pointsCount = routeCoordinates.length;
-    // 10개 이상의 새로운 포인트가 쌓였거나, 처음으로 5포인트가 넘었을 때
-    if (pointsCount > 2 && pointsCount - lastMatchedIndex.current >= 10) {
+    // 5개 이상의 새로운 포인트가 쌓였을 때 맵 매칭 수행
+    if (pointsCount > 2 && pointsCount - lastMatchedIndex.current >= 5) {
       const matchTrace = async () => {
-        // 최대 100개까지만 보냄 (최신 100개)
-        const coordsToMatch = routeCoordinates.slice(-100);
+        // 자연스럽게 이어지도록 이전 보정 블록의 마지막 점을 포함하여 보냅니다.
+        const startIndex = Math.max(0, lastMatchedIndex.current - 1);
+        const coordsToMatch = routeCoordinates.slice(startIndex, pointsCount);
+        
         const matched = await matchMapTrace(coordsToMatch, 'walking');
-        if (matched) {
-          setMatchedCoordinates(matched);
+        if (matched && matched.length > 0) {
+          setMatchedCoordinates(prev => {
+            if (prev.length === 0) return matched;
+            // 이전 경로에 새로운 보정 경로를 이어붙입니다 (첫 번째 점 중복 제거)
+            return [...prev, ...matched.slice(1)];
+          });
           lastMatchedIndex.current = pointsCount;
         }
       };
@@ -164,6 +206,18 @@ export function ActiveTripMap() {
 
         {/* 사용자의 현재 위치를 나타내는 파란색 점 애니메이션 */}
         <Mapbox.UserLocation visible={true} showsUserHeadingIndicator={true} />
+
+        {/* 개별 분리된 이벤트 마커 컴포넌트 렌더링 */}
+        {filteredMapEvents.map(event => {
+          const coord = event.coordinate as [number, number];
+          if (event.type === 'photo') {
+            return <PhotoMarker key={event.id} id={event.id} coordinate={coord} />;
+          }
+          if (event.type === 'payment') {
+            return <PaymentMarker key={event.id} id={event.id} coordinate={coord} />;
+          }
+          return <LocationMarker key={event.id} id={event.id} coordinate={coord} />;
+        })}
       </Mapbox.MapView>
 
       {/* 안개 토글 버튼 및 내 위치 버튼 */}
