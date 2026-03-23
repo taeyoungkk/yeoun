@@ -7,6 +7,11 @@ import * as Location from 'expo-location';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { FogOverlay } from './FogOverlay';
 import { PastRoutesLayer } from './PastRoutesLayer';
+import { matchMapTrace } from '@/src/api/mapbox';
+import { PhotoMarker, PaymentMarker, LocationMarker } from './EventMarkers';
+import { useTripStore } from '@/src/store/trip.store';
+import { getTripEvents, subscribeTripEvents, TimelineEvent } from '@/src/features/trip/store/tripMockStore';
+import { globalUserState, subscribeUser } from '@/src/store/userStore';
 
 // TODO: 실제 서버에서 지난 여행 기록을 가져오도록 수정해야 합니다.
 // 현재는 안개 걷히는(스크래치 오프) 기능 테스트를 위한 하드코딩된 더미 데이터입니다.
@@ -31,21 +36,59 @@ configureMapbox();
 export function ActiveTripMap() {
   const cameraRef = useRef<Mapbox.Camera>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
+  const [matchedCoordinates, setMatchedCoordinates] = useState<[number, number][]>([]);
   const [isFogEnabled, setIsFogEnabled] = useState(true);
+  const [isCentred, setIsCentred] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(true);
+  const lastMatchedIndex = useRef(0);
+
+  const currentTripId = useTripStore((state) => state.currentTripId);
+  const activeTripId = currentTripId ?? 'trip-demo-uuid';
+  const [tripEvents, setTripEvents] = useState<TimelineEvent[]>(() => getTripEvents());
+  const [mapPreferences, setMapPreferences] = useState({
+    showPhotoPins: globalUserState.showPhotoPins,
+    showPaymentPins: globalUserState.showPaymentPins,
+  });
+
+  useEffect(() => {
+    const unsubscribe = subscribeTripEvents(() => {
+      setTripEvents(getTripEvents());
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeUser(() => {
+      setMapPreferences({
+        showPhotoPins: globalUserState.showPhotoPins,
+        showPaymentPins: globalUserState.showPaymentPins,
+      });
+    });
+    return unsubscribe;
+  }, []);
+
+  const filteredMapEvents = tripEvents.filter((event) => {
+    if (!event.coordinate) return false;
+    if (event.type === 'photo') return mapPreferences.showPhotoPins;
+    if (event.type === 'payment') return mapPreferences.showPaymentPins;
+    return true;
+  });
 
   // 여행 중 실시간 위치 업데이트를 구독합니다. 즉각적으로 선을 그어줍니다.
   useEffect(() => {
-    // 초기 위치를 즉시 가져와 중심을 맞춥니다.
+    let initialLocationFound = false;
+
+    // 초기 위치를 즉시 가져와 데이터를 쌓습니다. (센터링은 맵 프롭이 알아서 비행합니다)
     (async () => {
       try {
         let loc = await Location.getLastKnownPositionAsync({});
         if (!loc) {
           loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         }
-        if (loc) {
-          setRouteCoordinates((prev) => 
-            prev.length === 0 ? [[loc.coords.longitude, loc.coords.latitude]] : prev
-          );
+        if (loc && !initialLocationFound) {
+          initialLocationFound = true;
+          const coords: [number, number] = [loc.coords.longitude, loc.coords.latitude];
+          setRouteCoordinates((prev) => prev.length === 0 ? [coords] : prev);
         }
       } catch (e) {
         console.warn('초기 위치 획득 실패:', e);
@@ -53,21 +96,50 @@ export function ActiveTripMap() {
     })();
 
     const unsubscribe = locationService.subscribe((location) => {
-      setRouteCoordinates((prev) => [...prev, [location.longitude, location.latitude]]);
+      const coords: [number, number] = [location.longitude, location.latitude];
+      setRouteCoordinates((prev) => [...prev, coords]);
+      if (!initialLocationFound) {
+        initialLocationFound = true;
+      }
     });
 
     return () => unsubscribe();
   }, []);
 
-  const centerOnUser = () => {
-    if (routeCoordinates.length > 0 && cameraRef.current) {
-      cameraRef.current.setCamera({
-        centerCoordinate: routeCoordinates[routeCoordinates.length - 1],
-        zoomLevel: 15,
-        animationDuration: 1000,
-      });
+  // 일정 포인트 이상 쌓이면 맵 매칭 API를 호출하여 경로를 보정합니다. (실시간 스냅)
+  useEffect(() => {
+    const pointsCount = routeCoordinates.length;
+    // 5개 이상의 새로운 포인트가 쌓였을 때 맵 매칭 수행
+    if (pointsCount > 2 && pointsCount - lastMatchedIndex.current >= 5) {
+      const matchTrace = async () => {
+        // 자연스럽게 이어지도록 이전 보정 블록의 마지막 점을 포함하여 보냅니다.
+        const startIndex = Math.max(0, lastMatchedIndex.current - 1);
+        const coordsToMatch = routeCoordinates.slice(startIndex, pointsCount);
+        
+        const matched = await matchMapTrace(coordsToMatch, 'walking');
+        if (matched && matched.length > 0) {
+          setMatchedCoordinates(prev => {
+            if (prev.length === 0) return matched;
+            // 이전 경로에 새로운 보정 경로를 이어붙입니다 (첫 번째 점 중복 제거)
+            return [...prev, ...matched.slice(1)];
+          });
+          lastMatchedIndex.current = pointsCount;
+        }
+      };
+      matchTrace();
     }
+  }, [routeCoordinates]);
+
+  const centerOnUser = () => {
+    const lastCoord = routeCoordinates.length > 0 ? routeCoordinates[routeCoordinates.length - 1] : null;
+    console.log('[ActiveTripMap] centerOnUser triggered. LastCoord:', lastCoord);
+    setIsFollowing(true);
   };
+
+  // 맵 매칭된 좌표와 아직 매칭되지 않은 최신 원본 좌표를 합쳐서 부드러운 경로를 만듭니다.
+  const displayCoordinates = matchedCoordinates.length > 0 
+    ? [...matchedCoordinates, ...routeCoordinates.slice(lastMatchedIndex.current)]
+    : routeCoordinates;
 
   const routeShape: GeoJSON.FeatureCollection<GeoJSON.LineString> = {
     type: 'FeatureCollection',
@@ -78,7 +150,7 @@ export function ActiveTripMap() {
         geometry: {
           type: 'LineString',
           // 경로가 없을 땐 기본으로 서울의 좌표로 초기화합니다.
-          coordinates: routeCoordinates.length > 0 ? routeCoordinates : [[126.9784, 37.5667], [126.9784, 37.5667]],
+          coordinates: displayCoordinates.length > 0 ? displayCoordinates : [[126.9784, 37.5667], [126.9784, 37.5667]],
         },
       },
     ],
@@ -97,19 +169,29 @@ export function ActiveTripMap() {
       >
         <Mapbox.Camera
           ref={cameraRef}
-          zoomLevel={15}
+          defaultSettings={{
+            centerCoordinate: [126.9784, 37.5667], // 서울 기본 좌표 (Europe/Africa 방지)
+            zoomLevel: 15,
+          }}
           followZoomLevel={15}
-          followUserLocation={true}
-          centerCoordinate={routeCoordinates.length > 0 ? routeCoordinates[routeCoordinates.length - 1] : undefined}
-          animationMode="flyTo"
-          animationDuration={routeCoordinates.length > 0 ? 1000 : 0}
+          followUserLocation={isFollowing && routeCoordinates.length > 0} // 위치 데이터가 있을 때만 follow
+          onUserTrackingModeChange={(event: any) => {
+            const isFollowActive = event.nativeEvent?.followUserLocation ?? event.payload?.followUserLocation;
+            if (!isFollowActive) {
+              setIsFollowing(false);
+            } else if (!isCentred) {
+              setTimeout(() => setIsCentred(true), 1500);
+            }
+          }}
+          animationMode={!isCentred ? 'flyTo' : 'none'}
+          animationDuration={!isCentred ? 1500 : 0}
         />
         
         {/* 과거 이동 경로 표시 및 안개 걷어내기 효과 */}
         <PastRoutesLayer 
           routes={[
             ...MOCK_PAST_ROUTES, 
-            routeCoordinates.length > 0 ? routeCoordinates : [[126.9784, 37.5667], [126.9784, 37.5667]]
+            displayCoordinates.length > 0 ? displayCoordinates : [[126.9784, 37.5667], [126.9784, 37.5667]]
           ]} 
           isFogEnabled={isFogEnabled} 
         />
@@ -124,6 +206,18 @@ export function ActiveTripMap() {
 
         {/* 사용자의 현재 위치를 나타내는 파란색 점 애니메이션 */}
         <Mapbox.UserLocation visible={true} showsUserHeadingIndicator={true} />
+
+        {/* 개별 분리된 이벤트 마커 컴포넌트 렌더링 */}
+        {filteredMapEvents.map(event => {
+          const coord = event.coordinate as [number, number];
+          if (event.type === 'photo') {
+            return <PhotoMarker key={event.id} id={event.id} coordinate={coord} />;
+          }
+          if (event.type === 'payment') {
+            return <PaymentMarker key={event.id} id={event.id} coordinate={coord} />;
+          }
+          return <LocationMarker key={event.id} id={event.id} coordinate={coord} />;
+        })}
       </Mapbox.MapView>
 
       {/* 안개 토글 버튼 및 내 위치 버튼 */}

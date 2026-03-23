@@ -6,7 +6,7 @@ import dissolve from '@turf/dissolve';
 import truncate from '@turf/truncate';
 import { featureCollection } from '@turf/helpers';
 import type { Feature, Polygon, MultiPolygon } from 'geojson';
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface FogOverlayProps {
   /**
