@@ -8,7 +8,7 @@ import java.util.UUID;
 public record TripPhotoListItemResponse(
         @Schema(description = "사진 ID")
         UUID photoId,
-        @Schema(description = "썸네일 key")
+        @Schema(description = "썸네일 접근 URL(presigned)")
         String thumbnailUrl,
         @Schema(description = "촬영 시각")
         Instant takenAt,

@@ -1,12 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Modal, ScrollView, Pressable } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
+import { Image } from 'expo-image';
 import { configureMapbox } from '@/src/lib/mapbox';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Location from 'expo-location';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FogOverlay } from './FogOverlay';
 import { PastRoutesLayer } from './PastRoutesLayer';
 import { matchMapTrace } from '@/src/api/mapbox';
+import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
+import { getTripEvents, subscribeTripEvents, type TimelineEvent } from '@/src/features/trip/store/tripMockStore';
 
 // TODO: 실제 서버에서 지난 여행 기록을 가져오도록 수정해야 합니다.
 const MOCK_PAST_ROUTES = [
@@ -28,6 +32,7 @@ const MOCK_PAST_ROUTES = [
 const hasMapboxToken = configureMapbox();
 
 export function CurrentLocationMap() {
+  const insets = useSafeAreaInsets();
   const cameraRef = useRef<Mapbox.Camera>(null);
   const [isMapReady, setIsMapReady] = useState(false);
   const [mapLoadFailed, setMapLoadFailed] = useState(false);
@@ -36,6 +41,17 @@ export function CurrentLocationMap() {
   const [isFollowing, setIsFollowing] = useState(true);
   const [isCentred, setIsCentred] = useState(false);
   const [matchedRoutes, setMatchedRoutes] = useState<[number, number][][]>(MOCK_PAST_ROUTES as [number, number][][]);
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
+
+  // 목업 이벤트(사진, 장소, 결제)를 불러옵니다.
+  useEffect(() => {
+    setEvents(getTripEvents());
+    const unsubscribe = subscribeTripEvents(() => {
+      setEvents(getTripEvents());
+    });
+    return unsubscribe;
+  }, []);
 
   // 초기 로드 시 Mock 데이터를 맵 매칭 API로 보정합니다.
   useEffect(() => {
@@ -175,6 +191,44 @@ export function CurrentLocationMap() {
           />
         )}
 
+        {/* 이벤트 마커 렌더링 (사진, 결제, 장소) */}
+        {events.map((event) => {
+          if (!event.coordinate) return null;
+
+          if (event.type === 'photo') {
+            return (
+              <PhotoMarker 
+                key={event.id} 
+                id={event.id} 
+                coordinate={event.coordinate} 
+                photoUrls={event.photoUrls || []}
+                onPress={() => setSelectedEvent(event)}
+              />
+            );
+          }
+          if (event.type === 'payment') {
+            return (
+              <PaymentMarker 
+                key={event.id} 
+                id={event.id} 
+                coordinate={event.coordinate} 
+                onPress={() => setSelectedEvent(event)}
+              />
+            );
+          }
+          if (event.type === 'location') {
+            return (
+              <LocationMarker 
+                key={event.id} 
+                id={event.id} 
+                coordinate={event.coordinate} 
+                onPress={() => setSelectedEvent(event)}
+              />
+            );
+          }
+          return null;
+        })}
+
         <Mapbox.UserLocation visible={true} showsUserHeadingIndicator={true} />
       </Mapbox.MapView>
 
@@ -233,6 +287,91 @@ export function CurrentLocationMap() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* 이벤트 상세 모달 */}
+      <Modal
+        visible={!!selectedEvent}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setSelectedEvent(null)}
+      >
+        <Pressable 
+          className="flex-1 justify-end bg-black/40" 
+          onPress={() => setSelectedEvent(null)}
+        >
+          <Pressable 
+            className="bg-white rounded-t-3xl pt-6 px-6" 
+            style={{ paddingBottom: Math.max(insets.bottom, 24) + 24 }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {selectedEvent && (
+              <View>
+                <View className="flex-row justify-between items-start mb-4">
+                  <View className="flex-1 pr-4">
+                    <Text className="text-xl font-pretendard-bold text-gray-900">{selectedEvent.title}</Text>
+                    {selectedEvent.placeName && (
+                      <Text className="text-sm font-pretendard-medium text-gray-500 mt-1">{selectedEvent.placeName}</Text>
+                    )}
+                  </View>
+                  <TouchableOpacity onPress={() => setSelectedEvent(null)} className="p-1">
+                    <MaterialIcons name="close" size={24} color="#9CA3AF" />
+                  </TouchableOpacity>
+                </View>
+
+                {selectedEvent.eventMemo && (
+                  <Text className="text-sm font-pretendard-regular text-gray-700 mb-6">{selectedEvent.eventMemo}</Text>
+                )}
+
+                {selectedEvent.type === 'photo' && selectedEvent.photoUrls && selectedEvent.photoUrls.length > 0 && (
+                  <View className="mb-4">
+                    <Text className="text-sm font-pretendard-semibold text-gray-800 mb-3">사진 ({selectedEvent.photoUrls.length}장)</Text>
+                    <ScrollView 
+                      showsVerticalScrollIndicator={false} 
+                      style={{ maxHeight: 300 }}
+                    >
+                      <View className="flex-row flex-wrap">
+                        {selectedEvent.photoUrls.map((url, idx) => (
+                          <View key={idx} style={{ width: '33.33%', padding: 4 }}>
+                            <Image
+                              source={{ uri: url }}
+                              style={{ width: '100%', aspectRatio: 1, borderRadius: 12, backgroundColor: '#E5E7EB' }}
+                              contentFit="cover"
+                            />
+                          </View>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
+
+                {selectedEvent.type === 'payment' && (
+                  <View className="mb-4 bg-[#FFF0E8]/50 p-5 rounded-2xl border border-[#FFF0E8]">
+                    <Text className="text-sm font-pretendard-semibold text-gray-600 mb-1">결제 금액</Text>
+                    <Text className="text-2xl font-pretendard-bold text-gray-900">{selectedEvent.amount}</Text>
+                    <View className="flex-row gap-2 mt-3">
+                      {selectedEvent.chips?.map((chip, idx) => (
+                        <View key={idx} className="bg-white px-2.5 py-1 rounded-md border border-[#F0B132]/20">
+                          <Text className="text-xs font-pretendard-medium text-[#F0B132]">{chip}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                
+                {selectedEvent.type === 'location' && selectedEvent.chips && selectedEvent.chips.length > 0 && (
+                  <View className="flex-row flex-wrap gap-2 mt-2">
+                    {selectedEvent.chips.map((chip, idx) => (
+                      <View key={idx} className="bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200">
+                        <Text className="text-xs font-pretendard-medium text-gray-600">{chip}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

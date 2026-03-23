@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Modal, ActivityIndicator, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -17,6 +17,7 @@ const hasSpecial = (pw: string) =>
   /[!@#$%^&*(),.?":{}|<>_\-+=~`[\]\\;'/]/.test(pw);
 
 export default function EditProfileScreen() {
+  const insets = useSafeAreaInsets();
   const { profile, updateProfile } = useUserStore();
   const { setTokens } = useAuthStore();
   
@@ -217,7 +218,7 @@ export default function EditProfileScreen() {
           </View>
 
           {/* 하단 버튼 */}
-          <View className="px-5 pb-8 pt-6">
+          <View className="px-5 pt-6" style={{ paddingBottom: insets.bottom + 32 }}>
             <TouchableOpacity 
               onPress={handleSave}
               disabled={isSaving}

@@ -1,4 +1,4 @@
-﻿import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Mapbox from '@rnmapbox/maps';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -39,6 +39,7 @@ import {
 } from '@/src/features/trip/store/tripMockStore';
 import { locationService } from '../../../services/locationService';
 import { useTripStore } from '@/src/store/trip.store';
+import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
 
 const hasMapboxToken = configureMapbox();
 const MAX_MAP_HEIGHT = 620;
@@ -66,36 +67,33 @@ type TripDay = {
 
 const TRIP_DAY_TEMPLATES: Omit<TripDay, 'id' | 'label' | 'dateLabel'>[] = [
   {
-    distanceKm: 12.8,
-    summary: '서울 도심을 걸으며 사진과 결제를 함께 기록한 날이에요.',
+    distanceKm: 15.2,
+    summary: '경복궁에서 시작해 남산을 거쳐 강남까지 이동하며 서울의 중심을 가로지른 날이에요.',
     route: [
-      [126.9784, 37.5667],
-      [126.9822, 37.5703],
-      [126.9898, 37.5707],
-      [126.9958, 37.5712],
-      [127.0014, 37.5701],
+      [126.9768, 37.5796], // 경복궁
+      [126.9822, 37.5703], // 시청
+      [126.9882, 37.5512], // 남산타워
+      [127.0090, 37.5450], // 한남
+      [127.0276, 37.4979], // 강남역
     ],
   },
   {
-    distanceKm: 9.4,
-    summary: '성수 일대에서 머문 장소와 이동 흐름이 또렷했던 구간이에요.',
+    distanceKm: 8.5,
+    summary: '서울숲과 성수동 일대에서 여유로운 시간을 보내며 힐링한 하루예요.',
     route: [
-      [127.0437, 37.5447],
-      [127.0479, 37.5466],
-      [127.0502, 37.5479],
-      [127.0534, 37.5454],
-      [127.0574, 37.5442],
+      [127.0437, 37.5447], // 서울숲 입구
+      [127.0448, 37.5447], // 서울숲 중앙
+      [127.0479, 37.5466], // 성수동
+      [127.0574, 37.5442], // 성수역
     ],
   },
   {
-    distanceKm: 14.2,
-    summary: '한강 근처를 따라 이동하며 결제와 방문 기록이 쌓인 하루예요.',
+    distanceKm: 12.0,
+    summary: '한강변을 따라 걸으며 사진과 장소를 기록한 평화로운 구간이에요.',
     route: [
       [126.9837, 37.5392],
-      [126.9873, 37.5372],
-      [126.9919, 37.5346],
-      [126.9972, 37.5314],
       [127.0028, 37.5289],
+      [127.0200, 37.5200],
     ],
   },
 ];
@@ -278,6 +276,7 @@ function buildRealTripEvents(timelineDays: TimelineDayDetail[]): TimelineEvent[]
           chips: [event.eventType, hasPhotos ? `photo ${event.photoCount}` : null].filter(Boolean) as string[],
           eventMemo: hasPhotos ? 'Photo detail sync is not connected yet.' : undefined,
           photoContributors: hasPhotos ? [{ id: event.createdBy, name: 'member', color: '#77B6EA' }] : undefined,
+          photoUrls: event.representativePhoto?.imageUrl ? [event.representativePhoto.imageUrl] : [],
           photoItems: event.representativePhoto?.imageUrl
             ? [
                 {
@@ -288,6 +287,7 @@ function buildRealTripEvents(timelineDays: TimelineDayDetail[]): TimelineEvent[]
                 },
               ]
             : undefined,
+          coordinate: event.centerLatitude && event.centerLongitude ? [event.centerLongitude, event.centerLatitude] : undefined,
         });
       });
   });
@@ -446,12 +446,13 @@ export default function MockTripRecordingScreen({
 
         return {
           type: 'Feature' as const,
-          id: event.id,
-          properties: {
-            eventId: event.id,
-            accent: theme.accent,
-            selected: selectedEventId === event.id ? 1 : 0,
-          },
+            id: event.id,
+            properties: {
+              eventId: event.id,
+              type: event.type,
+              accent: theme.accent,
+              selected: selectedEventId === event.id ? 1 : 0,
+            },
           geometry: {
             type: 'Point' as const,
             coordinates: event.coordinate as Coordinate,
@@ -1372,11 +1373,12 @@ export default function MockTripRecordingScreen({
               }
             }}
           >
+            {/* Background markers for location/payment - CircleLayer for efficiency */}
             <Mapbox.CircleLayer
               id="trip-events-shadow"
               style={{
                 circleColor: '#102118',
-                circleOpacity: 0.12,
+                circleOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 0.12, 0],
                 circleRadius: ['case', ['==', ['get', 'selected'], 1], 12, 10],
                 circleTranslate: [0, 2],
               }}
@@ -1385,6 +1387,7 @@ export default function MockTripRecordingScreen({
               id="trip-events-ring"
               style={{
                 circleColor: '#FFFFFF',
+                circleOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 1, 0],
                 circleRadius: ['case', ['==', ['get', 'selected'], 1], 11, 9],
               }}
             />
@@ -1392,12 +1395,26 @@ export default function MockTripRecordingScreen({
               id="trip-events-core"
               style={{
                 circleColor: ['get', 'accent'],
+                circleOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 1, 0],
                 circleRadius: ['case', ['==', ['get', 'selected'], 1], 8, 6],
                 circleStrokeColor: '#FFFFFF',
+                circleStrokeOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 1, 0],
                 circleStrokeWidth: ['case', ['==', ['get', 'selected'], 1], 2, 1],
               }}
             />
           </Mapbox.ShapeSource>
+
+          {/* Individual Photo Markers for the "Stack" effect */}
+          {filteredMapEvents.filter(e => e.type === 'photo').map((event) => (
+            <PhotoMarker 
+              key={event.id}
+              id={event.id}
+              coordinate={event.coordinate as [number, number]}
+              isSelected={selectedEventId === event.id}
+              photoUrls={event.photoUrls || (event.photoItems?.map(p => String(p.source)))}
+              onPress={() => focusEvent(event.id)}
+            />
+          ))}
         </Mapbox.MapView>
 
         {!isMapReady ? (

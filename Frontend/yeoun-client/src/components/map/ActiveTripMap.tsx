@@ -234,7 +234,7 @@ export function ActiveTripMap() {
         {filteredMapEvents.map((event) => {
           const coord = event.coordinate as [number, number];
           if (event.type === 'photo') {
-            return <PhotoMarker key={event.id} id={event.id} coordinate={coord} />;
+            return <PhotoMarker key={event.id} id={event.id} coordinate={coord} photoUrls={event.photoUrls} />;
           }
           if (event.type === 'payment') {
             return <PaymentMarker key={event.id} id={event.id} coordinate={coord} />;

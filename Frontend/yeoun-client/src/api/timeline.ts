@@ -2,7 +2,7 @@ import axios from 'axios';
 
 import apiClient from './client';
 
-interface ApiResponse<T> {
+export interface ApiResponse<T> {
   success: boolean;
   code?: string;
   message?: string;
@@ -20,6 +20,26 @@ export interface TimelineDaySummary {
   updatedAt: string;
 }
 
+export interface EventPhoto {
+  eventPhotoId: string;
+  photoId: string;
+  storageKey?: string;
+  thumbnailKey: string;
+  fileName?: string;
+  takenAt: string;
+  sortOrder: number;
+  representative: boolean;
+}
+
+export interface EventMemo {
+  eventMemoId: string;
+  eventId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TimelineEventSummary {
   eventId: string;
   createdBy: string;
@@ -30,10 +50,26 @@ export interface TimelineEventSummary {
   endAt: string | null;
   hidden: boolean;
   photoCount: number;
+  centerLatitude?: number | null;
+  centerLongitude?: number | null;
   representativePhoto?: {
+    eventPhotoId?: string;
     photoId?: string;
-    imageUrl?: string | null;
+    thumbnailKey?: string | null;
+    imageUrl?: string | null; // Keep for backward compatibility or mapping
   } | null;
+}
+
+export interface EventDetail extends TimelineEventSummary {
+  tripId: string;
+  timelineDayId: string;
+  centerLatitude: number;
+  centerLongitude: number;
+  radiusM: number;
+  createdAt: string;
+  updatedAt: string;
+  photos: EventPhoto[];
+  myMemo: EventMemo | null;
 }
 
 export interface TimelineDayDetail extends TimelineDaySummary {
@@ -68,18 +104,28 @@ const mapTimelineDaySummary = (item: any): TimelineDaySummary => ({
   updatedAt: item.updatedAt,
 });
 
-const mapTimelineEventSummary = (item: any): TimelineEventSummary => ({
-  eventId: String(item.eventId),
-  createdBy: String(item.createdBy),
-  eventType: item.eventType,
-  title: item.title ?? '',
-  placeName: item.placeName ?? null,
-  startAt: item.startAt ?? null,
-  endAt: item.endAt ?? null,
-  hidden: Boolean(item.hidden),
-  photoCount: toNumber(item.photoCount),
-  representativePhoto: item.representativePhoto ?? null,
-});
+const mapTimelineEventSummary = (item: any): TimelineEventSummary => {
+  const representativePhoto = item.representativePhoto
+    ? {
+        ...item.representativePhoto,
+        // Ensure imageUrl is populated from thumbnailKey if missing
+        imageUrl: item.representativePhoto.imageUrl || item.representativePhoto.thumbnailKey || null,
+      }
+    : null;
+
+  return {
+    eventId: String(item.eventId),
+    createdBy: String(item.createdBy),
+    eventType: item.eventType,
+    title: item.title ?? '',
+    placeName: item.placeName ?? null,
+    startAt: item.startAt ?? null,
+    endAt: item.endAt ?? null,
+    hidden: Boolean(item.hidden),
+    photoCount: toNumber(item.photoCount),
+    representativePhoto,
+  };
+};
 
 const mapTimelineDayDetail = (item: any): TimelineDayDetail => ({
   timelineDayId: String(item.timelineDayId),
@@ -139,6 +185,57 @@ export const getTimelineDayDetailApi = async (timelineDayId: string): Promise<Ap
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           events: [],
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
+
+export const getEventDetailApi = async (eventId: string): Promise<ApiResponse<EventDetail>> => {
+  try {
+    const response = await apiClient.get<ApiResponse<any>>(`/events/${eventId}`);
+    const data = response.data.data;
+    
+    return {
+      ...response.data,
+      data: {
+        ...mapTimelineEventSummary(data),
+        tripId: String(data.tripId),
+        timelineDayId: String(data.timelineDayId),
+        centerLatitude: toNumber(data.centerLatitude),
+        centerLongitude: toNumber(data.centerLongitude),
+        radiusM: toNumber(data.radiusM),
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        photos: Array.isArray(data.photos) ? data.photos : [],
+        myMemo: data.myMemo ?? null,
+      },
+    };
+  } catch (error) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        data: {
+          eventId,
+          createdBy: 'SYSTEM',
+          eventType: 'PLACE_VISIT',
+          title: 'Mock Event',
+          placeName: 'Mock Place',
+          startAt: new Date().toISOString(),
+          endAt: new Date().toISOString(),
+          hidden: false,
+          photoCount: 0,
+          tripId: 'mock-trip',
+          timelineDayId: 'mock-day',
+          centerLatitude: 37.5665,
+          centerLongitude: 126.9780,
+          radiusM: 100,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          photos: [],
+          myMemo: null,
         },
         timestamp: new Date().toISOString(),
       };

@@ -147,12 +147,29 @@ EOT
       }
     }
 
+    stage('Build Worker Image') {
+      when { expression { env.IS_DEVELOP == 'true' && env.CHANGED_WORKER == 'true' && fileExists('Worker/Dockerfile') } }
+      steps {
+        script {
+          env.WORKER_IMAGE = "${env.DOCKERHUB_NAMESPACE_EFFECTIVE}/yeoun-worker:${env.IMAGE_TAG}"
+          dir('Worker') { sh 'docker build -t "$WORKER_IMAGE" .' }
+        }
+      }
+    }
+
     stage('Push Images') {
-      when { expression { env.IS_DEVELOP == 'true' && env.API_IMAGE?.trim() } }
+      when { expression { env.IS_DEVELOP == 'true' && (env.API_IMAGE?.trim() || env.WORKER_IMAGE?.trim()) } }
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
           sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
-          sh 'docker push "$API_IMAGE"'
+          script {
+            if (env.API_IMAGE?.trim()) {
+              sh 'docker push "$API_IMAGE"'
+            }
+            if (env.WORKER_IMAGE?.trim()) {
+              sh 'docker push "$WORKER_IMAGE"'
+            }
+          }
         }
       }
     }
@@ -192,6 +209,43 @@ EOT
               def prevTag = env.PREVIOUS_API_IMAGE.tokenize(':')[-1]
               sshagent(credentials: ['ec2-node1-ssh']) {
                 sh "ssh -o StrictHostKeyChecking=no \"${env.NODE1_HOST}\" \"cd '${PROJECT_PATH}' && bash Infra/scripts/rollback-node1.sh '${prevTag}'\""
+              }
+            }
+          }
+        }
+      }
+    }
+
+    stage('Deploy Node2') {
+      when { expression { env.EVENT_KIND != 'merge_request' && env.IS_DEVELOP == 'true' && env.WORKER_IMAGE?.trim() } }
+      steps {
+        script {
+          env.PREVIOUS_WORKER_IMAGE = sshagent(credentials: ['ec2-node2-ssh']) {
+            sh(script: "ssh -o StrictHostKeyChecking=no \"${env.NODE2_HOST}\" \"grep '^WORKER_IMAGE=' '${PROJECT_PATH}/Infra/docker/node2/.env' | cut -d= -f2-\" || echo ''", returnStdout: true).trim()
+          }
+
+          sshagent(credentials: ['ec2-node2-ssh']) {
+            sh "apt-get update && apt-get install -y dos2unix || true"
+            sh "dos2unix Infra/scripts/*.sh || true"
+            sh "scp -o StrictHostKeyChecking=no -r Infra \"${env.NODE2_HOST}:${PROJECT_PATH}/\""
+
+            sh """
+              ssh -o StrictHostKeyChecking=no "${env.NODE2_HOST}" "
+                cd '${PROJECT_PATH}' && \
+                sed -i 's|^WORKER_IMAGE=.*|WORKER_IMAGE=${env.WORKER_IMAGE}|' Infra/docker/node2/.env && \
+                bash Infra/scripts/deploy-node2.sh
+              "
+            """
+          }
+        }
+      }
+      post {
+        failure {
+          script {
+            if (env.PREVIOUS_WORKER_IMAGE?.contains(':')) {
+              def prevTag = env.PREVIOUS_WORKER_IMAGE.tokenize(':')[-1]
+              sshagent(credentials: ['ec2-node2-ssh']) {
+                sh "ssh -o StrictHostKeyChecking=no \"${env.NODE2_HOST}\" \"cd '${PROJECT_PATH}' && bash Infra/scripts/rollback-node2.sh '${prevTag}'\""
               }
             }
           }

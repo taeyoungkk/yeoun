@@ -11,3 +11,5 @@ export { useTripStore, selectIsTripActive, selectCurrentTripId, selectCurrentTri
 export type { CurrentTrip } from './trip.store';
 
 export { useFavoriteStore } from './favorite.store';
+
+export { useNotificationStore, selectHasUnread, selectUnreadCount } from './notification.store';
