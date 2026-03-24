@@ -1,5 +1,6 @@
 package com.yeoun.domain.trip.controller;
 
+import com.yeoun.domain.trip.dto.response.ReceivedTripInviteListResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteAcceptResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteDeclineResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteDetailResponse;
@@ -28,6 +29,19 @@ public class TripInviteController {
 
     public TripInviteController(TripInviteService tripInviteService) {
         this.tripInviteService = tripInviteService;
+    }
+
+    @GetMapping("/received")
+    @Operation(
+            summary = "내가 받은 여행 초대 목록 조회",
+            description = "현재 로그인한 사용자가 받은 유효한 직접 초대 목록을 조회합니다."
+    )
+    @SecurityRequirement(name = "bearerAuth")
+    public ApiResponse<ReceivedTripInviteListResponse> getReceivedTripInvites(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal
+    ) {
+        ReceivedTripInviteListResponse response = tripInviteService.getReceivedInvites(principal.userId());
+        return ApiResponse.ok(response);
     }
 
     @GetMapping("/{inviteToken}")

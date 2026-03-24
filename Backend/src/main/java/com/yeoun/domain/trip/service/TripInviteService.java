@@ -1,8 +1,10 @@
 package com.yeoun.domain.trip.service;
 
-import com.yeoun.domain.trip.dto.response.TripInviteDetailResponse;
+import com.yeoun.domain.trip.dto.response.ReceivedTripInviteItemResponse;
+import com.yeoun.domain.trip.dto.response.ReceivedTripInviteListResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteAcceptResponse;
 import com.yeoun.domain.trip.dto.response.TripInviteDeclineResponse;
+import com.yeoun.domain.trip.dto.response.TripInviteDetailResponse;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripInvite;
 import com.yeoun.domain.trip.entity.TripInviteStatus;
@@ -12,6 +14,7 @@ import com.yeoun.domain.trip.entity.TripMemberInviteStatus;
 import com.yeoun.domain.trip.entity.TripStatus;
 import com.yeoun.domain.trip.repository.TripInviteRepository;
 import com.yeoun.domain.trip.repository.TripMemberRepository;
+import com.yeoun.domain.trip.repository.ReceivedTripInviteSummaryProjection;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.domain.notification.entity.NotificationType;
 import com.yeoun.domain.notification.service.NotificationService;
@@ -23,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -47,6 +51,15 @@ public class TripInviteService {
         this.tripRepository = tripRepository;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
+    }
+
+    public ReceivedTripInviteListResponse getReceivedInvites(UUID userId) {
+        Instant now = Instant.now();
+        List<ReceivedTripInviteItemResponse> items = tripInviteRepository.findReceivedUserInvites(userId, now)
+                .stream()
+                .map(this::toReceivedInviteItemResponse)
+                .toList();
+        return new ReceivedTripInviteListResponse(items);
     }
 
     @Transactional
@@ -221,5 +234,22 @@ public class TripInviteService {
 
     private boolean isInviteAcceptAllowedStatus(TripStatus status) {
         return status == TripStatus.DRAFT || status == TripStatus.ACTIVE;
+    }
+
+    private ReceivedTripInviteItemResponse toReceivedInviteItemResponse(ReceivedTripInviteSummaryProjection projection) {
+        return new ReceivedTripInviteItemResponse(
+                projection.getTripInviteId(),
+                projection.getInviteToken(),
+                projection.getTripId(),
+                projection.getTripTitle(),
+                new ReceivedTripInviteItemResponse.Inviter(
+                        projection.getInviterUserId(),
+                        projection.getInviterNickname(),
+                        projection.getInviterProfileImageUrl()
+                ),
+                projection.getStatus(),
+                projection.getExpiresAt(),
+                projection.getCreatedAt()
+        );
     }
 }
