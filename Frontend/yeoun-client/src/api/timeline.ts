@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import apiClient from './client';
+import { isMockTripId } from './trip';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -141,6 +142,14 @@ const mapTimelineDayDetail = (item: any): TimelineDayDetail => ({
 });
 
 export const getTripTimelineDaysApi = async (tripId: string): Promise<ApiResponse<{ timelineDays: TimelineDaySummary[] }>> => {
+  if (isMockTripId(tripId)) {
+    return {
+      success: true,
+      data: { timelineDays: [] },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   try {
     const response = await apiClient.get<ApiResponse<{ timelineDays: any[] }>>(`/trips/${tripId}/timeline-days`);
     return {

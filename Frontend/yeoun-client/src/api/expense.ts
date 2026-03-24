@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import apiClient from './client';
+import { isMockTripId } from './trip';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -84,6 +85,14 @@ const mapExpenseItem = (item: any): TripExpenseItem => ({
 });
 
 export const getTripExpensesApi = async (tripId: string): Promise<ApiResponse<{ items: TripExpenseItem[] }>> => {
+  if (isMockTripId(tripId)) {
+    return {
+      success: true,
+      data: { items: [] },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   try {
     const response = await apiClient.get<ApiResponse<{ items: any[] }>>(`/trips/${tripId}/expenses`);
     return {

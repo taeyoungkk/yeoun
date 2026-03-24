@@ -395,8 +395,17 @@ export default function TripStartScreen() {
       return;
     }
 
-    startTrip({ ...tripDraft, tripId: 'mock-trip-preview' });
-    router.push('/trip/mock-recording');
+    router.push({
+      pathname: '/trip/mock-recording',
+      params: {
+        tripName: tripDraft.tripName,
+        startDate: tripDraft.startDate,
+        endDate: tripDraft.endDate,
+        memberCount: String(tripDraft.memberCount),
+        origin: tripDraft.origin,
+        destination: tripDraft.destination,
+      },
+    });
   };
 
   return (
