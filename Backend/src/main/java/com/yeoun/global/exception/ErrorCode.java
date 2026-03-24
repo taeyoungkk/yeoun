@@ -82,6 +82,7 @@ public enum ErrorCode {
     FRIEND_REQUEST_NOT_PENDING(HttpStatus.CONFLICT, "Only pending friend requests can be accepted."),
     FRIEND_REQUEST_ACCEPT_FORBIDDEN(HttpStatus.FORBIDDEN, "You can only accept friend requests you have received."),
     FRIEND_REQUEST_DECLINE_FORBIDDEN(HttpStatus.FORBIDDEN, "You can only decline friend requests you have received."),
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "Notification not found."),
     AUTH_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "Auth account not found."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "Authentication is required."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "Access denied."),
