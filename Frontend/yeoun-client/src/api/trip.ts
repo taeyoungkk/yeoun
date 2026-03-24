@@ -204,6 +204,37 @@ export interface TripRouteData {
 
 export type TripRouteResponse = CommonApiResponse<TripRouteData>;
 
+export interface TripRouteDayListItem {
+  routeDayId: string;
+  tripId: string;
+  userId: string;
+  day: string;
+  pointCount: number;
+  distanceM: number;
+  coordinates: number[][];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type TripRouteDayListResponse = CommonApiResponse<{ routeDays: TripRouteDayListItem[] }>;
+
+export interface TripPlaceItem {
+  placeId: string;
+  tripId: string;
+  userId: string;
+  startedAt?: string;
+  endedAt?: string;
+  durationSeconds: number;
+  centerLatitude: number;
+  centerLongitude: number;
+  staySegmentCount: number;
+  source?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type TripPlaceListResponse = CommonApiResponse<{ places: TripPlaceItem[] }>;
+
 const API_MOCKS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_API_MOCKS === 'true';
 
 const shouldMockInDev = (error: unknown) => {
@@ -215,6 +246,23 @@ const shouldMockInDev = (error: unknown) => {
 };
 
 const formatApiDate = (value: string) => value.replace(/\./g, '-').slice(0, 10);
+
+const toFiniteNumber = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return value;
+};
+
+const roundTo = (value: number | undefined, digits: number): number | undefined => {
+  if (value == null) {
+    return undefined;
+  }
+
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+};
 
 const getErrorMessage = (error: any, fallback: string) =>
   error?.response?.data?.message ??
@@ -250,9 +298,9 @@ const toLocationUploadItem = (location: LocationLog, index: number) => ({
   recordedAt: location.recordedAt,
   latitude: location.latitude,
   longitude: location.longitude,
-  accuracyM: location.accuracyM ?? location.accuracy ?? 10,
-  speedMps: location.speedMps,
-  heading: location.heading,
+  accuracyM: roundTo(toFiniteNumber(location.accuracyM ?? location.accuracy ?? 10), 2) ?? 10,
+  speedMps: roundTo(toFiniteNumber(location.speedMps), 2),
+  heading: roundTo(toFiniteNumber(location.heading), 2),
   source: location.source ?? 'GPS',
 });
 
@@ -285,7 +333,7 @@ export const createTripApi = async (data: CreateTripRequest): Promise<TripCreate
       };
     }
 
-    console.error('Create Trip API Error:', error);
+    console.warn('Create Trip API Error:', error);
     return {
       success: false,
       code: getErrorCode(error),
@@ -585,6 +633,66 @@ export const getTripRouteByDayApi = async (tripId: string, dayDate: string): Pro
       data: {
         dayDate,
         routeDays: [],
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const getTripRouteDaysApi = async (tripId: string): Promise<TripRouteDayListResponse> => {
+  try {
+    const response = await apiClient.get<TripRouteDayListResponse>(`/trips/${tripId}/location-route-days`);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Trip route days fetched (MOCK)',
+        data: {
+          routeDays: [],
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Get Trip Route Days API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch trip route days.'),
+      data: {
+        routeDays: [],
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const getTripPlacesApi = async (tripId: string): Promise<TripPlaceListResponse> => {
+  try {
+    const response = await apiClient.get<TripPlaceListResponse>(`/trips/${tripId}/location-places`);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Trip places fetched (MOCK)',
+        data: {
+          places: [],
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Get Trip Places API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch trip places.'),
+      data: {
+        places: [],
       },
       timestamp: new Date().toISOString(),
     };

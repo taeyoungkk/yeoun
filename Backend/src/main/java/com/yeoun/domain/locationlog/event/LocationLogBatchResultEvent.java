@@ -35,4 +35,8 @@ public record LocationLogBatchResultEvent(
     public boolean isCompleted() {
         return "COMPLETED".equalsIgnoreCase(status);
     }
+
+    public boolean isFailed() {
+        return "FAILED".equalsIgnoreCase(status);
+    }
 }

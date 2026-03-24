@@ -124,7 +124,7 @@ const DraggableAvatar = ({
 export default function PaymentDetailsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
-  const hasUnread = useNotificationStore((state) => state.hasUnread);
+  const unreadCount = useNotificationStore((state) => state.unreadCount);
   const { 
     members, 
     expenses,
@@ -183,14 +183,14 @@ export default function PaymentDetailsScreen() {
       label: '알림', 
       href: '/notifications', 
       icon: ({ color, size }: { color: string; size: number }) => <BellSvg color={color} size={size} />,
-      showBadge: hasUnread
+      badgeCount: unreadCount
     },
     { 
       label: '마이페이지', 
       href: '/mypage', 
       icon: ({ color, size }: { color: string; size: number }) => <ProfileRoundSvg color={color} size={size} />
     },
-  ], [hasUnread]);
+  ], [unreadCount]);
   
   const bgColor = '#EBF3EA';
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { TripDetail } from '../api/trip';
+import { getTripsApi, TripDetail, TripListItem } from '../api/trip';
 
 export interface CurrentTrip {
   tripId: string;
@@ -12,26 +12,47 @@ export interface CurrentTrip {
   destination: string;
 }
 
+export type LocationSyncStatus = 'idle' | 'uploading' | 'processing' | 'completed' | 'failed';
+
 interface TripState {
   isTripActive: boolean;
   currentTripId: string | null;
   currentTrip: CurrentTrip | null;
+  reviewTrip: CurrentTrip | null;
   activeTrip: TripDetail | null;
+  trips: TripListItem[];
+  isTripsLoading: boolean;
+  tripsFetchedAt: number | null;
   routeRefreshKey: number;
+  locationSyncStatus: LocationSyncStatus;
+  locationSyncMessage: string | null;
+  locationSyncUpdatedAt: string | null;
   startTrip: (trip: CurrentTrip) => void;
   updateCurrentTrip: (trip: CurrentTrip) => void;
+  setReviewTrip: (trip: CurrentTrip) => void;
+  clearReviewTrip: () => void;
   setActiveTrip: (trip: TripDetail) => void;
+  fetchTrips: (force?: boolean) => Promise<TripListItem[]>;
   bumpRouteRefreshKey: () => void;
+  setLocationSyncState: (status: LocationSyncStatus, message?: string | null) => void;
+  resetLocationSyncState: () => void;
   endTrip: () => void;
   clearTrip: () => void;
 }
 
-export const useTripStore = create<TripState>((set) => ({
+export const useTripStore = create<TripState>((set, get) => ({
   isTripActive: false,
   currentTripId: null,
   currentTrip: null,
+  reviewTrip: null,
   activeTrip: null,
+  trips: [],
+  isTripsLoading: false,
+  tripsFetchedAt: null,
   routeRefreshKey: 0,
+  locationSyncStatus: 'idle',
+  locationSyncMessage: null,
+  locationSyncUpdatedAt: null,
   startTrip: (trip) =>
     set({
       isTripActive: true,
@@ -44,19 +65,73 @@ export const useTripStore = create<TripState>((set) => ({
       currentTripId: trip.tripId,
       currentTrip: trip,
     })),
+  setReviewTrip: (trip) =>
+    set({
+      reviewTrip: trip,
+    }),
+  clearReviewTrip: () =>
+    set({
+      reviewTrip: null,
+    }),
   setActiveTrip: (trip) =>
     set({
       activeTrip: trip,
     }),
+  fetchTrips: async (force = false) => {
+    const { trips, isTripsLoading, tripsFetchedAt } = get();
+    const now = Date.now();
+
+    if (!force && trips.length > 0 && tripsFetchedAt && now - tripsFetchedAt < 60_000) {
+      return trips;
+    }
+
+    if (isTripsLoading) {
+      return trips;
+    }
+
+    set({ isTripsLoading: true });
+
+    try {
+      const response = await getTripsApi();
+
+      if (!response.success) {
+        return get().trips;
+      }
+
+      set({
+        trips: response.data.items,
+        tripsFetchedAt: Date.now(),
+      });
+
+      return response.data.items;
+    } finally {
+      set({ isTripsLoading: false });
+    }
+  },
   bumpRouteRefreshKey: () =>
     set((state) => ({
       routeRefreshKey: state.routeRefreshKey + 1,
     })),
+  setLocationSyncState: (status, message = null) =>
+    set({
+      locationSyncStatus: status,
+      locationSyncMessage: message,
+      locationSyncUpdatedAt: new Date().toISOString(),
+    }),
+  resetLocationSyncState: () =>
+    set({
+      locationSyncStatus: 'idle',
+      locationSyncMessage: null,
+      locationSyncUpdatedAt: null,
+    }),
   endTrip: () =>
     set((state) => ({
       isTripActive: false,
       currentTripId: state.currentTrip?.tripId ?? null,
       activeTrip: null,
+      locationSyncStatus: 'idle',
+      locationSyncMessage: null,
+      locationSyncUpdatedAt: null,
     })),
   clearTrip: () =>
     set({
@@ -64,11 +139,19 @@ export const useTripStore = create<TripState>((set) => ({
       currentTripId: null,
       currentTrip: null,
       activeTrip: null,
+      locationSyncStatus: 'idle',
+      locationSyncMessage: null,
+      locationSyncUpdatedAt: null,
     }),
 }));
 
 export const selectIsTripActive = (s: TripState) => s.isTripActive;
 export const selectCurrentTripId = (s: TripState) => s.currentTripId;
 export const selectCurrentTrip = (s: TripState) => s.currentTrip;
+export const selectReviewTrip = (s: TripState) => s.reviewTrip;
 export const selectActiveTrip = (s: TripState) => s.activeTrip;
+export const selectTrips = (s: TripState) => s.trips;
 export const selectRouteRefreshKey = (s: TripState) => s.routeRefreshKey;
+export const selectLocationSyncStatus = (s: TripState) => s.locationSyncStatus;
+export const selectLocationSyncMessage = (s: TripState) => s.locationSyncMessage;
+export const selectLocationSyncUpdatedAt = (s: TripState) => s.locationSyncUpdatedAt;

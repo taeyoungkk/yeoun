@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
+import * as AuthSession from "expo-auth-session";
 import { Controller, useForm } from "react-hook-form";
 import * as WebBrowser from "expo-web-browser";
 import {
@@ -62,6 +63,10 @@ export const LoginScreen = () => {
   const handleNativeGoogleLogin = async () => {
     setIsLoading(true);
     setLoginError("");
+    console.log('[LoginScreen] Starting Google login', {
+      redirectUri,
+      idTokenPreview: `${idToken.slice(0, 16)}...`,
+    });
     try {
       await GoogleSignin.hasPlayServices();
       const googleResponse = await GoogleSignin.signIn();
@@ -98,6 +103,11 @@ export const LoginScreen = () => {
         }
 
         setTokens(accessToken, refreshToken || "");
+        console.log('[LoginScreen] Google tokens extracted', {
+          hasAccessToken: Boolean(accessToken),
+          accessTokenPreview: `${accessToken.slice(0, 12)}...`,
+          hasRefreshToken: Boolean(refreshToken),
+        });
         
         // Extract basic info from either backend (best) or google (fallback)
         const userNickname = data.user?.nickname || googleResponse.data?.user.name || 'Google 사용자';
@@ -153,6 +163,9 @@ export const LoginScreen = () => {
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     setLoginError("");
+    console.log('[LoginScreen] Starting email login', {
+      email: data.email,
+    });
     try {
       const response = await loginApi(data);
       console.log('[LoginScreen] Email Login Response:', JSON.stringify(response, null, 2));
@@ -170,6 +183,11 @@ export const LoginScreen = () => {
         }
 
         setTokens(accessToken, refreshToken || "");
+        console.log('[LoginScreen] Email tokens extracted', {
+          hasAccessToken: Boolean(accessToken),
+          accessTokenPreview: `${accessToken.slice(0, 12)}...`,
+          hasRefreshToken: Boolean(refreshToken),
+        });
         
         const user = resData.user || {
           userId: 'user',

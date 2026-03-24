@@ -31,6 +31,9 @@ const isPublicApiRequest = (url?: string) => {
   return PUBLIC_API_PATH_PREFIXES.some((prefix) => url.startsWith(prefix));
 };
 
+const toTokenPreview = (token?: string | null) =>
+  token ? `${token.slice(0, 12)}...` : null;
+
 // Request interceptor to add the access token to every request
 apiClient.interceptors.request.use(
   (config) => {
@@ -39,6 +42,11 @@ apiClient.interceptors.request.use(
       if (config.headers?.Authorization) {
         delete config.headers.Authorization;
       }
+      console.log('[API Request]', {
+        method: config.method?.toUpperCase?.() ?? 'GET',
+        url: config.url,
+        public: true,
+      });
       return config;
     }
 
@@ -49,6 +57,14 @@ apiClient.interceptors.request.use(
     } else {
       console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url} - No Token`);
     }
+    console.log('[API Request]', {
+      method: config.method?.toUpperCase?.() ?? 'GET',
+      url: config.url,
+      public: false,
+      hasAccessToken: Boolean(token),
+      accessTokenPreview: toTokenPreview(token),
+      hasAuthorizationHeader: Boolean(config.headers?.Authorization),
+    });
     return config;
   },
   (error) => {
@@ -56,14 +72,24 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle token refresh on 401/403
+// Response interceptor to handle token refresh on 401 only.
+// Treating 403 as an expired session causes valid login sessions to be cleared
+// when the backend is actually reporting a permission problem.
 apiClient.interceptors.response.use(
   (response) => {
+    console.log('[API Response]', {
+      method: response.config.method?.toUpperCase?.() ?? 'GET',
+      url: response.config.url,
+      status: response.status,
+      code: response.data?.code,
+      success: response.data?.success,
+    });
     return response;
   },
   async (error) => {
     const originalRequest = error.config;
     const requestUrl = originalRequest?.url;
+    const status = error.response?.status;
 
     // If error is 401 (Unauthorized) and NOT already retrying and NOT a public request
     if (

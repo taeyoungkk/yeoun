@@ -69,19 +69,34 @@ export function ExpenseGraph() {
         color: cat.color,
         category: cat.label,
         marginBottom: 2
-      })).filter(s => s.value > 0);
+      }));
 
       return { label: date, stacks };
     });
   }, [expenses, currentTrip]);
 
-  const [activeItem, setActiveItem] = useState<any>(stackData[stackData.length - 1]);
+  const fallbackItem = useMemo(
+    () => ({
+      label: '3/11',
+      stacks: CATEGORIES.map((category) => ({
+        value: 0,
+        color: category.color,
+        category: category.label,
+        marginBottom: 2,
+      })),
+    }),
+    [],
+  );
+
+  const [activeItem, setActiveItem] = useState<any>(stackData[stackData.length - 1] ?? fallbackItem);
 
   useEffect(() => {
     if (stackData.length > 0) {
       setActiveItem(stackData[stackData.length - 1]);
+    } else {
+      setActiveItem(fallbackItem);
     }
-  }, [stackData]);
+  }, [fallbackItem, stackData]);
 
   const dynamicMaxValue = useMemo(() => {
     const totals = stackData.map(item => 

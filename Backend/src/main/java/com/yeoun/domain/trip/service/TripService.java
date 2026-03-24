@@ -32,6 +32,9 @@ import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.domain.trip.repository.TripMemberSummaryProjection;
 import com.yeoun.domain.trip.repository.TripInviteUserSummaryProjection;
 import com.yeoun.domain.user.repository.UserRepository;
+import com.yeoun.domain.notification.entity.NotificationType;
+import com.yeoun.domain.notification.service.NotificationService;
+import com.yeoun.domain.user.entity.User;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.springframework.beans.factory.annotation.Value;
@@ -56,6 +59,7 @@ public class TripService {
     private final TripMemberRepository tripMemberRepository;
     private final TripInviteRepository tripInviteRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
     private final String inviteBaseUrl;
 
     public TripService(
@@ -63,12 +67,14 @@ public class TripService {
             TripMemberRepository tripMemberRepository,
             TripInviteRepository tripInviteRepository,
             UserRepository userRepository,
+            NotificationService notificationService,
             @Value("${app.invite.base-url}") String inviteBaseUrl
     ) {
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
         this.tripInviteRepository = tripInviteRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
         this.inviteBaseUrl = inviteBaseUrl;
     }
 
@@ -135,6 +141,8 @@ public class TripService {
             throw new BaseException(ErrorCode.TRIP_INVITE_NOT_ALLOWED);
         }
 
+        User inviter = userRepository.findById(requesterUserId)
+                .orElseThrow(() -> new BaseException(ErrorCode.USER_NOT_FOUND));
         Instant now = Instant.now();
         Instant expiresAt = now.plusSeconds(LINK_INVITE_EXPIRE_DAYS * 24 * 60 * 60);
         List<UUID> invitedUserIds = new ArrayList<>();
@@ -190,6 +198,15 @@ public class TripService {
                     .usedAt(null)
                     .build();
             tripInviteRepository.save(tripInvite);
+            notificationService.createNotification(
+                    inviteeUserId,
+                    requesterUserId,
+                    tripId,
+                    tripInvite.getTripInviteId(),
+                    NotificationType.TRIP_INVITE_RECEIVED,
+                    "여행 초대가 도착했어요",
+                    inviter.getNickname() + "님이 \"" + trip.getTitle() + "\" 여행에 초대했습니다."
+            );
             invitedUserIds.add(inviteeUserId);
         }
 
