@@ -2,8 +2,11 @@ package com.yeoun.domain.receipt.controller;
 
 import com.yeoun.domain.receipt.dto.request.ReceiptOcrCreateRequest;
 import com.yeoun.domain.receipt.dto.response.ReceiptOcrCreateResponse;
+import com.yeoun.domain.receipt.dto.response.ReceiptOcrResultResponse;
+import com.yeoun.domain.receipt.dto.response.ReceiptOcrStatusResponse;
 import com.yeoun.domain.receipt.dto.response.ReceiptUploadResponse;
 import com.yeoun.domain.receipt.service.ReceiptOcrCommandService;
+import com.yeoun.domain.receipt.service.ReceiptOcrQueryService;
 import com.yeoun.domain.receipt.service.ReceiptUploadService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -14,6 +17,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,13 +36,16 @@ public class ReceiptController {
 
     private final ReceiptUploadService receiptUploadService;
     private final ReceiptOcrCommandService receiptOcrCommandService;
+    private final ReceiptOcrQueryService receiptOcrQueryService;
 
     public ReceiptController(
             ReceiptUploadService receiptUploadService,
-            ReceiptOcrCommandService receiptOcrCommandService
+            ReceiptOcrCommandService receiptOcrCommandService,
+            ReceiptOcrQueryService receiptOcrQueryService
     ) {
         this.receiptUploadService = receiptUploadService;
         this.receiptOcrCommandService = receiptOcrCommandService;
+        this.receiptOcrQueryService = receiptOcrQueryService;
     }
 
     @PostMapping(value = "/trips/{tripId}/receipts/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -60,6 +67,26 @@ public class ReceiptController {
             @Valid @RequestBody ReceiptOcrCreateRequest request
     ) {
         ReceiptOcrCreateResponse response = receiptOcrCommandService.requestReceiptOcr(principal.userId(), tripId, request);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/receipts/{receiptId}/ocr-status")
+    @Operation(summary = "영수증 OCR 상태 조회", description = "영수증 OCR 처리 상태를 조회합니다.")
+    public ApiResponse<ReceiptOcrStatusResponse> getReceiptOcrStatus(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("receiptId") UUID receiptId
+    ) {
+        ReceiptOcrStatusResponse response = receiptOcrQueryService.getReceiptOcrStatus(principal.userId(), receiptId);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/receipts/{receiptId}/ocr-result")
+    @Operation(summary = "영수증 OCR 결과 조회", description = "영수증 OCR 결과와 품목 목록을 조회합니다.")
+    public ApiResponse<ReceiptOcrResultResponse> getReceiptOcrResult(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("receiptId") UUID receiptId
+    ) {
+        ReceiptOcrResultResponse response = receiptOcrQueryService.getReceiptOcrResult(principal.userId(), receiptId);
         return ApiResponse.ok(response);
     }
 }
