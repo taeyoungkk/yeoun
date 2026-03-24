@@ -7,7 +7,7 @@ import { getFriendsApi } from '@/src/api/friend';
 import { getTripsApi, TripListItem } from '@/src/api/trip';
 import { getMyInfo } from '@/src/api/user';
 import { ProfileHeader } from '@/src/components/profile/ProfileHeader';
-import { TripCardProps, TripData } from '@/src/components/profile/TripCard';
+import { TripData } from '@/src/components/profile/TripCard';
 import { TripList } from '@/src/components/profile/TripList';
 import { TreeRingsChart } from '@/src/components/profile/TreeRingsChart';
 import { TravelMap } from '@/src/components/profile/TravelMap';
@@ -51,7 +51,7 @@ export default function MyPageScreen() {
     isFavorite: favoriteIds.includes(trip.tripId),
   });
 
-  const favoriteTrips: TripCardProps[] = [...MOCK_FAVORITE_TRIPS, ...serverTrips.map(mapToTripData)]
+  const favoriteTrips: TripData[] = [...MOCK_FAVORITE_TRIPS, ...serverTrips.map(mapToTripData)]
     .filter((trip) => favoriteIds.includes(trip.id))
     .filter((trip, index, self) => self.findIndex((item) => item.id === trip.id) === index);
 
