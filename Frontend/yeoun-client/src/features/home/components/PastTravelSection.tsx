@@ -46,7 +46,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
   const router = useRouter();
   const activeTrip = useTripStore((state) => state.activeTrip);
   const currentTrip = useTripStore((state) => state.currentTrip);
-  const updateCurrentTrip = useTripStore((state) => state.updateCurrentTrip);
+  const setReviewTrip = useTripStore((state) => state.setReviewTrip);
 
   const [pastTrips, setPastTrips] = useState<TripListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,7 +108,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
   }, [activeTrip?.tripId, currentTrip?.tripId]);
 
   const handleTripPress = (trip: TripListItem) => {
-    updateCurrentTrip({
+    setReviewTrip({
       tripId: trip.tripId,
       tripName: trip.title,
       startDate: trip.startDate,
@@ -117,7 +117,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
       origin: '---',
       destination: trip.title,
     });
-    router.push('/trip/report');
+    router.push('/trip/report?mode=review');
   };
 
   return (

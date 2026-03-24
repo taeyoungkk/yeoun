@@ -16,10 +16,13 @@ interface TripState {
   isTripActive: boolean;
   currentTripId: string | null;
   currentTrip: CurrentTrip | null;
+  reviewTrip: CurrentTrip | null;
   activeTrip: TripDetail | null;
   routeRefreshKey: number;
   startTrip: (trip: CurrentTrip) => void;
   updateCurrentTrip: (trip: CurrentTrip) => void;
+  setReviewTrip: (trip: CurrentTrip) => void;
+  clearReviewTrip: () => void;
   setActiveTrip: (trip: TripDetail) => void;
   bumpRouteRefreshKey: () => void;
   endTrip: () => void;
@@ -30,6 +33,7 @@ export const useTripStore = create<TripState>((set) => ({
   isTripActive: false,
   currentTripId: null,
   currentTrip: null,
+  reviewTrip: null,
   activeTrip: null,
   routeRefreshKey: 0,
   startTrip: (trip) =>
@@ -44,6 +48,14 @@ export const useTripStore = create<TripState>((set) => ({
       currentTripId: trip.tripId,
       currentTrip: trip,
     })),
+  setReviewTrip: (trip) =>
+    set({
+      reviewTrip: trip,
+    }),
+  clearReviewTrip: () =>
+    set({
+      reviewTrip: null,
+    }),
   setActiveTrip: (trip) =>
     set({
       activeTrip: trip,
@@ -70,5 +82,6 @@ export const useTripStore = create<TripState>((set) => ({
 export const selectIsTripActive = (s: TripState) => s.isTripActive;
 export const selectCurrentTripId = (s: TripState) => s.currentTripId;
 export const selectCurrentTrip = (s: TripState) => s.currentTrip;
+export const selectReviewTrip = (s: TripState) => s.reviewTrip;
 export const selectActiveTrip = (s: TripState) => s.activeTrip;
 export const selectRouteRefreshKey = (s: TripState) => s.routeRefreshKey;
