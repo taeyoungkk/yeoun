@@ -49,6 +49,31 @@ interface NotificationState {
 const countUnread = (notifications: Notification[]) =>
   notifications.filter((notification) => !notification.isRead).length;
 
+const mergeArchivedNotifications = (
+  currentArchived: Notification[],
+  nextArchived: Notification[],
+) => {
+  const archivedById = new Map<string, Notification>();
+
+  [...nextArchived, ...currentArchived].forEach((notification) => {
+    const existing = archivedById.get(notification.id);
+    if (!existing) {
+      archivedById.set(notification.id, notification);
+      return;
+    }
+
+    archivedById.set(notification.id, {
+      ...notification,
+      decisionStatus: existing.decisionStatus ?? notification.decisionStatus,
+      decidedAt: existing.decidedAt ?? notification.decidedAt,
+    });
+  });
+
+  return Array.from(archivedById.values()).sort(
+    (a, b) => new Date(b.decidedAt ?? b.timestamp).getTime() - new Date(a.decidedAt ?? a.timestamp).getTime(),
+  );
+};
+
 const isFriendRequestType = (type: string) => type.includes('FRIEND_REQUEST');
 const isTripInviteType = (type: string) => type.includes('TRIP_INVITE');
 
@@ -81,11 +106,18 @@ export const useNotificationStore = create<NotificationState>()(
       hasUnread: false,
 
       setNotifications: (notifications) => {
-        const archivedIds = new Set(get().archivedNotifications.map((notification) => notification.id));
-        const visibleNotifications = notifications.filter((notification) => !archivedIds.has(notification.id));
+        const currentArchived = get().archivedNotifications;
+        const archivedIds = new Set(currentArchived.map((notification) => notification.id));
+        const nextArchived = notifications
+          .filter((notification) => notification.isRead && !archivedIds.has(notification.id))
+          .map((notification) => ({ ...notification, isRead: true }));
+        const visibleNotifications = notifications.filter(
+          (notification) => !notification.isRead && !archivedIds.has(notification.id),
+        );
         const unreadCount = countUnread(visibleNotifications);
         set({
           notifications: visibleNotifications,
+          archivedNotifications: mergeArchivedNotifications(currentArchived, nextArchived),
           unreadCount,
           hasUnread: unreadCount > 0,
         });

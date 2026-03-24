@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import axios from 'axios';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -54,9 +54,20 @@ export default function NotificationsScreen() {
     [activeTab, archivedNotifications, notifications],
   );
 
-  useEffect(() => {
-    void fetchNotifications();
-  }, [fetchNotifications]);
+  useFocusEffect(
+    useCallback(() => {
+      void fetchNotifications();
+
+      return () => {
+        const currentNotifications = useNotificationStore.getState().notifications;
+        void Promise.all(
+          currentNotifications
+            .filter((notification) => !notification.isRead)
+            .map((notification) => markAsRead(notification.id)),
+        );
+      };
+    }, [fetchNotifications, markAsRead]),
+  );
 
   const openNoticeModal = (title: string, message: string) => {
     setNoticeModal({ title, message });
@@ -237,7 +248,7 @@ export default function NotificationsScreen() {
             return (
               <View
                 key={item.id}
-                className={`mb-4 p-4 rounded-3xl border border-gray-100 ${item.isRead ? 'bg-white' : 'bg-blue-50/40'}`}
+                className="mb-4 p-4 rounded-3xl bg-white"
                 style={{
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 2 },
