@@ -376,8 +376,8 @@ export default function TripStartScreen() {
     }
 
     startTrip({ ...tripDraft, tripId: 'mock-trip-preview' });
-    router.push('/trip/mock-recording');
-  };
+    router.push('/trip/recording');
+    };
 
   return (
     <SafeAreaView style={styles.safeArea}>

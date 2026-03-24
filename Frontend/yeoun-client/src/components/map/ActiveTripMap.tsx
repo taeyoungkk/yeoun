@@ -13,20 +13,6 @@ import { locationService } from '../../services/locationService';
 import { LocationMarker, PaymentMarker, PhotoMarker } from './EventMarkers';
 import { PastRoutesLayer } from './PastRoutesLayer';
 
-export const MOCK_PAST_ROUTES = [
-  [
-    [126.9882, 37.5511],
-    [126.989, 37.552],
-    [126.9901, 37.5532],
-    [126.9912, 37.5545],
-  ],
-  [
-    [126.9877, 37.5641],
-    [126.988, 37.563],
-    [126.9895, 37.562],
-  ],
-];
-
 configureMapbox();
 
 const getTodayDateString = () => new Date().toISOString().slice(0, 10);
@@ -212,13 +198,7 @@ export function ActiveTripMap() {
           }}
         />
 
-        <PastRoutesLayer
-          routes={[
-            ...MOCK_PAST_ROUTES,
-            ...(routeCoordinates.length > 0 ? [routeCoordinates] : []),
-          ]}
-          isFogEnabled={isFogEnabled}
-        />
+        <PastRoutesLayer routes={routeCoordinates.length > 0 ? [routeCoordinates] : []} isFogEnabled={isFogEnabled} />
 
         <Mapbox.ShapeSource id="active-trip-route" shape={routeShape}>
           <Mapbox.LineLayer
