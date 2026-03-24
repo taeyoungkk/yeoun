@@ -1905,7 +1905,7 @@ export default function MockTripRecordingScreen({
                               onPress={(pressEvent) => {
                                 pressEvent.stopPropagation();
                                 if (shouldShowOverlay) {
-                                  router.push({ pathname: '/trip/photo-album', params: { eventId: event.id } } as never);
+                                  router.push({ pathname: '/trip/mock-photo-album', params: { eventId: event.id } } as never);
                                   return;
                                 }
 
