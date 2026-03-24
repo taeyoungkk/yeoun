@@ -18,6 +18,7 @@ import { createTripApi, getTripDetailApi, startTripApi, updateTripApi } from '@/
 import { useTripStore } from '@/src/store/trip.store';
 import { useUserStore } from '@/src/store/user.store';
 import { locationService } from '../../../services/locationService';
+import { requestTripPhotoPermission, syncTripPhotosForDateRange } from '../../../services/photoSyncService';
 
 import { TripStartCalendar } from '../components/TripStartCalendar';
 import { TripMemberCounter, TripStartField, TripStartInputField } from '../components/TripStartField';
@@ -249,6 +250,60 @@ export default function TripStartScreen() {
 
   const startTrackingAndNavigate = async (tripId: string) => {
     const trackingResult = await locationService.startTracking();
+    try {
+      const photoPermission = await requestTripPhotoPermission();
+
+      if (photoPermission.granted) {
+        void syncTripPhotosForDateRange({
+          tripId,
+          startDate: tripDraft.startDate,
+          endDate: tripDraft.endDate,
+        })
+          .then((result) => {
+            if (!result.success) {
+              console.warn('[TripStart] Trip photo sync failed.', {
+                tripId,
+                candidateCount: result.candidateCount,
+                message: result.message,
+              });
+              return;
+            }
+
+            console.log('[TripStart] Trip photo sync finished.', {
+              tripId,
+              syncedCount: result.syncedCount,
+              candidateCount: result.candidateCount,
+            });
+          })
+          .catch((error) => {
+            console.error('[TripStart] Trip photo sync crashed.', {
+              tripId,
+              error,
+            });
+          });
+      } else {
+        console.info('[TripStart] Photo permission denied. Trip photo sync skipped.', {
+          tripId,
+          canAskAgain: photoPermission.canAskAgain,
+        });
+        Alert.alert(
+          '사진 권한 필요',
+          '사진 권한을 허용하지 않으면 여행 기간 사진이 자동으로 동기화되지 않아 기록이 일부 비어 보일 수 있습니다.',
+        );
+      }
+    } catch (error) {
+      console.warn('[TripStart] Failed to request photo permission.', {
+        tripId,
+        error,
+      });
+    }
+
+    if (!trackingResult.success || !trackingResult.backgroundGranted) {
+      Alert.alert(
+        '권한 안내',
+        '위치 권한을 허용하지 않으면 이동 경로와 방문 장소 기록이 정확하지 않거나 일부 누락될 수 있습니다.',
+      );
+    }
 
     if (!trackingResult.success) {
       Alert.alert('위치 추적 실패', '여행 기록을 시작했지만 위치 추적 권한을 확인하지 못했습니다.');

@@ -69,11 +69,11 @@ export interface PhotoMemoUpsertRequest {
 }
 
 export interface PhotoSyncItemRequest {
-  clientPhotoUuid: string;
+  fileName: string;
   takenAt?: string | null;
   takenTimezone?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
+  exifLatitude?: number | null;
+  exifLongitude?: number | null;
 }
 
 export interface PhotoSyncRequest {
@@ -81,11 +81,10 @@ export interface PhotoSyncRequest {
 }
 
 export interface PhotoSyncItemResponse {
-  clientPhotoUuid: string;
   photoId: string;
-  storageKey?: string | null;
-  thumbnailKey?: string | null;
-  takenAt?: string | null;
+  thumbnailUrl: string;
+  takenAt: string | null;
+  isExcluded: boolean;
 }
 
 export interface PhotoSyncData {
@@ -347,11 +346,10 @@ export const syncTripPhotosApi = async (
         tripId,
         syncedCount: files.length,
         items: metadata.items.map((item, index) => ({
-          clientPhotoUuid: item.clientPhotoUuid,
           photoId: `mock-photo-${index + 1}`,
-          storageKey: null,
-          thumbnailKey: null,
+          thumbnailUrl: '',
           takenAt: item.takenAt ?? null,
+          isExcluded: false,
         })),
       },
       timestamp: new Date().toISOString(),
