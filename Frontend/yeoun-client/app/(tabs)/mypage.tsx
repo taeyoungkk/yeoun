@@ -148,7 +148,7 @@ export default function MyPageScreen() {
           onToggleFavorite={handleToggleFavorite}
         />
 
-        <TravelMap />
+        <TravelMap tripIds={serverTrips.filter((trip) => trip.status === 'ENDED').map((trip) => trip.tripId)} />
         <TreeRingsChart />
       </ScrollView>
     </SafeAreaView>

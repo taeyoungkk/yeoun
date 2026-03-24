@@ -204,6 +204,37 @@ export interface TripRouteData {
 
 export type TripRouteResponse = CommonApiResponse<TripRouteData>;
 
+export interface TripRouteDayListItem {
+  routeDayId: string;
+  tripId: string;
+  userId: string;
+  day: string;
+  pointCount: number;
+  distanceM: number;
+  coordinates: number[][];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type TripRouteDayListResponse = CommonApiResponse<{ routeDays: TripRouteDayListItem[] }>;
+
+export interface TripPlaceItem {
+  placeId: string;
+  tripId: string;
+  userId: string;
+  startedAt?: string;
+  endedAt?: string;
+  durationSeconds: number;
+  centerLatitude: number;
+  centerLongitude: number;
+  staySegmentCount: number;
+  source?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type TripPlaceListResponse = CommonApiResponse<{ places: TripPlaceItem[] }>;
+
 const API_MOCKS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_API_MOCKS === 'true';
 
 const shouldMockInDev = (error: unknown) => {
@@ -602,6 +633,66 @@ export const getTripRouteByDayApi = async (tripId: string, dayDate: string): Pro
       data: {
         dayDate,
         routeDays: [],
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const getTripRouteDaysApi = async (tripId: string): Promise<TripRouteDayListResponse> => {
+  try {
+    const response = await apiClient.get<TripRouteDayListResponse>(`/trips/${tripId}/location-route-days`);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Trip route days fetched (MOCK)',
+        data: {
+          routeDays: [],
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Get Trip Route Days API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch trip route days.'),
+      data: {
+        routeDays: [],
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const getTripPlacesApi = async (tripId: string): Promise<TripPlaceListResponse> => {
+  try {
+    const response = await apiClient.get<TripPlaceListResponse>(`/trips/${tripId}/location-places`);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Trip places fetched (MOCK)',
+        data: {
+          places: [],
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Get Trip Places API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch trip places.'),
+      data: {
+        places: [],
       },
       timestamp: new Date().toISOString(),
     };
