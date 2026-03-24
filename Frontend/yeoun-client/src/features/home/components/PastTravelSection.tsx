@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { getTripsApi, TripListItem } from '@/src/api/trip';
+import { TripListItem } from '@/src/api/trip';
 import { useTripStore } from '@/src/store/trip.store';
 
 import { CurrentTripCard } from './CurrentTripCard';
@@ -46,10 +46,12 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
   const router = useRouter();
   const activeTrip = useTripStore((state) => state.activeTrip);
   const currentTrip = useTripStore((state) => state.currentTrip);
+  const trips = useTripStore((state) => state.trips);
+  const fetchTrips = useTripStore((state) => state.fetchTrips);
   const setReviewTrip = useTripStore((state) => state.setReviewTrip);
 
-  const [pastTrips, setPastTrips] = useState<TripListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const currentDisplayedTripId = activeTrip?.tripId ?? currentTrip?.tripId ?? null;
 
   const currentTripCard = useMemo(() => {
     if (activeTrip) {
@@ -81,31 +83,27 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
 
   useEffect(() => {
     const fetchPastTrips = async () => {
-      try {
-        const response = await getTripsApi();
+      setIsLoading(true);
 
-        if (response.success && response.data.items.length > 0) {
-          const currentId = activeTrip?.tripId ?? currentTrip?.tripId;
-          setPastTrips(
-            response.data.items
-              .filter((item) => item.tripId !== currentId)
-              .slice(0, 3),
-          );
-        } else if (API_MOCKS_ENABLED) {
-          setPastTrips(MOCK_PAST_TRIPS);
-        } else {
-          setPastTrips([]);
-        }
+      try {
+        await fetchTrips();
       } catch (error) {
         console.error('Failed to fetch past trips:', error);
-        setPastTrips(API_MOCKS_ENABLED ? MOCK_PAST_TRIPS : []);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchPastTrips();
-  }, [activeTrip?.tripId, currentTrip?.tripId]);
+    void fetchPastTrips();
+  }, [currentDisplayedTripId, fetchTrips]);
+
+  const pastTrips = useMemo(() => {
+    if (trips.length > 0) {
+      return trips.filter((item) => item.tripId !== currentDisplayedTripId).slice(0, 3);
+    }
+
+    return API_MOCKS_ENABLED ? MOCK_PAST_TRIPS : [];
+  }, [currentDisplayedTripId, trips]);
 
   const handleTripPress = (trip: TripListItem) => {
     setReviewTrip({
