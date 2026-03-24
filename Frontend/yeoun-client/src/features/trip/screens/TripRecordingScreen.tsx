@@ -1,6 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Mapbox from '@rnmapbox/maps';
 import { Image } from 'expo-image';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -403,6 +404,7 @@ export default function TripRecordingScreen({
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [liveRoute, setLiveRoute] = useState<Coordinate[]>([]);
+  const [initialCurrentLocation, setInitialCurrentLocation] = useState<Coordinate | null>(null);
   const showMockRouteMetrics = useMockData;
   const isReviewMode = params.mode === 'review';
   const displayTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
@@ -445,8 +447,8 @@ export default function TripRecordingScreen({
     return [...historical, ...liveRoute];
   }, [filteredDays, liveRoute]);
   const currentLocationCoordinate = useMemo(
-    () => (liveRoute.length > 0 ? liveRoute[liveRoute.length - 1] : null),
-    [liveRoute]
+    () => (liveRoute.length > 0 ? liveRoute[liveRoute.length - 1] : initialCurrentLocation),
+    [initialCurrentLocation, liveRoute]
   );
   const routeShape = useMemo(
     () => ({
@@ -517,13 +519,42 @@ export default function TripRecordingScreen({
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
 
   useEffect(() => {
+    let isMounted = true;
+
+    const loadInitialCurrentLocation = async () => {
+      try {
+        let loc = await Location.getLastKnownPositionAsync({});
+        if (!loc) {
+          loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        }
+
+        if (isMounted && loc) {
+          setInitialCurrentLocation([loc.coords.longitude, loc.coords.latitude]);
+        }
+      } catch (error) {
+        console.warn('Failed to load initial current location:', error);
+      }
+    };
+
+    void loadInitialCurrentLocation();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (routeCoordinates.length < 2) {
+      return;
+    }
+
+    if (!currentLocationCoordinate) {
       return;
     }
 
     const { northEast, southWest } = getBounds(routeCoordinates);
     cameraRef.current?.fitBounds(northEast, southWest, 56, 900);
-  }, [routeCoordinates]);
+  }, [currentLocationCoordinate, routeCoordinates]);
 
   useEffect(() => {
     if (!useMockData) {
