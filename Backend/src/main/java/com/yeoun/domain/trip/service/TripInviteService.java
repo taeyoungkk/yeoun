@@ -13,6 +13,8 @@ import com.yeoun.domain.trip.entity.TripStatus;
 import com.yeoun.domain.trip.repository.TripInviteRepository;
 import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
+import com.yeoun.domain.notification.entity.NotificationType;
+import com.yeoun.domain.notification.service.NotificationService;
 import com.yeoun.domain.user.entity.User;
 import com.yeoun.domain.user.repository.UserRepository;
 import com.yeoun.global.exception.BaseException;
@@ -31,17 +33,20 @@ public class TripInviteService {
     private final TripMemberRepository tripMemberRepository;
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public TripInviteService(
             TripInviteRepository tripInviteRepository,
             TripMemberRepository tripMemberRepository,
             TripRepository tripRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            NotificationService notificationService
     ) {
         this.tripInviteRepository = tripInviteRepository;
         this.tripMemberRepository = tripMemberRepository;
         this.tripRepository = tripRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -92,6 +97,8 @@ public class TripInviteService {
         if (!isInviteAcceptAllowedStatus(trip.getStatus())) {
             throw new BaseException(ErrorCode.TRIP_INVITE_ACCEPT_NOT_ALLOWED);
         }
+        User requester = userRepository.findById(requesterUserId)
+                .orElseThrow(() -> new BaseException(ErrorCode.USER_NOT_FOUND));
 
         TripMember tripMember = tripMemberRepository.findByTripIdAndUserId(trip.getTripId(), requesterUserId)
                 .orElse(null);
@@ -123,6 +130,18 @@ public class TripInviteService {
             invite.markUsed(now);
         }
 
+        if (!invite.getInviterUserId().equals(requesterUserId)) {
+            notificationService.createNotification(
+                    invite.getInviterUserId(),
+                    requesterUserId,
+                    invite.getTripId(),
+                    invite.getTripInviteId(),
+                    NotificationType.TRIP_INVITE_ACCEPTED,
+                    "여행 초대가 수락되었어요",
+                    requester.getNickname() + "님이 \"" + trip.getTitle() + "\" 여행 초대를 수락했습니다."
+            );
+        }
+
         return new TripInviteAcceptResponse(
                 trip.getTripId(),
                 tripMember.getTripMemberId(),
@@ -136,6 +155,8 @@ public class TripInviteService {
         Instant now = Instant.now();
         TripInvite invite = tripInviteRepository.findByInviteToken(inviteToken)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRIP_INVITE_NOT_FOUND));
+        User requester = userRepository.findById(requesterUserId)
+                .orElseThrow(() -> new BaseException(ErrorCode.USER_NOT_FOUND));
 
         boolean isCurrentMember = tripMemberRepository.existsByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
                 invite.getTripId(),
@@ -158,6 +179,19 @@ public class TripInviteService {
                 throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
             }
             invite.markCancelled();
+            if (!invite.getInviterUserId().equals(requesterUserId)) {
+                Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(invite.getTripId(), TripStatus.DELETED)
+                        .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
+                notificationService.createNotification(
+                        invite.getInviterUserId(),
+                        requesterUserId,
+                        invite.getTripId(),
+                        invite.getTripInviteId(),
+                        NotificationType.TRIP_INVITE_DECLINED,
+                        "여행 초대가 거절되었어요",
+                        requester.getNickname() + "님이 \"" + trip.getTitle() + "\" 여행 초대를 거절했습니다."
+                );
+            }
             return new TripInviteDeclineResponse(invite.getTripId(), TripInviteStatus.CANCELLED.name());
         }
 
