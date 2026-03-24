@@ -64,9 +64,21 @@ const TravelWaveIcon = () => {
 export const HomeSearchBar = () => {
     const router = useRouter();
     const isTripActive = useTripStore((state) => state.isTripActive);
+    const currentTripId = useTripStore((state) => state.currentTripId);
+    const currentTrip = useTripStore((state) => state.currentTrip);
+    const activeTrip = useTripStore((state) => state.activeTrip);
 
     const handlePress = () => {
         if (isTripActive) {
+            const tripId = currentTripId ?? activeTrip?.tripId ?? currentTrip?.tripId;
+            if (tripId) {
+                router.push({
+                    pathname: '/trip/recording',
+                    params: { tripId },
+                });
+                return;
+            }
+
             router.push('/trip/recording');
         } else {
             router.push('/trip/start?mode=create');

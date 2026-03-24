@@ -1,9 +1,8 @@
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { TripListItem } from '@/src/api/trip';
-import { IconSymbol } from '@/src/components/ui/icon-symbol';
 import { useTripStore } from '@/src/store/trip.store';
 
 import { CurrentTripCard } from './CurrentTripCard';
@@ -55,6 +54,18 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
 
   const [isLoading, setIsLoading] = useState(true);
   const currentDisplayedTripId = activeTrip?.tripId ?? currentTrip?.tripId ?? null;
+
+  const handleOpenCurrentTrip = () => {
+    if (!currentDisplayedTripId) {
+      router.push('/trip/recording');
+      return;
+    }
+
+    router.push({
+      pathname: '/trip/recording',
+      params: { tripId: currentDisplayedTripId },
+    });
+  };
 
   const currentTripListItem = useMemo(
     () => trips.find((item) => item.tripId === currentDisplayedTripId) ?? null,
@@ -152,7 +163,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
           </Text>
           {isTripActive ? (
             <View className="flex-row items-center gap-1">
-              <Text className="text-base text-[#DE7254] font-pretendard-semibold">기록중</Text>
+              <Text className="text-base text-[#DE7254] font-pretendard-semibold">기록 중</Text>
               <View className="w-2 h-2 rounded-full bg-[#DE7254]" />
             </View>
           ) : null}
@@ -173,41 +184,46 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
             date={currentTripCard.date}
             participants={currentTripCard.participants}
             imageUrl={currentTripCard.imageUrl}
-            onPress={() => router.push('/trip/recording')}
+            onPress={handleOpenCurrentTrip}
           />
         </View>
       ) : null}
 
-      <View className="w-full mb-20">
-        <View className="flex-row items-center justify-between mb-4">
-          <Text className="text-black text-xl font-pretendard-bold">지난 여행</Text>
-          <Pressable onPress={() => router.push('/trip/past')} className="flex-row items-center gap-1" hitSlop={10}>
-            <Text className="text-sm text-[#6D7A68] font-pretendard-semibold">더보기</Text>
-            <IconSymbol name="chevron.right" size={16} color="#6D7A68" />
-          </Pressable>
-        </View>
+      {!isTripActive ? (
+        <View className="w-full mb-20">
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#DE7254" />
+          ) : pastTrips.length > 0 ? (
+            <>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                className="w-full max-h-[460px]"
+                contentContainerStyle={{ paddingHorizontal: 2, paddingBottom: 4 }}
+              >
+                {pastTrips.map((trip, index) => (
+                  <View key={trip.tripId} style={{ marginBottom: index === pastTrips.length - 1 ? 0 : 16 }}>
+                    <TripCard
+                      title={trip.title}
+                      location="여행지 정보"
+                      date={`${trip.startDate} ~ ${trip.endDate}`}
+                      imageUrl={trip.tripId.includes('mock') ? require('@/assets/images/trip_placeholder_2.png') : undefined}
+                      onPress={() => handleTripPress(trip)}
+                    />
+                  </View>
+                ))}
+              </ScrollView>
 
-        {isLoading ? (
-          <ActivityIndicator size="large" color="#DE7254" />
-        ) : pastTrips.length > 0 ? (
-          <View className="gap-6">
-            {pastTrips.map((trip) => (
-              <TripCard
-                key={trip.tripId}
-                title={trip.title}
-                location="여행지 정보"
-                date={`${trip.startDate} ~ ${trip.endDate}`}
-                imageUrl={trip.tripId.includes('mock') ? require('@/assets/images/trip_placeholder_2.png') : undefined}
-                onPress={() => handleTripPress(trip)}
-              />
-            ))}
-          </View>
-        ) : (
-          <Text className="text-[#828F9C] text-center mt-4 font-pretendard-medium">
-            아직 지난 여행 기록이 없어요.
-          </Text>
-        )}
-      </View>
+              <Pressable onPress={() => router.push('/trip/past')} className="items-center mt-5" hitSlop={10}>
+                <Text className="text-sm text-[#6D7A68] font-pretendard-semibold">더보기</Text>
+              </Pressable>
+            </>
+          ) : (
+            <Text className="text-[#828F9C] text-center mt-4 font-pretendard-medium">
+              아직 지난 여행 기록이 없어요.
+            </Text>
+          )}
+        </View>
+      ) : null}
     </View>
   );
 };

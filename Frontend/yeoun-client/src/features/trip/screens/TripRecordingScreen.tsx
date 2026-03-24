@@ -510,7 +510,8 @@ export default function TripRecordingScreen({
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
   const panelLift = -145 * collapseProgress;
-  const activeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
+  const routeTripId = typeof params.tripId === 'string' ? params.tripId : '';
+  const activeTripId = routeTripId || (isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '');
   const tripTitle = displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
