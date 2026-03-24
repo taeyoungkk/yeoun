@@ -45,6 +45,9 @@ apiClient.interceptors.request.use(
     const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url} - Token: ${token.substring(0, 10)}...`);
+    } else {
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url} - No Token`);
     }
     return config;
   },
@@ -62,25 +65,28 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config;
     const requestUrl = originalRequest?.url;
 
-    // If error is 401/403 and NOT already retrying and NOT a public request
+    // If error is 401 (Unauthorized) and NOT already retrying and NOT a public request
     if (
-      (error.response?.status === 401 || error.response?.status === 403) && 
+      error.response?.status === 401 && 
       !originalRequest?._retry &&
       !isPublicApiRequest(requestUrl)
     ) {
       originalRequest._retry = true;
 
-      console.log(`[API Interceptor] Error ${error.response.status} on ${requestUrl}. Attempting token refresh...`);
+      const { refreshToken, clearTokens } = useAuthStore.getState();
+      
+      // Don't attempt refresh if we don't have a refresh token
+      if (!refreshToken || refreshToken === "") {
+        console.log('[API Interceptor] 401 error but no refresh token available. Clearing session.');
+        clearTokens();
+        return Promise.reject(error);
+      }
+
+      console.log(`[API Interceptor] 401 on ${requestUrl}. Attempting token refresh...`);
 
       try {
-        const { refreshToken, setTokens, clearTokens } = useAuthStore.getState();
+        const { setTokens } = useAuthStore.getState();
         
-        if (!refreshToken) {
-          console.log('[API Interceptor] No refresh token available. Clearing session.');
-          clearTokens();
-          return Promise.reject(error);
-        }
-
         // Import refreshApi here to avoid circular dependency
         const { refreshApi } = require('./auth');
         const refreshResponse = await refreshApi(refreshToken);
@@ -103,6 +109,11 @@ apiClient.interceptors.response.use(
         useAuthStore.getState().clearTokens();
         return Promise.reject(refreshError);
       }
+    }
+
+    // For 403 (Forbidden), we don't refresh - just log it and let the component handle it
+    if (error.response?.status === 403) {
+      console.warn(`[API Interceptor] 403 Forbidden on ${requestUrl}. Check user permissions.`);
     }
 
     return Promise.reject(error);

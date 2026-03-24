@@ -771,46 +771,7 @@ export const getTripsApi = async (): Promise<TripListResponse> => {
     const response = await apiClient.get<TripListResponse>('/trips');
     return response.data;
   } catch (error: any) {
-    if (shouldMockInDev(error)) {
-      return {
-        success: true,
-        code: 'SUCCESS',
-        message: 'Trips fetched (MOCK)',
-        data: {
-          items: [
-            {
-              tripId: 'mock-1',
-              title: 'mock past trip',
-              startDate: '2024-02-03',
-              endDate: '2024-02-06',
-              status: 'ENDED',
-              memberCount: 2,
-              region: 'Jeju',
-              country: 'Korea',
-            },
-            {
-              tripId: 'mock-2',
-              title: 'mock winter trip',
-              startDate: '2023-12-15',
-              endDate: '2023-12-18',
-              status: 'ENDED',
-              memberCount: 4,
-              region: 'Seoul',
-              country: 'Korea',
-            },
-          ],
-        },
-        timestamp: new Date().toISOString(),
-      };
-    }
-
     console.error('Get Trips API Error:', error);
-    return {
-      success: false,
-      code: getErrorCode(error),
-      message: getErrorMessage(error, 'Failed to fetch trips.'),
-      data: { items: [] },
-      timestamp: new Date().toISOString(),
-    };
+    throw error;
   }
 };

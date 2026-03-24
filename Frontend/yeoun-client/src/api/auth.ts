@@ -22,6 +22,10 @@ export interface LoginResponseData {
     userId: string;
     email: string;
     nickname: string;
+    profileImageUrl?: string | null;
+    timezone?: string;
+    role?: string;
+    status?: string;
   };
   // The API sometimes returns tokens wrapped in a 'tokens' object, 
   // and sometimes flat at the top level of 'data'.
