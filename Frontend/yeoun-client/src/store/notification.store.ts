@@ -137,7 +137,7 @@ export const useNotificationStore = create<NotificationState>((set) => ({
         });
       }
     } catch (e) {
-      console.error('Failed to fetch friend requests', e);
+      console.warn('Failed to fetch friend requests', e);
     }
   },
 
