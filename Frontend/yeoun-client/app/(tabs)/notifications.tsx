@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, SafeAreaView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNotificationStore, Notification } from '@/src/store/notification.store';
 import { acceptTripInviteApi, declineTripInviteApi } from '@/src/api/invite';
 import { acceptFriendRequestApi, declineFriendRequestApi } from '@/src/api/friend';
