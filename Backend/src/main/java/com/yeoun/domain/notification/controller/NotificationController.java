@@ -22,7 +22,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/notifications")
-@Tag(name = "Notification", description = "In-app notification API")
+@Tag(name = "알림", description = "인앱 알림 API")
 @SecurityRequirement(name = "bearerAuth")
 public class NotificationController {
 
@@ -33,7 +33,7 @@ public class NotificationController {
     }
 
     @GetMapping
-    @Operation(summary = "Get notifications", description = "Returns the in-app notifications for current user.")
+    @Operation(summary = "알림 목록 조회", description = "현재 로그인한 사용자의 인앱 알림 목록을 조회합니다.")
     public ApiResponse<NotificationListResponse> getNotifications(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal
     ) {
@@ -42,7 +42,7 @@ public class NotificationController {
     }
 
     @GetMapping("/unread-count")
-    @Operation(summary = "Get unread notification count", description = "Returns unread notification count.")
+    @Operation(summary = "안 읽은 알림 수 조회", description = "현재 로그인한 사용자의 안 읽은 알림 개수를 조회합니다.")
     public ApiResponse<NotificationUnreadCountResponse> getUnreadCount(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal
     ) {
@@ -51,7 +51,7 @@ public class NotificationController {
     }
 
     @PatchMapping("/{notificationId}/read")
-    @Operation(summary = "Mark notification as read", description = "Marks a specific notification as read.")
+    @Operation(summary = "알림 읽음 처리", description = "특정 알림 1건을 읽음 상태로 변경합니다.")
     public ApiResponse<NotificationReadResponse> markAsRead(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @PathVariable("notificationId") UUID notificationId
@@ -61,7 +61,7 @@ public class NotificationController {
     }
 
     @PatchMapping("/read-all")
-    @Operation(summary = "Mark all notifications as read", description = "Marks all unread notifications as read.")
+    @Operation(summary = "전체 읽음 처리", description = "현재 로그인한 사용자의 안 읽은 알림을 모두 읽음 상태로 변경합니다.")
     public ApiResponse<NotificationReadAllResponse> markAllAsRead(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal
     ) {
