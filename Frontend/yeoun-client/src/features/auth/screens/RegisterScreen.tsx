@@ -273,6 +273,12 @@ export const RegisterScreen = () => {
 
       if (response.success && response.data) {
         const { tokens, user } = response.data;
+
+        if (!tokens?.accessToken || !tokens.refreshToken || !user) {
+          setRegisterError('회원가입 응답 데이터가 올바르지 않습니다.');
+          return;
+        }
+
         setTokens(tokens.accessToken, tokens.refreshToken);
         setProfile({
           userId: user.userId,
