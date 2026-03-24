@@ -5,6 +5,8 @@ import com.yeoun.domain.friend.dto.response.FriendRequestCreateResponse;
 import com.yeoun.domain.friend.entity.Friendship;
 import com.yeoun.domain.friend.entity.FriendshipStatus;
 import com.yeoun.domain.friend.repository.FriendshipRepository;
+import com.yeoun.domain.notification.entity.NotificationType;
+import com.yeoun.domain.notification.service.NotificationService;
 import com.yeoun.domain.user.entity.User;
 import com.yeoun.domain.user.entity.UserStatus;
 import com.yeoun.domain.user.repository.UserRepository;
@@ -22,17 +24,20 @@ public class FriendCommandService {
 
     private final UserRepository userRepository;
     private final FriendshipRepository friendshipRepository;
+    private final NotificationService notificationService;
 
     public FriendCommandService(
             UserRepository userRepository,
-            FriendshipRepository friendshipRepository
+            FriendshipRepository friendshipRepository,
+            NotificationService notificationService
     ) {
         this.userRepository = userRepository;
         this.friendshipRepository = friendshipRepository;
+        this.notificationService = notificationService;
     }
 
     public FriendRequestCreateResponse createFriendRequest(UUID currentUserId, FriendRequestCreateRequest request) {
-        validateActiveUser(currentUserId);
+        User currentUser = validateActiveUser(currentUserId);
 
         UUID friendUserId = request.friendUserId();
         if (currentUserId.equals(friendUserId)) {
@@ -64,6 +69,17 @@ public class FriendCommandService {
                 .build();
 
         Friendship savedFriendship = friendshipRepository.save(friendship);
+
+        notificationService.createNotification(
+                targetUser.getUserId(),
+                currentUser.getUserId(),
+                null,
+                savedFriendship.getFriendshipId(),
+                NotificationType.FRIEND_REQUEST_RECEIVED,
+                "친구 요청이 도착했어요",
+                currentUser.getNickname() + "님이 친구 요청을 보냈습니다."
+        );
+
         return new FriendRequestCreateResponse(
                 savedFriendship.getFriendshipId(),
                 savedFriendship.getFriendUserId(),
@@ -72,7 +88,7 @@ public class FriendCommandService {
     }
 
     public void acceptFriendRequest(UUID currentUserId, UUID friendshipId) {
-        validateActiveUser(currentUserId);
+        User accepter = validateActiveUser(currentUserId);
 
         Friendship friendship = friendshipRepository.findById(friendshipId)
                 .orElseThrow(() -> new BaseException(ErrorCode.FRIEND_REQUEST_NOT_FOUND));
@@ -85,6 +101,15 @@ public class FriendCommandService {
         }
 
         friendship.accept(Instant.now());
+        notificationService.createNotification(
+                friendship.getUserId(),
+                accepter.getUserId(),
+                null,
+                friendship.getFriendshipId(),
+                NotificationType.FRIEND_REQUEST_ACCEPTED,
+                "친구 요청이 수락되었어요",
+                accepter.getNickname() + "님이 친구 요청을 수락했습니다."
+        );
     }
 
     public void declineFriendRequest(UUID currentUserId, UUID friendshipId) {
@@ -103,11 +128,12 @@ public class FriendCommandService {
         friendship.decline(Instant.now());
     }
 
-    private void validateActiveUser(UUID userId) {
+    private User validateActiveUser(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BaseException(ErrorCode.USER_NOT_FOUND));
 
         validateTargetUser(user);
+        return user;
     }
 
     private void validateTargetUser(User user) {
