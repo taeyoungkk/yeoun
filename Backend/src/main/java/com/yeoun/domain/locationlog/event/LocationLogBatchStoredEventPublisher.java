@@ -32,7 +32,22 @@ public class LocationLogBatchStoredEventPublisher {
     public void publish(LocationLogBatchStoredEvent event) {
         try {
             String payload = objectMapper.writeValueAsString(event);
+            log.info(
+                    "위치 로그 배치를 Kafka로 발행 시작. topic={} tripId={} userId={} itemCount={} requestedAt={}",
+                    topic,
+                    event.tripId(),
+                    event.userId(),
+                    event.logs().size(),
+                    event.requestedAt()
+            );
             kafkaTemplate.send(topic, event.tripId().toString(), payload).join();
+            log.info(
+                    "위치 로그 배치를 Kafka로 발행 완료. topic={} tripId={} userId={} itemCount={}",
+                    topic,
+                    event.tripId(),
+                    event.userId(),
+                    event.logs().size()
+            );
         } catch (JsonProcessingException exception) {
             log.error("Failed to serialize Kafka event for tripId={}", event.tripId(), exception);
             throw new BaseException(

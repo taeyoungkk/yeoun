@@ -18,6 +18,8 @@ import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +32,8 @@ import java.util.UUID;
 @Service
 @Transactional(readOnly = true)
 public class LocationResultQueryService {
+
+    private static final Logger log = LoggerFactory.getLogger(LocationResultQueryService.class);
 
     private static final TypeReference<List<List<BigDecimal>>> COORDINATES_TYPE = new TypeReference<>() {
     };
@@ -62,6 +66,12 @@ public class LocationResultQueryService {
                 .map(this::toRouteDayItemResponse)
                 .toList();
 
+        log.info(
+                "위치 경로 일자 목록 조회 완료. tripId={} requesterUserId={} routeDayCount={}",
+                tripId,
+                requesterUserId,
+                items.size()
+        );
         return new LocationRouteDayListResponse(items);
     }
 
@@ -73,6 +83,13 @@ public class LocationResultQueryService {
                 .map(this::toRouteDayItemResponse)
                 .toList();
 
+        log.info(
+                "위치 경로 일자 상세 조회 완료. tripId={} requesterUserId={} day={} routeCount={}",
+                tripId,
+                requesterUserId,
+                dayDate,
+                items.size()
+        );
         return new LocationRouteResponse(dayDate, items);
     }
 
@@ -84,6 +101,12 @@ public class LocationResultQueryService {
                 .map(this::toPlaceItemResponse)
                 .toList();
 
+        log.info(
+                "위치 장소 목록 조회 완료. tripId={} requesterUserId={} placeCount={}",
+                tripId,
+                requesterUserId,
+                items.size()
+        );
         return new LocationPlaceListResponse(items);
     }
 
