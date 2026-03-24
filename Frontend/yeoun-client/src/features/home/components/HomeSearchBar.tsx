@@ -12,7 +12,7 @@ export const HomeSearchBar = () => {
         if (isTripActive) {
             router.push('/trip/recording');
         } else {
-            router.push('/trip/start');
+            router.push('/trip/start?mode=create');
         }
     };
 

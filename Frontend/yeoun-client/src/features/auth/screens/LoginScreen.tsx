@@ -79,13 +79,16 @@ export const LoginScreen = () => {
 
   useEffect(() => {
     if (response) {
+      const responseParams = "params" in response ? response.params : undefined;
+      const responseAuthentication = "authentication" in response ? response.authentication : undefined;
+
       console.log("[LoginScreen] Google auth session response", {
         type: response.type,
-        params: response.params,
-        authentication: response.authentication
+        params: responseParams,
+        authentication: responseAuthentication
           ? {
-              accessTokenPresent: Boolean(response.authentication.accessToken),
-              idTokenPresent: Boolean(response.authentication.idToken),
+              accessTokenPresent: Boolean(responseAuthentication.accessToken),
+              idTokenPresent: Boolean(responseAuthentication.idToken),
             }
           : null,
         errorCode: "errorCode" in response ? response.errorCode : undefined,
@@ -93,7 +96,9 @@ export const LoginScreen = () => {
     }
 
     if (response?.type === "success") {
-      const idToken = response.authentication?.idToken || response.params?.id_token;
+      const authentication = "authentication" in response ? response.authentication : undefined;
+      const params = "params" in response ? response.params : undefined;
+      const idToken = authentication?.idToken || params?.id_token;
 
       if (!idToken) {
         setLoginError("Google id token을 받지 못했습니다.");

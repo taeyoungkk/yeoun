@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -157,20 +157,23 @@ function FieldNoticeModal({
 
 export default function TripStartScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ mode?: string }>();
   const profileNickname = useUserStore((state) => state.profile?.nickname);
   const startTrip = useTripStore((state) => state.startTrip);
   const updateCurrentTrip = useTripStore((state) => state.updateCurrentTrip);
   const setActiveTrip = useTripStore((state) => state.setActiveTrip);
   const currentTrip = useTripStore((state) => state.currentTrip);
   const isTripActive = useTripStore((state) => state.isTripActive);
+  const isCreateMode = params.mode !== 'edit';
+  const editSourceTrip = !isCreateMode ? currentTrip : null;
 
-  const [tripName, setTripName] = useState(currentTrip?.tripName ?? '');
+  const [tripName, setTripName] = useState(editSourceTrip?.tripName ?? '');
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(currentTrip?.startDate ? new Date(currentTrip.startDate) : new Date());
+  const [calendarMonth, setCalendarMonth] = useState(editSourceTrip?.startDate ? new Date(editSourceTrip.startDate) : new Date());
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
-  const [startDate, setStartDate] = useState<Date | null>(currentTrip?.startDate ? new Date(currentTrip.startDate) : null);
-  const [endDate, setEndDate] = useState<Date | null>(currentTrip?.endDate ? new Date(currentTrip.endDate) : null);
-  const [memberCount, setMemberCount] = useState(currentTrip?.memberCount ?? 2);
+  const [startDate, setStartDate] = useState<Date | null>(editSourceTrip?.startDate ? new Date(editSourceTrip.startDate) : null);
+  const [endDate, setEndDate] = useState<Date | null>(editSourceTrip?.endDate ? new Date(editSourceTrip.endDate) : null);
+  const [memberCount, setMemberCount] = useState(editSourceTrip?.memberCount ?? 2);
   const [noticeModalType, setNoticeModalType] = useState<NoticeModalType>(null);
 
   const headerNickname = profileNickname?.trim() || '여행자';
@@ -179,7 +182,24 @@ export default function TripStartScreen() {
   const hasDateRange = Boolean(startDate && endDate);
   const hasMemberCount = memberCount > 0;
   const isFormComplete = hasTripName && hasDateRange && hasMemberCount;
-  const isEditingActiveTrip = Boolean(currentTrip?.tripId && isTripActive);
+  const isEditingActiveTrip = !isCreateMode && Boolean(currentTrip?.tripId && isTripActive);
+
+  useEffect(() => {
+    if (isCreateMode) {
+      setTripName('');
+      setCalendarMonth(new Date());
+      setStartDate(null);
+      setEndDate(null);
+      setMemberCount(2);
+      return;
+    }
+
+    setTripName(editSourceTrip?.tripName ?? '');
+    setCalendarMonth(editSourceTrip?.startDate ? new Date(editSourceTrip.startDate) : new Date());
+    setStartDate(editSourceTrip?.startDate ? new Date(editSourceTrip.startDate) : null);
+    setEndDate(editSourceTrip?.endDate ? new Date(editSourceTrip.endDate) : null);
+    setMemberCount(editSourceTrip?.memberCount ?? 2);
+  }, [editSourceTrip?.endDate, editSourceTrip?.memberCount, editSourceTrip?.startDate, editSourceTrip?.tripId, editSourceTrip?.tripName, isCreateMode]);
 
   const missingLabels = useMemo(() => {
     const nextMissing: string[] = [];
@@ -201,10 +221,10 @@ export default function TripStartScreen() {
       startDate: startDate?.toISOString() ?? new Date().toISOString(),
       endDate: endDate?.toISOString() ?? startDate?.toISOString() ?? new Date().toISOString(),
       memberCount,
-      origin: currentTrip?.origin ?? 'Korea',
-      destination: currentTrip?.destination ?? tripName.trim(),
+      origin: editSourceTrip?.origin ?? 'Korea',
+      destination: editSourceTrip?.destination ?? tripName.trim(),
     }),
-    [currentTrip?.destination, currentTrip?.origin, currentTrip?.tripId, endDate, memberCount, startDate, tripName],
+    [currentTrip?.tripId, editSourceTrip?.destination, editSourceTrip?.origin, endDate, memberCount, startDate, tripName],
   );
 
   const handlePickDay = (date: Date) => {
