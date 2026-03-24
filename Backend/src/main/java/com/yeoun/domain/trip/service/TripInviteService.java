@@ -75,10 +75,20 @@ public class TripInviteService {
 
     @Transactional
     public TripInviteAcceptResponse acceptInvite(UUID requesterUserId, String inviteToken) {
-        Instant now = Instant.now();
         TripInvite invite = tripInviteRepository.findByInviteToken(inviteToken)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRIP_INVITE_NOT_FOUND));
+        return acceptInvite(requesterUserId, invite);
+    }
 
+    @Transactional
+    public TripInviteAcceptResponse acceptInviteById(UUID requesterUserId, UUID tripInviteId) {
+        TripInvite invite = tripInviteRepository.findById(tripInviteId)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_INVITE_NOT_FOUND));
+        return acceptInvite(requesterUserId, invite);
+    }
+
+    private TripInviteAcceptResponse acceptInvite(UUID requesterUserId, TripInvite invite) {
+        Instant now = Instant.now();
         if (invite.getStatus() != TripInviteStatus.SENT) {
             throw new BaseException(ErrorCode.TRIP_INVITE_ACCEPT_NOT_ALLOWED);
         }
@@ -152,9 +162,20 @@ public class TripInviteService {
 
     @Transactional
     public TripInviteDeclineResponse declineInvite(UUID requesterUserId, String inviteToken) {
-        Instant now = Instant.now();
         TripInvite invite = tripInviteRepository.findByInviteToken(inviteToken)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRIP_INVITE_NOT_FOUND));
+        return declineInvite(requesterUserId, invite);
+    }
+
+    @Transactional
+    public TripInviteDeclineResponse declineInviteById(UUID requesterUserId, UUID tripInviteId) {
+        TripInvite invite = tripInviteRepository.findById(tripInviteId)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_INVITE_NOT_FOUND));
+        return declineInvite(requesterUserId, invite);
+    }
+
+    private TripInviteDeclineResponse declineInvite(UUID requesterUserId, TripInvite invite) {
+        Instant now = Instant.now();
         User requester = userRepository.findById(requesterUserId)
                 .orElseThrow(() -> new BaseException(ErrorCode.USER_NOT_FOUND));
 
