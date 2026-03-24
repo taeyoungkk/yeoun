@@ -1,6 +1,9 @@
 package com.yeoun.domain.receipt.controller;
 
+import com.yeoun.domain.receipt.dto.request.ReceiptOcrCreateRequest;
+import com.yeoun.domain.receipt.dto.response.ReceiptOcrCreateResponse;
 import com.yeoun.domain.receipt.dto.response.ReceiptUploadResponse;
+import com.yeoun.domain.receipt.service.ReceiptOcrCommandService;
 import com.yeoun.domain.receipt.service.ReceiptUploadService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -9,9 +12,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,9 +31,14 @@ import java.util.UUID;
 public class ReceiptController {
 
     private final ReceiptUploadService receiptUploadService;
+    private final ReceiptOcrCommandService receiptOcrCommandService;
 
-    public ReceiptController(ReceiptUploadService receiptUploadService) {
+    public ReceiptController(
+            ReceiptUploadService receiptUploadService,
+            ReceiptOcrCommandService receiptOcrCommandService
+    ) {
         this.receiptUploadService = receiptUploadService;
+        this.receiptOcrCommandService = receiptOcrCommandService;
     }
 
     @PostMapping(value = "/trips/{tripId}/receipts/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -39,6 +49,17 @@ public class ReceiptController {
             @RequestPart("file") MultipartFile file
     ) {
         ReceiptUploadResponse response = receiptUploadService.uploadReceipt(principal.userId(), tripId, file);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/trips/{tripId}/receipts/ocr-requests")
+    @Operation(summary = "영수증 OCR 요청", description = "업로드된 영수증 이미지 URL로 OCR 처리를 요청합니다.")
+    public ApiResponse<ReceiptOcrCreateResponse> requestReceiptOcr(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") UUID tripId,
+            @Valid @RequestBody ReceiptOcrCreateRequest request
+    ) {
+        ReceiptOcrCreateResponse response = receiptOcrCommandService.requestReceiptOcr(principal.userId(), tripId, request);
         return ApiResponse.ok(response);
     }
 }
