@@ -35,6 +35,8 @@ public class GlobalExceptionHandler {
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining(", "));
 
+        log.warn("요청 검증 실패. message={}", message);
+
         return ResponseEntity
                 .badRequest()
                 .body(ApiResponse.fail(ErrorCode.INVALID_INPUT_VALUE, message));
@@ -45,6 +47,7 @@ public class GlobalExceptionHandler {
             MethodArgumentTypeMismatchException.class
     })
     public ResponseEntity<ApiResponse<Void>> handleBadRequestExceptions(Exception ex) {
+        log.warn("잘못된 요청 처리. type={} message={}", ex.getClass().getSimpleName(), ex.getMessage());
         return ResponseEntity
                 .badRequest()
                 .body(ApiResponse.fail(ErrorCode.INVALID_INPUT_VALUE));
