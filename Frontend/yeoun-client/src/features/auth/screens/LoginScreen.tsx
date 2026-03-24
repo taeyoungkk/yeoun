@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
+import * as AuthSession from "expo-auth-session";
 import { Controller, useForm } from "react-hook-form";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
@@ -47,24 +48,69 @@ export const LoginScreen = () => {
     defaultValues: { email: "", password: "" },
   });
 
+  const redirectUri = AuthSession.makeRedirectUri({
+    path: "oauthredirect",
+    native: "com.hoimook.yeoun:/oauthredirect",
+  });
+
   // Google OAuth Hook
   const [request, response, promptAsync] = Google.useAuthRequest({
-    // TRICK: Use the iOS Client ID even for Android to allow custom URI schemes
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    redirectUri,
+    scopes: ["openid", "profile", "email"],
   });
 
   useEffect(() => {
+    if (!request) {
+      return;
+    }
+
+    console.log("[LoginScreen] Google auth request ready", {
+      redirectUri,
+      requestUrl: request.url,
+      responseType: request.responseType,
+      androidClientIdPreview: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.slice(0, 24),
+      iosClientIdPreview: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.slice(0, 24),
+      webClientIdPreview: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.slice(0, 24),
+    });
+  }, [request, redirectUri]);
+
+  useEffect(() => {
+    if (response) {
+      console.log("[LoginScreen] Google auth session response", {
+        type: response.type,
+        params: response.params,
+        authentication: response.authentication
+          ? {
+              accessTokenPresent: Boolean(response.authentication.accessToken),
+              idTokenPresent: Boolean(response.authentication.idToken),
+            }
+          : null,
+        errorCode: "errorCode" in response ? response.errorCode : undefined,
+      });
+    }
+
     if (response?.type === "success") {
-      const { id_token } = response.params;
-      handleGoogleLogin(id_token);
+      const idToken = response.authentication?.idToken || response.params?.id_token;
+
+      if (!idToken) {
+        setLoginError("Google id token을 받지 못했습니다.");
+        return;
+      }
+
+      handleGoogleLogin(idToken);
     }
   }, [response]);
 
   const handleGoogleLogin = async (idToken: string) => {
     setIsLoading(true);
     setLoginError("");
+    console.log('[LoginScreen] Starting Google login', {
+      redirectUri,
+      idTokenPreview: `${idToken.slice(0, 16)}...`,
+    });
     try {
       const apiResponse = await googleAuthApi(idToken);
       console.log('[LoginScreen] Google Auth Response:', JSON.stringify(apiResponse, null, 2));
@@ -83,6 +129,11 @@ export const LoginScreen = () => {
         }
 
         setTokens(accessToken, refreshToken || "");
+        console.log('[LoginScreen] Google tokens extracted', {
+          hasAccessToken: Boolean(accessToken),
+          accessTokenPreview: `${accessToken.slice(0, 12)}...`,
+          hasRefreshToken: Boolean(refreshToken),
+        });
         
         // If user info is missing, we might need a fallback or another API call.
         // For now, let's use what we have or placeholder.
@@ -131,6 +182,9 @@ export const LoginScreen = () => {
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     setLoginError("");
+    console.log('[LoginScreen] Starting email login', {
+      email: data.email,
+    });
     try {
       const response = await loginApi(data);
       console.log('[LoginScreen] Email Login Response:', JSON.stringify(response, null, 2));
@@ -148,6 +202,11 @@ export const LoginScreen = () => {
         }
 
         setTokens(accessToken, refreshToken || "");
+        console.log('[LoginScreen] Email tokens extracted', {
+          hasAccessToken: Boolean(accessToken),
+          accessTokenPreview: `${accessToken.slice(0, 12)}...`,
+          hasRefreshToken: Boolean(refreshToken),
+        });
         
         const user = resData.user || {
           userId: 'user',
@@ -297,7 +356,13 @@ export const LoginScreen = () => {
           {/* Google button */}
           <TouchableOpacity
             style={[styles.googleButton, (!request || isLoading) && { opacity: 0.5 }]}
-            onPress={() => promptAsync()}
+            onPress={() => {
+              console.log("[LoginScreen] Google login button pressed", {
+                redirectUri,
+                requestUrl: request?.url,
+              });
+              promptAsync();
+            }}
             disabled={!request || isLoading}
             accessibilityLabel="구글 로그인"
           >

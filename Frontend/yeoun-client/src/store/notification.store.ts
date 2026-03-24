@@ -78,7 +78,6 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   fetchNotifications: async () => {
     try {
       const friendResponse = await getReceivedFriendRequestsApi();
-
       const nextNotifications = buildFriendNotifications(friendResponse.data.items ?? []).sort(
         (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
       );

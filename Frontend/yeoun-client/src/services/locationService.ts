@@ -4,6 +4,7 @@ import * as TaskManager from 'expo-task-manager';
 import { Linking } from 'react-native';
 
 import { getTripLocationLogStatusApi, LocationLog, uploadLocationsApi } from '../api/trip';
+import { useTripStore } from '../store/trip.store';
 
 const LOCATION_TRACKING_TASK = 'LOCATION_TRACKING_TASK';
 const STORAGE_KEY_PREFIX = 'pending_location_logs_chunk_';
@@ -62,6 +63,13 @@ let listeners: LocationListener[] = [];
 let foregroundSubscription: Location.LocationSubscription | null = null;
 const LOCATION_STATUS_POLL_INTERVAL_MS = 1500;
 const LOCATION_STATUS_POLL_TIMEOUT_MS = 20000;
+
+const setLocationSyncState = (
+  status: 'idle' | 'uploading' | 'processing' | 'completed' | 'failed',
+  message?: string | null,
+) => {
+  useTripStore.getState().setLocationSyncState(status, message ?? null);
+};
 
 const startForegroundWatcher = async () => {
   if (foregroundSubscription) {
@@ -127,23 +135,29 @@ const pollLocationProcessingStatus = async (tripId: string) => {
 
     if (!response.success) {
       console.warn('Failed to poll location processing status:', response.message);
+      setLocationSyncState('failed', response.message || 'Failed to poll GPS processing status.');
       return false;
     }
 
     if (isLocationProcessingComplete(response.data.status)) {
       console.log('Location processing completed:', response.data.status);
+      setLocationSyncState('completed', 'GPS data synchronized and route data refreshed.');
+      useTripStore.getState().bumpRouteRefreshKey();
       return true;
     }
 
     if (isLocationProcessingFailed(response.data.status)) {
       console.error('Location processing failed:', response.data.lastErrorMessage ?? response.data.status);
+      setLocationSyncState('failed', response.data.lastErrorMessage ?? 'GPS processing failed.');
       return false;
     }
 
+    setLocationSyncState('processing', 'GPS logs uploaded. Waiting for worker processing.');
     await wait(LOCATION_STATUS_POLL_INTERVAL_MS);
   }
 
   console.warn('Location processing status polling timed out');
+  setLocationSyncState('failed', 'GPS processing timed out. Try syncing again.');
   return false;
 };
 
@@ -268,19 +282,23 @@ export const locationService = {
       const logs = await locationService.flushLogs();
       if (logs.length === 0) {
         console.log('No logs to sync');
+        setLocationSyncState('completed', 'No new GPS logs to synchronize.');
         return true;
       }
 
+      setLocationSyncState('uploading', `Uploading ${logs.length} GPS logs...`);
       console.log(`Syncing ${logs.length} location logs for trip ${tripId}...`);
       const response = await uploadLocationsApi(tripId, logs);
 
       if (!response.success) {
         await appendLogsToStorage(logs);
         console.error('Failed to sync logs, re-queued:', response.message);
+        setLocationSyncState('failed', response.message || 'Failed to upload GPS logs.');
         return false;
       }
 
       console.log('Successfully synced logs to server');
+      setLocationSyncState('processing', 'GPS logs uploaded. Waiting for worker processing.');
       const processed = await pollLocationProcessingStatus(tripId);
 
       if (!processed) {
@@ -290,6 +308,7 @@ export const locationService = {
       return processed;
     } catch (error) {
       console.error('Sync process error:', error);
+      setLocationSyncState('failed', 'Unexpected GPS sync error occurred.');
       return false;
     }
   },

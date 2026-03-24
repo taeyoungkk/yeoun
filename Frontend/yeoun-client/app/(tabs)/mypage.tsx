@@ -79,7 +79,7 @@ export default function MyPageScreen() {
             console.warn('[MyPage] Profile request completed without success.', profileResult.value);
           }
         } else {
-          console.error('[MyPage] Profile request failed.', profileResult.reason);
+          console.warn('[MyPage] Profile request failed.', profileResult.reason);
         }
 
         if (friendsResult.status === 'fulfilled') {
@@ -89,7 +89,7 @@ export default function MyPageScreen() {
             console.warn('[MyPage] Friends request completed without success.', friendsResult.value);
           }
         } else {
-          console.error('[MyPage] Friends request failed.', friendsResult.reason);
+          console.warn('[MyPage] Friends request failed.', friendsResult.reason);
         }
 
         if (tripsResult.status === 'fulfilled') {
@@ -99,7 +99,7 @@ export default function MyPageScreen() {
             console.warn('[MyPage] Trips request completed without success.', tripsResult.value);
           }
         } else {
-          console.error('[MyPage] Trips request failed.', tripsResult.reason);
+          console.warn('[MyPage] Trips request failed.', tripsResult.reason);
         }
       };
 
@@ -148,7 +148,7 @@ export default function MyPageScreen() {
           onToggleFavorite={handleToggleFavorite}
         />
 
-        <TravelMap />
+        <TravelMap tripIds={serverTrips.filter((trip) => trip.status === 'ENDED').map((trip) => trip.tripId)} />
         <TreeRingsChart />
       </ScrollView>
     </SafeAreaView>

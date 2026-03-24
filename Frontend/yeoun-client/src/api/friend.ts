@@ -54,6 +54,16 @@ const shouldMockInDev = (error: unknown) => {
   return axios.isAxiosError(error) && !error.response;
 };
 
+const getErrorMessage = (error: any, fallback: string) =>
+  error?.response?.data?.message ??
+  error?.response?.data?.error?.message ??
+  fallback;
+
+const getErrorCode = (error: any, fallback = 'ERROR') =>
+  error?.response?.data?.code ??
+  error?.response?.data?.error?.code ??
+  fallback;
+
 const MOCK_FRIENDS: FriendListItem[] = [
   {
     friendshipId: 'mock-friendship-1',
@@ -151,7 +161,7 @@ export const getReceivedFriendRequestsApi = async (): Promise<ApiResponse<{ item
   try {
     const response = await apiClient.get<ApiResponse<{ items: FriendRequestItem[] }>>('/friends/requests/received');
     return response.data;
-  } catch (error) {
+  } catch (error: any) {
     if (shouldMockInDev(error)) {
       return {
         success: true,
@@ -159,7 +169,13 @@ export const getReceivedFriendRequestsApi = async (): Promise<ApiResponse<{ item
         timestamp: new Date().toISOString(),
       };
     }
-    throw error;
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch received friend requests.'),
+      data: { items: [] },
+      timestamp: new Date().toISOString(),
+    };
   }
 };
 
@@ -167,7 +183,7 @@ export const getSentFriendRequestsApi = async (): Promise<ApiResponse<{ items: F
   try {
     const response = await apiClient.get<ApiResponse<{ items: FriendRequestItem[] }>>('/friends/requests/sent');
     return response.data;
-  } catch (error) {
+  } catch (error: any) {
     if (shouldMockInDev(error)) {
       return {
         success: true,
@@ -175,7 +191,13 @@ export const getSentFriendRequestsApi = async (): Promise<ApiResponse<{ items: F
         timestamp: new Date().toISOString(),
       };
     }
-    throw error;
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch sent friend requests.'),
+      data: { items: [] },
+      timestamp: new Date().toISOString(),
+    };
   }
 };
 
@@ -215,7 +237,7 @@ export const getFriendsApi = async (): Promise<ApiResponse<{ items: FriendListIt
   try {
     const response = await apiClient.get<ApiResponse<{ items: FriendListItem[] }>>('/friends');
     return response.data;
-  } catch (error) {
+  } catch (error: any) {
     if (shouldMockInDev(error)) {
       return {
         success: true,
@@ -223,6 +245,12 @@ export const getFriendsApi = async (): Promise<ApiResponse<{ items: FriendListIt
         timestamp: new Date().toISOString(),
       };
     }
-    throw error;
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch friends.'),
+      data: { items: [] },
+      timestamp: new Date().toISOString(),
+    };
   }
 };

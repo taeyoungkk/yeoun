@@ -22,7 +22,7 @@ import {
   inviteUsersToTripApi,
 } from '@/src/api/trip';
 import { useTripStore } from '@/src/store/trip.store';
-import { locationService } from '../../../services/locationService';
+import { locationService } from '@/src/services/locationService';
 
 import { InviteCandidate, InviteMember, TripInviteScreen } from '../components/TripInviteScreen';
 
@@ -34,7 +34,7 @@ type LiveLocation = {
 
 type ScreenMode = 'main' | 'invite';
 
-const INVITE_LINK_PLACEHOLDER = '링크를 준비하는 중입니다.';
+const INVITE_LINK_PLACEHOLDER = '초대 링크를 생성하고 있습니다.';
 
 function mapInviteStatus(status?: string): InviteMember['status'] {
   switch (status) {
@@ -49,14 +49,34 @@ function mapInviteStatus(status?: string): InviteMember['status'] {
   }
 }
 
+function formatTimeLabel(value?: string | null) {
+  if (!value) {
+    return '-';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(
+    2,
+    '0',
+  )} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(
+    date.getSeconds(),
+  ).padStart(2, '0')}`;
+}
+
 export default function TripRecordingScreen() {
   const router = useRouter();
   const currentTrip = useTripStore((state) => state.currentTrip);
   const currentTripId = useTripStore((state) => state.currentTripId);
   const activeTrip = useTripStore((state) => state.activeTrip);
   const setActiveTrip = useTripStore((state) => state.setActiveTrip);
-  const bumpRouteRefreshKey = useTripStore((state) => state.bumpRouteRefreshKey);
   const endTrip = useTripStore((state) => state.endTrip);
+  const locationSyncStatus = useTripStore((state) => state.locationSyncStatus);
+  const locationSyncMessage = useTripStore((state) => state.locationSyncMessage);
+  const locationSyncUpdatedAt = useTripStore((state) => state.locationSyncUpdatedAt);
 
   const [screenMode, setScreenMode] = useState<ScreenMode>('main');
   const [liveLocation, setLiveLocation] = useState<LiveLocation | null>(null);
@@ -128,12 +148,12 @@ export default function TripRecordingScreen() {
     }
 
     if (response.code === 'CONFLICT') {
-      setInviteLink('이미 생성된 링크가 있거나 링크를 다시 만들 수 없습니다.');
+      setInviteLink('이미 생성된 링크가 있어 새 링크를 만들 수 없습니다.');
       setIsInviteLinkReady(false);
       return;
     }
 
-    setInviteLink('초대 링크를 준비하지 못했습니다.');
+    setInviteLink('초대 링크 생성에 실패했습니다.');
     setIsInviteLinkReady(false);
   }, [isInviteLinkReady, tripId]);
 
@@ -213,7 +233,7 @@ export default function TripRecordingScreen() {
 
       const response = await inviteUsersToTripApi(tripId, { inviteeUserIds: [candidate.id] });
       if (!response.success) {
-        Alert.alert('초대 실패', response.message || '친구를 초대하지 못했습니다.');
+        Alert.alert('초대 실패', response.message || '사용자 초대에 실패했습니다.');
         return;
       }
 
@@ -228,13 +248,13 @@ export default function TripRecordingScreen() {
       ]);
       setSearchQuery('');
       setSearchResults([]);
-      Alert.alert('초대 전송 완료', `${candidate.name}님에게 초대를 보냈습니다.`);
+      Alert.alert('초대 완료', `${candidate.name}님에게 초대를 보냈습니다.`);
     },
     [tripId],
   );
 
   const handleCancelInvite = useCallback(() => {
-    Alert.alert('초대 취소 미지원', '현재는 초대 취소 API가 없어 취소할 수 없습니다.');
+    Alert.alert('안내', '초대 취소 API는 아직 연결되어 있지 않습니다.');
   }, []);
 
   const handleManualSync = useCallback(async () => {
@@ -244,23 +264,22 @@ export default function TripRecordingScreen() {
 
     setIsSyncing(true);
     const success = await locationService.syncLocations(tripId);
-    if (success) {
-      bumpRouteRefreshKey();
-    }
     setIsSyncing(false);
 
     Alert.alert(
       success ? '동기화 완료' : '동기화 실패',
-      success ? '수집된 위치 로그를 서버로 전송했습니다.' : '위치 로그 업로드에 실패했습니다. 로그는 다시 큐에 보관됩니다.',
+      success
+        ? 'GPS 업로드와 워커 처리 완료 후 지도 갱신이 반영되었습니다.'
+        : 'GPS 동기화 중 문제가 발생했습니다. 상태 메시지를 확인해 주세요.',
     );
-  }, [bumpRouteRefreshKey, tripId]);
+  }, [tripId]);
 
   const handleEndTrip = useCallback(() => {
     if (!tripId) {
       return;
     }
 
-    Alert.alert('여행 종료', '남은 위치 로그를 마지막으로 동기화한 뒤 여행을 종료합니다.', [
+    Alert.alert('여행 종료', '종료 전에 GPS 로그를 한 번 더 동기화합니다. 계속할까요?', [
       { text: '취소', style: 'cancel' },
       {
         text: '종료',
@@ -269,14 +288,11 @@ export default function TripRecordingScreen() {
           try {
             setIsEnding(true);
 
-            const syncSuccess = await locationService.syncLocations(tripId);
-            if (syncSuccess) {
-              bumpRouteRefreshKey();
-            }
+            await locationService.syncLocations(tripId);
 
             const response = await endTripApi(tripId);
             if (!response.success) {
-              Alert.alert('여행 종료 실패', response.message || '여행을 종료하지 못했습니다.');
+              Alert.alert('여행 종료 실패', response.message || '여행 종료에 실패했습니다.');
               return;
             }
 
@@ -285,14 +301,14 @@ export default function TripRecordingScreen() {
             router.push('/trip/report');
           } catch (error) {
             console.error('Failed to end trip:', error);
-            Alert.alert('여행 종료 실패', '여행을 종료하는 중 오류가 발생했습니다.');
+            Alert.alert('여행 종료 실패', '여행 종료 처리 중 오류가 발생했습니다.');
           } finally {
             setIsEnding(false);
           }
         },
       },
     ]);
-  }, [bumpRouteRefreshKey, endTrip, router, tripId]);
+  }, [endTrip, router, tripId]);
 
   const tripTitle = currentTrip?.tripName || activeTrip?.title || '진행 중인 여행';
   const tripStatus = activeTrip?.status || 'ACTIVE';
@@ -301,11 +317,28 @@ export default function TripRecordingScreen() {
 
   const locationLabel = useMemo(() => {
     if (!liveLocation) {
-      return '아직 수집된 현재 위치가 없습니다.';
+      return '아직 수신된 실시간 위치가 없습니다.';
     }
 
     return `${liveLocation.latitude.toFixed(6)}, ${liveLocation.longitude.toFixed(6)}`;
   }, [liveLocation]);
+
+  const syncStatusLabel = useMemo(() => {
+    switch (locationSyncStatus) {
+      case 'uploading':
+        return 'GPS 업로드 중';
+      case 'processing':
+        return '워커 처리 중';
+      case 'completed':
+        return '동기화 완료';
+      case 'failed':
+        return '동기화 실패';
+      default:
+        return '대기 중';
+    }
+  }, [locationSyncStatus]);
+
+  const syncUpdatedLabel = useMemo(() => formatTimeLabel(locationSyncUpdatedAt), [locationSyncUpdatedAt]);
 
   if (!tripId) {
     return (
@@ -359,30 +392,35 @@ export default function TripRecordingScreen() {
             <Text style={styles.headerTitle}>{tripTitle}</Text>
             <TouchableOpacity style={styles.inviteButton} onPress={() => void openInviteScreen()} activeOpacity={0.9}>
               <MaterialIcons name="group-add" size={16} color="#315B45" />
-              <Text style={styles.inviteButtonText}>친구 초대</Text>
+              <Text style={styles.inviteButtonText}>멤버 초대</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>여행 상태</Text>
+          <Text style={styles.cardTitle}>여행 정보</Text>
           <InfoRow label="Trip ID" value={tripId} />
           <InfoRow label="상태" value={tripStatus} />
           <InfoRow label="시작 시각" value={startedAt} />
-          <InfoRow label="인원" value={`${memberCount}명`} />
+          <InfoRow label="멤버 수" value={`${memberCount}명`} />
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>현재 위치</Text>
-          <InfoRow label="좌표" value={locationLabel} />
-          <InfoRow label="최근 기록 시각" value={liveLocation?.recordedAt || '-'} />
-          <Text style={styles.helperText}>동기화 버튼을 누르면 로컬에 모아둔 위치 로그를 서버로 업로드합니다.</Text>
+          <Text style={styles.cardTitle}>GPS 동기화 상태</Text>
+          <InfoRow label="현재 위치" value={locationLabel} />
+          <InfoRow label="마지막 수신 시각" value={liveLocation?.recordedAt || '-'} />
+          <InfoRow label="동기화 상태" value={syncStatusLabel} />
+          <InfoRow label="마지막 상태 갱신" value={syncUpdatedLabel} />
+          {locationSyncMessage ? <Text style={styles.syncMessage}>{locationSyncMessage}</Text> : null}
+          <Text style={styles.helperText}>
+            현재 위치는 실시간으로 표시하고, 지도 경로는 수동 동기화 이후 worker 처리 완료 시점 기준으로 갱신합니다.
+          </Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>작업</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={handleManualSync} disabled={isSyncing || isEnding}>
-            {isSyncing ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryButtonText}>위치 동기화</Text>}
+            {isSyncing ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryButtonText}>GPS 동기화</Text>}
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={loadTrip} disabled={isLoading || isEnding}>
             <Text style={styles.secondaryButtonText}>여행 정보 새로고침</Text>
@@ -391,10 +429,6 @@ export default function TripRecordingScreen() {
             {isEnding ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryButtonText}>여행 종료</Text>}
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity style={styles.mockButton} onPress={() => router.push('/trip/mock-recording')}>
-          <Text style={styles.mockButtonText}>Mock 기록 화면 보기</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -450,6 +484,12 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 12, color: '#7A877E', marginBottom: 4 },
   infoValue: { fontSize: 14, color: '#202824' },
   helperText: { marginTop: 8, fontSize: 12, color: '#6D7A72', lineHeight: 18 },
+  syncMessage: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#4E5E55',
+    lineHeight: 18,
+  },
   primaryButton: {
     height: 50,
     borderRadius: 16,
@@ -475,15 +515,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mockButton: {
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E7ECE2',
-    marginTop: 6,
-  },
-  mockButtonText: { fontSize: 14, color: '#4D5A52', fontWeight: '700' },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#18211C', marginBottom: 16 },
   inviteLoadingWrap: {
