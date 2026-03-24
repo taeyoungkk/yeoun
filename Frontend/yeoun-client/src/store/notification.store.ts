@@ -1,8 +1,13 @@
 import { create } from 'zustand';
 
-import { FriendRequestItem, getReceivedFriendRequestsApi } from '@/src/api/friend';
+import {
+  getNotificationsApi,
+  markAllNotificationsAsReadApi,
+  markNotificationAsReadApi,
+  NotificationItemResponse,
+} from '@/src/api/notification';
 
-export type NotificationType = 'FRIEND_REQUEST';
+export type NotificationType = string;
 
 export interface Notification {
   id: string;
@@ -20,6 +25,7 @@ export interface Notification {
     tripName?: string;
     inviter?: string;
     inviteToken?: string;
+    resourceId?: string;
   };
 }
 
@@ -29,39 +35,38 @@ interface NotificationState {
   hasUnread: boolean;
   setNotifications: (notifications: Notification[]) => void;
   fetchNotifications: () => Promise<void>;
-  markAsRead: (id: string) => void;
-  markAllAsRead: () => void;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
   removeNotification: (id: string) => void;
 }
 
 const countUnread = (notifications: Notification[]) =>
   notifications.filter((notification) => !notification.isRead).length;
 
-const buildFriendNotifications = (items: FriendRequestItem[]): Notification[] =>
-  items.map((item) => ({
-    id: `friend-request:${item.friendshipId}`,
-    type: 'FRIEND_REQUEST',
-    title: '친구 초대',
-    message: `${item.nickname}님이 친구 요청을 보냈습니다.`,
-    timestamp: new Date().toISOString(),
-    isRead: false,
-    data: {
-      friendshipId: item.friendshipId,
-      userId: item.userId,
-      profileImageUrl: item.profileImageUrl,
-      inviter: item.nickname,
-    },
-  }));
+const isFriendRequestType = (type: string) => type.includes('FRIEND_REQUEST');
+const isTripInviteType = (type: string) => type.includes('TRIP_INVITE');
 
-const preserveReadState = (previous: Notification[], next: Notification[]) => {
-  const readMap = new Map(previous.map((notification) => [notification.id, notification.isRead]));
-  return next.map((notification) => ({
-    ...notification,
-    isRead: readMap.get(notification.id) ?? false,
-  }));
+const mapNotificationItem = (item: NotificationItemResponse): Notification => {
+  const resourceId = item.resourceId ?? undefined;
+
+  return {
+    id: item.notificationId,
+    type: item.type,
+    title: item.title,
+    message: item.body,
+    timestamp: item.createdAt,
+    isRead: item.isRead,
+    data: {
+      friendshipId: isFriendRequestType(item.type) ? resourceId : undefined,
+      userId: item.actorUserId ?? undefined,
+      tripInviteId: isTripInviteType(item.type) ? resourceId : undefined,
+      tripId: item.tripId ?? undefined,
+      resourceId,
+    },
+  };
 };
 
-export const useNotificationStore = create<NotificationState>((set) => ({
+export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   unreadCount: 0,
   hasUnread: false,
@@ -77,26 +82,36 @@ export const useNotificationStore = create<NotificationState>((set) => ({
 
   fetchNotifications: async () => {
     try {
-      const friendResponse = await getReceivedFriendRequestsApi();
-      const nextNotifications = buildFriendNotifications(friendResponse.data.items ?? []).sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-      );
+      const response = await getNotificationsApi();
+      const notifications = response.success ? response.data.notifications.map(mapNotificationItem) : [];
+      const unreadCount = countUnread(notifications);
 
-      set((state) => {
-        const notifications = preserveReadState(state.notifications, nextNotifications);
-        const unreadCount = countUnread(notifications);
-        return {
-          notifications,
-          unreadCount,
-          hasUnread: unreadCount > 0,
-        };
+      set({
+        notifications,
+        unreadCount,
+        hasUnread: unreadCount > 0,
       });
     } catch (error) {
       console.error('Failed to fetch notifications', error);
     }
   },
 
-  markAsRead: (id) =>
+  markAsRead: async (id) => {
+    const target = get().notifications.find((notification) => notification.id === id);
+    if (!target || target.isRead) {
+      return;
+    }
+
+    try {
+      const response = await markNotificationAsReadApi(id);
+      if (!response.success) {
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to mark notification as read', error);
+      return;
+    }
+
     set((state) => {
       const notifications = state.notifications.map((notification) =>
         notification.id === id ? { ...notification, isRead: true } : notification,
@@ -107,14 +122,30 @@ export const useNotificationStore = create<NotificationState>((set) => ({
         unreadCount,
         hasUnread: unreadCount > 0,
       };
-    }),
+    });
+  },
 
-  markAllAsRead: () =>
+  markAllAsRead: async () => {
+    if (get().unreadCount === 0) {
+      return;
+    }
+
+    try {
+      const response = await markAllNotificationsAsReadApi();
+      if (!response.success) {
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to mark all notifications as read', error);
+      return;
+    }
+
     set((state) => ({
       notifications: state.notifications.map((notification) => ({ ...notification, isRead: true })),
       unreadCount: 0,
       hasUnread: false,
-    })),
+    }));
+  },
 
   removeNotification: (id) =>
     set((state) => {
