@@ -25,13 +25,23 @@ import {
   upsertPhotoMemoApi,
 } from '@/src/api/photo';
 import { getEventDetailApi, type EventDetail, type EventPhoto } from '@/src/api/timeline';
+import { getTripMembersApi, type TripMemberItem } from '@/src/api/trip';
 import { useUIStore } from '@/src/store/ui.store';
+import { useUserStore } from '@/src/store/user.store';
 
 type AlbumPhoto = PhotoDetail & {
   eventPhotoId: string;
   sortOrder: number;
   representative: boolean;
 };
+
+type AlbumContributor = {
+  userId: string;
+  name: string;
+  color: string;
+};
+
+const CONTRIBUTOR_COLORS = ['#5E8B7E', '#C96C50', '#6A7FDB', '#D19A32', '#8F5FB5', '#3F8C87'];
 
 const formatTimestamp = (value?: string | null) => {
   if (!value) {
@@ -58,74 +68,125 @@ const buildAlbumPhoto = (eventPhoto: EventPhoto, detail: PhotoDetail): AlbumPhot
   representative: eventPhoto.representative,
 });
 
+const getContributorColor = (userId: string) => {
+  let seed = 0;
+
+  for (let index = 0; index < userId.length; index += 1) {
+    seed = (seed + userId.charCodeAt(index)) % CONTRIBUTOR_COLORS.length;
+  }
+
+  return CONTRIBUTOR_COLORS[seed];
+};
+
 export default function TripPhotoAlbumApiScreen() {
   const router = useRouter();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
   const showToast = useUIStore((state) => state.showToast);
+  const currentUserId = useUserStore((state) => state.profile?.userId ?? null);
+  const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
+
   const [eventDetail, setEventDetail] = useState<EventDetail | null>(null);
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);
+  const [memberMap, setMemberMap] = useState<Record<string, TripMemberItem>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [photoEditor, setPhotoEditor] = useState<{ photoId: string; memo: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadAlbum = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
-    if (!eventId) {
-      setEventDetail(null);
-      setAlbumPhotos([]);
-      setIsLoading(false);
-      setIsRefreshing(false);
-      return;
-    }
-
-    if (mode === 'initial') {
-      setIsLoading(true);
-    } else {
-      setIsRefreshing(true);
-    }
-
-    try {
-      const eventResponse = await getEventDetailApi(eventId);
-      if (!eventResponse.success) {
+  const loadAlbum = useCallback(
+    async (mode: 'initial' | 'refresh' = 'initial') => {
+      if (!eventId) {
         setEventDetail(null);
         setAlbumPhotos([]);
-        showToast(eventResponse.message ?? '사진 앨범을 불러오지 못했어요.', 'error');
+        setMemberMap({});
+        setIsLoading(false);
+        setIsRefreshing(false);
         return;
       }
 
-      const nextEventDetail = eventResponse.data;
-      const detailResponses = await Promise.all(
-        nextEventDetail.photos.map(async (eventPhoto) => {
-          const detailResponse = await getPhotoDetailApi(eventPhoto.photoId);
-          return detailResponse.success ? buildAlbumPhoto(eventPhoto, detailResponse.data) : null;
-        }),
-      );
+      if (mode === 'initial') {
+        setIsLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
 
-      setEventDetail(nextEventDetail);
-      setAlbumPhotos(
-        detailResponses
-          .filter((photo): photo is AlbumPhoto => Boolean(photo))
-          .sort((left, right) => left.sortOrder - right.sortOrder),
-      );
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [eventId, showToast]);
+      try {
+        const eventResponse = await getEventDetailApi(eventId);
+        if (!eventResponse.success) {
+          setEventDetail(null);
+          setAlbumPhotos([]);
+          setMemberMap({});
+          showToast(eventResponse.message ?? '사진 앨범을 불러오지 못했어요.', 'error');
+          return;
+        }
+
+        const nextEventDetail = eventResponse.data;
+        const [detailResponses, membersResponse] = await Promise.all([
+          Promise.all(
+            nextEventDetail.photos.map(async (eventPhoto) => {
+              const detailResponse = await getPhotoDetailApi(eventPhoto.photoId);
+              return detailResponse.success ? buildAlbumPhoto(eventPhoto, detailResponse.data) : null;
+            }),
+          ),
+          getTripMembersApi(nextEventDetail.tripId),
+        ]);
+
+        setEventDetail(nextEventDetail);
+        setAlbumPhotos(
+          detailResponses
+            .filter((photo): photo is AlbumPhoto => Boolean(photo))
+            .sort((left, right) => left.sortOrder - right.sortOrder),
+        );
+        setMemberMap(
+          membersResponse.success
+            ? Object.fromEntries(membersResponse.data.items.map((member) => [member.userId, member]))
+            : {},
+        );
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [eventId, showToast],
+  );
 
   useEffect(() => {
     void loadAlbum('initial');
   }, [loadAlbum]);
 
-  const visiblePhotos = useMemo(
-    () => albumPhotos.filter((photo) => !photo.isExcluded),
-    [albumPhotos],
+  const visiblePhotos = useMemo(() => albumPhotos.filter((photo) => !photo.isExcluded), [albumPhotos]);
+
+  const contributors = useMemo<AlbumContributor[]>(
+    () =>
+      Array.from(new Set(visiblePhotos.map((photo) => photo.ownerUserId))).map((userId) => {
+        const matchedMember = memberMap[userId];
+        const fallbackName = userId === currentUserId ? currentUserNickname : null;
+
+        return {
+          userId,
+          name: matchedMember?.nickname ?? fallbackName ?? '여행 메이트',
+          color: getContributorColor(userId),
+        };
+      }),
+    [currentUserId, currentUserNickname, memberMap, visiblePhotos],
   );
 
   const selectedPhoto = useMemo(
     () => albumPhotos.find((photo) => photo.photoId === selectedPhotoId) ?? null,
     [albumPhotos, selectedPhotoId],
+  );
+
+  const selectedContributor = useMemo(
+    () =>
+      selectedPhoto
+        ? contributors.find((contributor) => contributor.userId === selectedPhoto.ownerUserId) ?? null
+        : null,
+    [contributors, selectedPhoto],
+  );
+
+  const selectedPhotoIsOwner = Boolean(
+    selectedPhoto?.ownerUserId && currentUserId && selectedPhoto.ownerUserId === currentUserId,
   );
 
   useEffect(() => {
@@ -174,14 +235,17 @@ export default function TripPhotoAlbumApiScreen() {
     }
   }, [photoEditor, showToast]);
 
-  const handleExcludePhoto = useCallback((photo: AlbumPhoto) => {
-    Alert.alert(
-      '사진을 앨범에서 제외할까요?',
-      '제외한 사진은 이 이벤트 앨범에서 더 이상 보이지 않아요.',
-      [
+  const handleExcludePhoto = useCallback(
+    (photo: AlbumPhoto) => {
+      if (photo.ownerUserId !== currentUserId) {
+        Alert.alert('삭제할 수 없어요', '내가 올린 사진만 삭제할 수 있어요.');
+        return;
+      }
+
+      Alert.alert('이 사진을 삭제할까요?', '목록과 앨범 화면에서 바로 사라집니다.', [
         { text: '취소', style: 'cancel' },
         {
-          text: '제외',
+          text: '삭제',
           style: 'destructive',
           onPress: () => {
             void (async () => {
@@ -189,28 +253,27 @@ export default function TripPhotoAlbumApiScreen() {
               try {
                 const response = await updatePhotoApi(photo.photoId, { isExcluded: true });
                 if (!response.success) {
-                  showToast(response.message ?? '사진을 제외하지 못했어요.', 'error');
+                  showToast(response.message ?? '사진을 삭제하지 못했어요.', 'error');
                   return;
                 }
 
                 setAlbumPhotos((prev) =>
                   prev.map((item) =>
-                    item.photoId === photo.photoId
-                      ? { ...item, isExcluded: true }
-                      : item,
+                    item.photoId === photo.photoId ? { ...item, isExcluded: true } : item,
                   ),
                 );
                 setSelectedPhotoId(null);
-                showToast('사진을 앨범에서 제외했어요.', 'success');
+                showToast('사진을 삭제했어요.', 'success');
               } finally {
                 setIsSubmitting(false);
               }
             })();
           },
         },
-      ],
-    );
-  }, [showToast]);
+      ]);
+    },
+    [currentUserId, showToast],
+  );
 
   if (isLoading) {
     return (
@@ -224,7 +287,7 @@ export default function TripPhotoAlbumApiScreen() {
         </View>
         <View style={styles.centerState}>
           <ActivityIndicator size="small" color="#244934" />
-          <Text style={styles.centerStateText}>사진 앨범을 불러오는 중이에요.</Text>
+          <Text style={styles.centerStateText}>사진 앨범을 불러오는 중입니다.</Text>
         </View>
       </SafeAreaView>
     );
@@ -242,7 +305,7 @@ export default function TripPhotoAlbumApiScreen() {
         </View>
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>앨범을 찾을 수 없어요.</Text>
-          <Text style={styles.emptyBody}>잠시 후 다시 시도해 주세요.</Text>
+          <Text style={styles.emptyBody}>다시 들어오거나 이전 화면에서 사진 이벤트를 확인해 주세요.</Text>
         </View>
       </SafeAreaView>
     );
@@ -270,23 +333,42 @@ export default function TripPhotoAlbumApiScreen() {
       >
         <View style={styles.albumInfoRow}>
           <Text style={styles.albumMeta}>{visiblePhotos.length}장의 사진</Text>
-          <Text style={styles.albumSubMeta}>{eventDetail.photos.length}개 연결됨</Text>
+          {contributors.length ? (
+            <View style={styles.albumContributorRow}>
+              <Text style={styles.albumContributorText}>photo by</Text>
+              <View style={styles.albumAvatarStack}>
+                {contributors.map((contributor, index) => (
+                  <View
+                    key={contributor.userId}
+                    style={[
+                      styles.albumAvatar,
+                      {
+                        backgroundColor: contributor.color,
+                        marginLeft: index === 0 ? 0 : -8,
+                        zIndex: contributors.length - index,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.albumAvatarText}>{contributor.name.slice(0, 1)}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.albumSubMeta}>{eventDetail.photos.length}개 업로드됨</Text>
+          )}
         </View>
 
         {visiblePhotos.length === 0 ? (
           <View style={styles.emptyAlbumCard}>
             <MaterialIcons name="photo-library" size={28} color="#8A978F" />
-            <Text style={styles.emptyAlbumTitle}>보이는 사진이 없어요.</Text>
-            <Text style={styles.emptyAlbumBody}>제외되지 않은 사진이 있으면 여기서 바로 확인할 수 있어요.</Text>
+            <Text style={styles.emptyAlbumTitle}>보여줄 사진이 없어요.</Text>
+            <Text style={styles.emptyAlbumBody}>제외된 사진만 있거나 아직 처리된 사진이 없습니다.</Text>
           </View>
         ) : (
           <View style={styles.grid}>
             {visiblePhotos.map((photo) => (
-              <Pressable
-                key={photo.photoId}
-                style={styles.gridItem}
-                onPress={() => setSelectedPhotoId(photo.photoId)}
-              >
+              <Pressable key={photo.photoId} style={styles.gridItem} onPress={() => setSelectedPhotoId(photo.photoId)}>
                 <Image source={photo.thumbnailUrl || photo.originalUrl} style={styles.gridImage} contentFit="cover" />
                 {photo.representative ? (
                   <View style={styles.representativeBadge}>
@@ -305,13 +387,25 @@ export default function TripPhotoAlbumApiScreen() {
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderCopy}>
                 <Text style={styles.modalTitle}>{eventDetail.title || '사진 상세'}</Text>
-                <Text style={styles.modalMeta}>{selectedPhoto?.fileName || '사진 상세'}</Text>
+                {selectedContributor ? (
+                  <View style={styles.modalMetaRow}>
+                    <View style={[styles.modalAvatar, { backgroundColor: selectedContributor.color }]}>
+                      <Text style={styles.modalAvatarText}>{selectedContributor.name.slice(0, 1)}</Text>
+                    </View>
+                    <Text style={styles.modalMeta}>{`photo by ${selectedContributor.name}`}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.modalMeta}>{selectedPhoto?.fileName || '사진 상세'}</Text>
+                )}
               </View>
               <View style={styles.modalHeaderActions}>
                 <View style={styles.modalTextActionRow}>
                   <TouchableOpacity
                     activeOpacity={0.85}
-                    onPress={() => selectedPhoto && setPhotoEditor({ photoId: selectedPhoto.photoId, memo: selectedPhoto.myMemo?.content ?? '' })}
+                    onPress={() =>
+                      selectedPhoto &&
+                      setPhotoEditor({ photoId: selectedPhoto.photoId, memo: selectedPhoto.myMemo?.content ?? '' })
+                    }
                     disabled={isSubmitting}
                   >
                     <Text style={styles.modalTextAction}>메모</Text>
@@ -321,7 +415,15 @@ export default function TripPhotoAlbumApiScreen() {
                     onPress={() => selectedPhoto && handleExcludePhoto(selectedPhoto)}
                     disabled={isSubmitting}
                   >
-                    <Text style={[styles.modalTextAction, styles.deleteText]}>제외</Text>
+                    <Text
+                      style={[
+                        styles.modalTextAction,
+                        styles.deleteText,
+                        !selectedPhotoIsOwner && styles.modalDisabledText,
+                      ]}
+                    >
+                      삭제
+                    </Text>
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity onPress={() => setSelectedPhotoId(null)} activeOpacity={0.85}>
@@ -330,13 +432,15 @@ export default function TripPhotoAlbumApiScreen() {
               </View>
             </View>
 
-            {selectedPhoto ? <Image source={selectedPhoto.originalUrl || selectedPhoto.thumbnailUrl} style={styles.modalImage} contentFit="cover" /> : null}
+            {selectedPhoto ? (
+              <Image source={selectedPhoto.originalUrl || selectedPhoto.thumbnailUrl} style={styles.modalImage} contentFit="cover" />
+            ) : null}
             {selectedPhoto?.takenAt ? <Text style={styles.modalLabel}>촬영 시각</Text> : null}
             {selectedPhoto?.takenAt ? <Text style={styles.modalBody}>{formatTimestamp(selectedPhoto.takenAt)}</Text> : null}
             {eventDetail.placeName ? <Text style={styles.modalLabel}>장소</Text> : null}
             {eventDetail.placeName ? <Text style={styles.modalBody}>{eventDetail.placeName}</Text> : null}
             <Text style={styles.modalLabel}>사진 메모</Text>
-            <Text style={styles.modalBody}>{selectedPhoto?.myMemo?.content ?? '아직 메모가 없어요.'}</Text>
+            <Text style={styles.modalBody}>{selectedPhoto?.myMemo?.content ?? '아직 저장된 메모가 없어요.'}</Text>
           </Pressable>
         </Pressable>
       </Modal>
@@ -397,6 +501,19 @@ const styles = StyleSheet.create({
   albumInfoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 12 },
   albumMeta: { fontFamily: 'Pretendard-SemiBold', fontSize: 14, color: '#5D6C64' },
   albumSubMeta: { fontFamily: 'Pretendard-Medium', fontSize: 12, color: '#819087' },
+  albumContributorRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  albumContributorText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#708076' },
+  albumAvatarStack: { flexDirection: 'row', alignItems: 'center', paddingLeft: 8 },
+  albumAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#EFF4EC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  albumAvatarText: { fontFamily: 'Pretendard-Bold', fontSize: 10, color: '#FFFFFF' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', aspectRatio: 1, borderRadius: 20, overflow: 'hidden', backgroundColor: '#DDE6DF' },
   gridImage: { width: '100%', height: '100%' },
@@ -416,7 +533,7 @@ const styles = StyleSheet.create({
   centerStateText: { fontFamily: 'Pretendard-Medium', fontSize: 14, color: '#66756C' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   emptyTitle: { fontFamily: 'Pretendard-Bold', fontSize: 20, color: '#182119' },
-  emptyBody: { marginTop: 8, fontFamily: 'Pretendard-Regular', fontSize: 14, color: '#66756C' },
+  emptyBody: { marginTop: 8, fontFamily: 'Pretendard-Regular', fontSize: 14, color: '#66756C', textAlign: 'center' },
   emptyAlbumCard: {
     marginTop: 30,
     borderRadius: 24,
@@ -435,9 +552,13 @@ const styles = StyleSheet.create({
   modalHeaderCopy: { flex: 1 },
   modalTitle: { fontFamily: 'Pretendard-Bold', fontSize: 19, color: '#182119' },
   modalMeta: { marginTop: 4, fontFamily: 'Pretendard-Medium', fontSize: 13, color: '#738078' },
+  modalMetaRow: { marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  modalAvatar: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  modalAvatarText: { fontFamily: 'Pretendard-Bold', fontSize: 10, color: '#FFFFFF' },
   modalHeaderActions: { alignItems: 'flex-end', gap: 6 },
   modalTextActionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   modalTextAction: { fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#4F5F56' },
+  modalDisabledText: { color: '#A3B0A8' },
   modalImage: { width: '100%', aspectRatio: 1, borderRadius: 22, marginTop: 16, backgroundColor: '#E7ECE5' },
   modalLabel: { marginTop: 16, fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#7A867F' },
   modalBody: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 21, color: '#243028' },
