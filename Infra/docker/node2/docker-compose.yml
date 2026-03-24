@@ -65,7 +65,7 @@ services:
       - "8090:8080"
     environment:
       - KAFKA_CLUSTERS_0_NAME=${KAFKA_CLUSTER_ID:-yeoun-kafka-cluster-1}
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=yeoun-kafka:9092
     depends_on:
       kafka:
         condition: service_healthy
