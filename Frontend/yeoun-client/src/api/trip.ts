@@ -302,7 +302,7 @@ export const createTripApi = async (data: CreateTripRequest): Promise<TripCreate
       };
     }
 
-    console.error('Create Trip API Error:', error);
+    console.warn('Create Trip API Error:', error);
     return {
       success: false,
       code: getErrorCode(error),
@@ -821,7 +821,7 @@ export const getTripsApi = async (): Promise<TripListResponse> => {
       };
     }
 
-    console.error('Get Trips API Error:', error);
+    console.warn('Get Trips API Error:', error);
     return {
       success: false,
       code: getErrorCode(error),
