@@ -6,16 +6,23 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 
 import { getTripRouteByDayApi } from '@/src/api/trip';
 import { configureMapbox } from '@/src/lib/mapbox';
+import { getTripEvents, subscribeTripEvents, TimelineEvent } from '@/src/features/trip/store/tripMockStore';
 import { useTripStore } from '@/src/store/trip.store';
 import { globalUserState, subscribeUser } from '@/src/store/userStore';
-import { getTripEvents, subscribeTripEvents, TimelineEvent } from '@/src/features/trip/store/tripMockStore';
+
 import { locationService } from '../../services/locationService';
 import { LocationMarker, PaymentMarker, PhotoMarker } from './EventMarkers';
 import { PastRoutesLayer } from './PastRoutesLayer';
 
 configureMapbox();
 
-const getTodayDateString = () => new Date().toISOString().slice(0, 10);
+const getTodayDateString = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export function ActiveTripMap() {
   const cameraRef = useRef<Mapbox.Camera>(null);
@@ -92,6 +99,8 @@ export function ActiveTripMap() {
     const loadRoute = async () => {
       if (!tripId) {
         setRouteCoordinates([]);
+        setRouteLoadFailed(false);
+        setIsLoadingRoute(false);
         return;
       }
 
@@ -111,6 +120,7 @@ export function ActiveTripMap() {
         setRouteCoordinates(nextCoordinates);
         setRouteLoadFailed(false);
       } else {
+        setRouteCoordinates([]);
         setRouteLoadFailed(true);
       }
 
@@ -125,16 +135,28 @@ export function ActiveTripMap() {
   }, [tripId, routeRefreshKey]);
 
   const filteredMapEvents = tripEvents.filter((event) => {
-    if (!event.coordinate) return false;
-    if (event.type === 'photo') return mapPreferences.showPhotoPins;
-    if (event.type === 'payment') return mapPreferences.showPaymentPins;
+    if (!event.coordinate) {
+      return false;
+    }
+    if (event.type === 'photo') {
+      return mapPreferences.showPhotoPins;
+    }
+    if (event.type === 'payment') {
+      return mapPreferences.showPaymentPins;
+    }
     return true;
   });
 
+  const hasRouteCoordinates = routeCoordinates.length >= 2;
+  const hasEmptyRoute = !isLoadingRoute && !routeLoadFailed && routeCoordinates.length === 0;
   const centerCoordinate = routeCoordinates[routeCoordinates.length - 1] ?? currentCoordinate ?? [126.9784, 37.5667];
 
-  const routeShape: GeoJSON.FeatureCollection<GeoJSON.LineString> = useMemo(
-    () => ({
+  const routeShape: GeoJSON.FeatureCollection<GeoJSON.LineString> | null = useMemo(() => {
+    if (!hasRouteCoordinates) {
+      return null;
+    }
+
+    return {
       type: 'FeatureCollection',
       features: [
         {
@@ -142,18 +164,12 @@ export function ActiveTripMap() {
           properties: {},
           geometry: {
             type: 'LineString',
-            coordinates:
-              routeCoordinates.length > 0
-                ? routeCoordinates
-                : currentCoordinate
-                  ? [currentCoordinate, currentCoordinate]
-                  : [[126.9784, 37.5667], [126.9784, 37.5667]],
+            coordinates: routeCoordinates,
           },
         },
       ],
-    }),
-    [currentCoordinate, routeCoordinates],
-  );
+    };
+  }, [hasRouteCoordinates, routeCoordinates]);
 
   const centerOnUser = () => {
     if (!cameraRef.current) {
@@ -198,20 +214,22 @@ export function ActiveTripMap() {
           }}
         />
 
-        <PastRoutesLayer routes={routeCoordinates.length > 0 ? [routeCoordinates] : []} isFogEnabled={isFogEnabled} />
+        <PastRoutesLayer routes={hasRouteCoordinates ? [routeCoordinates] : []} isFogEnabled={isFogEnabled} />
 
-        <Mapbox.ShapeSource id="active-trip-route" shape={routeShape}>
-          <Mapbox.LineLayer
-            id="active-trip-route-line"
-            style={{
-              lineColor: '#F35B4F',
-              lineWidth: 5,
-              lineCap: 'round',
-              lineJoin: 'round',
-              lineOpacity: 0.92,
-            }}
-          />
-        </Mapbox.ShapeSource>
+        {routeShape ? (
+          <Mapbox.ShapeSource id="active-trip-route" shape={routeShape}>
+            <Mapbox.LineLayer
+              id="active-trip-route-line"
+              style={{
+                lineColor: '#F35B4F',
+                lineWidth: 5,
+                lineCap: 'round',
+                lineJoin: 'round',
+                lineOpacity: 0.92,
+              }}
+            />
+          </Mapbox.ShapeSource>
+        ) : null}
 
         <Mapbox.UserLocation visible showsUserHeadingIndicator />
 
@@ -227,17 +245,21 @@ export function ActiveTripMap() {
         })}
       </Mapbox.MapView>
 
-      {(isLoadingRoute || routeLoadFailed) && (
+      {(isLoadingRoute || routeLoadFailed || hasEmptyRoute) && (
         <View style={styles.banner}>
           {isLoadingRoute ? (
             <ActivityIndicator size="small" color="#415D4C" />
-          ) : (
+          ) : routeLoadFailed ? (
             <MaterialIcons name="info-outline" size={18} color="#A65F4B" />
+          ) : (
+            <MaterialIcons name="sync" size={18} color="#415D4C" />
           )}
           <Text style={styles.bannerText}>
             {isLoadingRoute
               ? '동기화된 경로를 불러오는 중입니다.'
-              : '서버 경로를 불러오지 못해 현재 위치만 표시합니다.'}
+              : routeLoadFailed
+                ? '정제된 경로를 불러오지 못했습니다. 동기화 후 다시 확인해 주세요.'
+                : '아직 표시할 정제 경로가 없습니다. GPS 동기화 후 worker 처리 완료 시 경로가 나타납니다.'}
           </Text>
         </View>
       )}
