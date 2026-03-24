@@ -3,7 +3,7 @@ import Mapbox from '@rnmapbox/maps';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -23,8 +23,29 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { configureMapbox } from '@/src/lib/mapbox';
 import { getTripExpensesApi } from '@/src/api/expense';
-import { getTimelineDayDetailApi, getTripTimelineDaysApi, type TimelineDayDetail } from '@/src/api/timeline';
-import { getTripDetailApi, startTripApi, endTripApi, leaveTripApi, deleteTripApi } from '@/src/api/trip';
+import {
+  deletePhotoMemoApi,
+  getPhotoDetailApi,
+  updatePhotoApi,
+  upsertPhotoMemoApi,
+  type PhotoDetail,
+} from '@/src/api/photo';
+import {
+  getEventDetailApi,
+  getTimelineDayDetailApi,
+  getTripTimelineDaysApi,
+  type EventDetail,
+  type TimelineDayDetail,
+} from '@/src/api/timeline';
+import {
+  deleteTripApi,
+  endTripApi,
+  getTripDetailApi,
+  getTripMembersApi,
+  leaveTripApi,
+  startTripApi,
+  type TripMemberItem,
+} from '@/src/api/trip';
 import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 import {
   CURRENT_USER_ID,
@@ -258,7 +279,37 @@ function buildEmptyRealTripDays(startDate?: string, endDate?: string): TripDay[]
   });
 }
 
-function buildRealTripEvents(timelineDays: TimelineDayDetail[]): TimelineEvent[] {
+const CONTRIBUTOR_COLORS = ['#5E8B7E', '#C96C50', '#6A7FDB', '#D19A32', '#8F5FB5', '#3F8C87'];
+
+const getContributorColor = (userId: string) => {
+  let seed = 0;
+
+  for (let index = 0; index < userId.length; index += 1) {
+    seed = (seed + userId.charCodeAt(index)) % CONTRIBUTOR_COLORS.length;
+  }
+
+  return CONTRIBUTOR_COLORS[seed];
+};
+
+const buildPhotoChipLabel = (photoCount: number) => `photo ${photoCount}`;
+
+const replacePhotoChip = (chips: string[] | undefined, photoCount: number) => {
+  const nextChips = (chips ?? []).filter((chip) => !chip.startsWith('photo '));
+  if (photoCount > 0) {
+    nextChips.push(buildPhotoChipLabel(photoCount));
+  }
+
+  return nextChips;
+};
+
+function buildRealTripEvents(
+  timelineDays: TimelineDayDetail[],
+  eventDetailsById: Record<string, EventDetail>,
+  photoDetailsById: Record<string, PhotoDetail>,
+  memberMap: Record<string, TripMemberItem>,
+  currentUserId?: string | null,
+  currentUserNickname?: string | null,
+): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
   timelineDays.forEach((timelineDay, dayIndex) => {
@@ -267,31 +318,65 @@ function buildRealTripEvents(timelineDays: TimelineDayDetail[]): TimelineEvent[]
     timelineDay.events
       .filter((event) => !event.hidden)
       .forEach((event) => {
-        const hasPhotos = event.photoCount > 0 || Boolean(event.representativePhoto?.imageUrl);
+        const eventDetail = eventDetailsById[event.eventId];
+        const visiblePhotos = (eventDetail?.photos ?? [])
+          .map((eventPhoto) => {
+            const photoDetail = photoDetailsById[eventPhoto.photoId];
+            if (!photoDetail || photoDetail.isExcluded) {
+              return null;
+            }
+
+            return {
+              photoId: eventPhoto.photoId,
+              sortOrder: eventPhoto.sortOrder,
+              source: photoDetail.thumbnailUrl || photoDetail.originalUrl,
+              memo: photoDetail.myMemo?.content,
+              contributorId: photoDetail.ownerUserId,
+            };
+          })
+          .filter((photo): photo is NonNullable<typeof photo> => Boolean(photo))
+          .sort((left, right) => left.sortOrder - right.sortOrder);
+        const contributorIds = Array.from(new Set(visiblePhotos.map((photo) => photo.contributorId).filter(Boolean)));
+        const photoContributors = contributorIds.map((userId) => {
+          const matchedMember = memberMap[userId];
+          const fallbackName = userId === currentUserId ? currentUserNickname : null;
+
+          return {
+            id: userId,
+            name: matchedMember?.nickname ?? fallbackName ?? '여행 메이트',
+            color: getContributorColor(userId),
+          };
+        });
+        const hasPhotos = visiblePhotos.length > 0;
+        const eventType = eventDetail?.eventType ?? event.eventType;
+        const startAt = eventDetail?.startAt ?? event.startAt;
+        const endAt = eventDetail?.endAt ?? event.endAt;
+        const placeName = eventDetail?.placeName ?? event.placeName ?? undefined;
 
         events.push({
           id: event.eventId,
           day: dayKey,
           type: hasPhotos ? 'photo' : 'location',
-          time: formatTimeLabel(event.startAt ?? event.endAt),
-          title: event.title || event.placeName || 'Trip event',
-          subtitle: event.placeName ?? '',
-          placeName: event.placeName ?? undefined,
-          chips: [event.eventType, hasPhotos ? `photo ${event.photoCount}` : null].filter(Boolean) as string[],
-          eventMemo: hasPhotos ? 'Photo detail sync is not connected yet.' : undefined,
-          photoContributors: hasPhotos ? [{ id: event.createdBy, name: 'member', color: '#77B6EA' }] : undefined,
-          photoUrls: event.representativePhoto?.imageUrl ? [event.representativePhoto.imageUrl] : [],
-          photoItems: event.representativePhoto?.imageUrl
-            ? [
-                {
-                  id: `${event.eventId}-photo`,
-                  source: event.representativePhoto.imageUrl,
-                  memo: 'Representative photo',
-                  contributorId: event.createdBy,
-                },
-              ]
+          time: formatTimeLabel(startAt ?? endAt),
+          title: eventDetail?.title || event.title || event.placeName || 'Trip event',
+          subtitle: hasPhotos ? '' : placeName ?? '',
+          placeName,
+          chips: [eventType, hasPhotos ? buildPhotoChipLabel(visiblePhotos.length) : null].filter(Boolean) as string[],
+          eventMemo: eventDetail?.myMemo?.content?.trim() || undefined,
+          photoContributors: hasPhotos ? photoContributors : undefined,
+          photoUrls: hasPhotos ? visiblePhotos.map((photo) => String(photo.source)) : [],
+          photoItems: hasPhotos
+            ? visiblePhotos.map((photo) => ({
+                id: photo.photoId,
+                source: photo.source,
+                memo: photo.memo,
+                contributorId: photo.contributorId,
+              }))
             : undefined,
-          coordinate: event.centerLatitude && event.centerLongitude ? [event.centerLongitude, event.centerLatitude] : undefined,
+          coordinate:
+            eventDetail?.centerLatitude != null && eventDetail?.centerLongitude != null
+              ? [eventDetail.centerLongitude, eventDetail.centerLatitude]
+              : undefined,
         });
       });
   });
@@ -364,6 +449,7 @@ export default function TripRecordingScreen({
   const activeTrip = useTripStore((state) => state.activeTrip);
   const setActiveTrip = useTripStore((state) => state.setActiveTrip);
   const currentUserId = useUserStore((state) => state.profile?.userId);
+  const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -503,7 +589,7 @@ export default function TripRecordingScreen({
       selectedPhotoEvent?.photoContributors?.find((contributor) => contributor.id === selectedPhotoItem?.contributorId) ?? null,
     [selectedPhotoEvent, selectedPhotoItem]
   );
-  const selectedPhotoIsOwner = selectedPhotoContributor?.id === CURRENT_USER_ID;
+  const selectedPhotoIsOwner = selectedPhotoItem?.contributorId === (useMockData ? CURRENT_USER_ID : currentUserId);
   const selectedPhotoEmotion =
     selectedPhotoEvent?.emotionOwnerId === CURRENT_USER_ID && selectedPhotoEvent?.emotionEmoji && selectedPhotoEvent?.emotionLabel
       ? `${selectedPhotoEvent.emotionEmoji} ${selectedPhotoEvent.emotionLabel}`
@@ -517,6 +603,59 @@ export default function TripRecordingScreen({
   const tripTitle = displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
+
+  const updateRealTimelinePhotoMemo = useCallback((eventId: string, photoId: string, memo?: string) => {
+    setTripEvents((prev) =>
+      prev.map((event) => {
+        if (event.id !== eventId || !event.photoItems) {
+          return event;
+        }
+
+        return {
+          ...event,
+          photoItems: event.photoItems.map((photo) =>
+            photo.id === photoId
+              ? {
+                  ...photo,
+                  memo,
+                }
+              : photo,
+          ),
+        };
+      }),
+    );
+  }, []);
+
+  const removeRealTimelinePhoto = useCallback((eventId: string, photoId: string) => {
+    setTripEvents((prev) =>
+      prev.flatMap((event) => {
+        if (event.id !== eventId || !event.photoItems) {
+          return [event];
+        }
+
+        const nextPhotoItems = event.photoItems.filter((photo) => photo.id !== photoId);
+        if (nextPhotoItems.length === 0 && event.chips?.[0] === 'OTHER') {
+          return [];
+        }
+
+        const nextContributorIds = new Set(nextPhotoItems.map((photo) => photo.contributorId).filter(Boolean));
+
+        return [
+          {
+            ...event,
+            type: nextPhotoItems.length > 0 ? 'photo' : 'location',
+            chips: replacePhotoChip(event.chips, nextPhotoItems.length),
+            photoItems: nextPhotoItems.length > 0 ? nextPhotoItems : undefined,
+            photoUrls: nextPhotoItems.length > 0 ? nextPhotoItems.map((photo) => String(photo.source)) : undefined,
+            photoContributors:
+              nextPhotoItems.length > 0
+                ? event.photoContributors?.filter((contributor) => nextContributorIds.has(contributor.id))
+                : undefined,
+          },
+        ];
+      }),
+    );
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -583,30 +722,74 @@ export default function TripRecordingScreen({
 
     let cancelled = false;
 
-      const loadRealTripData = async () => {
-        try {
-        const [tripDetailResponse, timelineDaysResponse, expensesResponse] = await Promise.all([
+    const loadRealTripData = async () => {
+      try {
+        const [tripDetailResponse, timelineDaysResponse, expensesResponse, tripMembersResponse] = await Promise.all([
           getTripDetailApi(activeTripId),
           getTripTimelineDaysApi(activeTripId),
           getTripExpensesApi(activeTripId),
+          getTripMembersApi(activeTripId),
         ]);
 
         const timelineDays = await Promise.all(
           timelineDaysResponse.data.timelineDays.map(async (timelineDay) => {
             const detailResponse = await getTimelineDayDetailApi(timelineDay.timelineDayId);
             return detailResponse.data;
-          })
+          }),
+        );
+        const eventDetails = await Promise.all(
+          timelineDays.flatMap((timelineDay) =>
+            timelineDay.events
+              .filter((event) => !event.hidden)
+              .map(async (event) => {
+                const detailResponse = await getEventDetailApi(event.eventId);
+                return detailResponse.success ? detailResponse.data : null;
+              }),
+          ),
+        );
+        const validEventDetails = eventDetails.filter((eventDetail): eventDetail is EventDetail => Boolean(eventDetail));
+        const uniquePhotoIds = Array.from(
+          new Set(validEventDetails.flatMap((eventDetail) => eventDetail.photos.map((photo) => photo.photoId))),
+        );
+        const photoDetails = await Promise.all(
+          uniquePhotoIds.map(async (photoId) => {
+            const photoDetailResponse = await getPhotoDetailApi(photoId);
+            return photoDetailResponse.success ? photoDetailResponse.data : null;
+          }),
         );
 
         if (cancelled) {
           return;
         }
 
+        const eventDetailsById = Object.fromEntries(validEventDetails.map((eventDetail) => [eventDetail.eventId, eventDetail]));
+        const photoDetailsById = Object.fromEntries(
+          photoDetails
+            .filter((photoDetail): photoDetail is PhotoDetail => Boolean(photoDetail))
+            .map((photoDetail) => [photoDetail.photoId, photoDetail]),
+        );
+        const memberMap = tripMembersResponse.success
+          ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
+          : {};
+
         if (tripDetailResponse.success) {
           setActiveTrip(tripDetailResponse.data);
         }
         setRealTripDays(buildRealTripDays(timelineDays));
-        setTripEvents(appendRealExpenseEvents(buildRealTripEvents(timelineDays), timelineDays, expensesResponse.data.items));
+        setTripEvents(
+          appendRealExpenseEvents(
+            buildRealTripEvents(
+              timelineDays,
+              eventDetailsById,
+              photoDetailsById,
+              memberMap,
+              currentUserId,
+              currentUserNickname,
+            ),
+            timelineDays,
+            expensesResponse.data.items,
+          ),
+        );
       } catch (error) {
         if (cancelled) {
           return;
@@ -624,7 +807,7 @@ export default function TripRecordingScreen({
     return () => {
       cancelled = true;
     };
-  }, [activeTripId, setActiveTrip, useMockData]);
+  }, [activeTripId, currentUserId, currentUserNickname, setActiveTrip, useMockData]);
 
   useEffect(() => {
     const unsubscribe = subscribeUser(() => {
@@ -1029,21 +1212,35 @@ export default function TripRecordingScreen({
   };
 
   const openPhotoEditor = (eventId: string, photoId: string, memo?: string) => {
-    if (!useMockData) {
-      Alert.alert('Real mode', 'Editing real photo data is not connected yet.');
-      return;
-    }
-
     setPhotoEditor({ eventId, photoId, memo: memo ?? '' });
   };
 
-  const savePhotoEditor = () => {
-    if (!useMockData) {
-      setPhotoEditor(null);
+  const savePhotoEditor = async () => {
+    if (!photoEditor) {
       return;
     }
 
-    if (!photoEditor) {
+    if (!useMockData) {
+      const nextMemo = photoEditor.memo.trim();
+
+      try {
+        const response = nextMemo
+          ? await upsertPhotoMemoApi(photoEditor.photoId, { content: nextMemo })
+          : await deletePhotoMemoApi(photoEditor.photoId);
+
+        if (!response.success) {
+          Alert.alert('메모 저장 실패', response.message ?? '사진 메모를 저장하지 못했어요.');
+          return;
+        }
+
+        updateRealTimelinePhotoMemo(photoEditor.eventId, photoEditor.photoId, nextMemo || undefined);
+      } catch (error) {
+        console.error('Failed to save real photo memo', error);
+        Alert.alert('메모 저장 실패', '사진 메모를 저장하지 못했어요.');
+        return;
+      }
+
+      setPhotoEditor(null);
       return;
     }
 
@@ -1052,11 +1249,6 @@ export default function TripRecordingScreen({
   };
 
   const confirmDeletePhoto = (eventId: string, photoId: string, isOwner: boolean) => {
-    if (!useMockData) {
-      Alert.alert('Real mode', 'Deleting real photo data is not connected yet.');
-      return;
-    }
-
     if (!isOwner) {
       Alert.alert('삭제할 수 없어요', '내가 올린 사진만 삭제할 수 있어요.');
       return;
@@ -1071,21 +1263,41 @@ export default function TripRecordingScreen({
     });
   };
 
-  const handleConfirmDelete = () => {
-    if (!useMockData) {
-      setDeleteDialog(null);
-      return;
-    }
-
+  const handleConfirmDelete = async () => {
     if (!deleteDialog) {
       return;
     }
 
     if (deleteDialog.kind === 'event') {
+      if (!useMockData) {
+        setDeleteDialog(null);
+        return;
+      }
+
       deleteTripEvent(deleteDialog.eventId);
       if (photoViewer?.eventId === deleteDialog.eventId) {
         setPhotoViewer(null);
       }
+      setDeleteDialog(null);
+      return;
+    }
+
+    if (!useMockData) {
+      try {
+        const response = await updatePhotoApi(deleteDialog.photoId, { isExcluded: true });
+        if (!response.success) {
+          Alert.alert('사진 삭제 실패', response.message ?? '사진을 제외하지 못했어요.');
+          return;
+        }
+
+        removeRealTimelinePhoto(deleteDialog.eventId, deleteDialog.photoId);
+      } catch (error) {
+        console.error('Failed to exclude real photo', error);
+        Alert.alert('사진 삭제 실패', '사진을 제외하지 못했어요.');
+        return;
+      }
+
+      setPhotoViewer(null);
       setDeleteDialog(null);
       return;
     }
