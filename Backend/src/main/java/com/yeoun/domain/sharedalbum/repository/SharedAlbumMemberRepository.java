@@ -9,5 +9,7 @@ import java.util.UUID;
 public interface SharedAlbumMemberRepository extends JpaRepository<SharedAlbumMember, UUID> {
     List<SharedAlbumMember> findBySharedAlbumIdOrderByCreatedAtAsc(UUID sharedAlbumId);
 
+    boolean existsBySharedAlbumIdAndUserId(UUID sharedAlbumId, UUID userId);
+
     void deleteBySharedAlbumId(UUID sharedAlbumId);
 }

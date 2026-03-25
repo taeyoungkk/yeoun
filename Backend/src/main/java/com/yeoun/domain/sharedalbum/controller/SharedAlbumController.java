@@ -6,6 +6,13 @@ import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumCreateResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumMemberListResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumTripResponse;
 import com.yeoun.domain.sharedalbum.service.SharedAlbumService;
+import com.yeoun.domain.sharedalbum.service.SharedAlbumSettlementQueryService;
+import com.yeoun.domain.sharedalbum.service.SharedAlbumTimelineQueryService;
+import com.yeoun.domain.settlement.dto.response.SettlementDetailResponse;
+import com.yeoun.domain.settlement.dto.response.SettlementListResponse;
+import com.yeoun.domain.timeline.dto.response.EventDetailResponse;
+import com.yeoun.domain.timeline.dto.response.TimelineDayDetailResponse;
+import com.yeoun.domain.timeline.dto.response.TimelineDayListResponse;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
 import com.yeoun.global.security.principal.CustomUserPrincipal;
@@ -32,9 +39,17 @@ import java.util.UUID;
 public class SharedAlbumController {
 
     private final SharedAlbumService sharedAlbumService;
+    private final SharedAlbumTimelineQueryService sharedAlbumTimelineQueryService;
+    private final SharedAlbumSettlementQueryService sharedAlbumSettlementQueryService;
 
-    public SharedAlbumController(SharedAlbumService sharedAlbumService) {
+    public SharedAlbumController(
+            SharedAlbumService sharedAlbumService,
+            SharedAlbumTimelineQueryService sharedAlbumTimelineQueryService,
+            SharedAlbumSettlementQueryService sharedAlbumSettlementQueryService
+    ) {
         this.sharedAlbumService = sharedAlbumService;
+        this.sharedAlbumTimelineQueryService = sharedAlbumTimelineQueryService;
+        this.sharedAlbumSettlementQueryService = sharedAlbumSettlementQueryService;
     }
 
     @GetMapping("/trips/{tripId}/shared-album")
@@ -87,6 +102,64 @@ public class SharedAlbumController {
     ) {
         SharedAlbumMemberListResponse response =
                 sharedAlbumService.replaceSharedAlbumMembers(principal.userId(), sharedAlbumId, request);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/shared-albums/{sharedAlbumId}/timeline-days")
+    @Operation(summary = "공유 앨범 타임라인 일자 목록 조회", description = "공유 앨범에서 펼칠 수 있는 타임라인 일자 목록을 조회합니다.")
+    public ApiResponse<TimelineDayListResponse> getSharedAlbumTimelineDays(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("sharedAlbumId") UUID sharedAlbumId
+    ) {
+        TimelineDayListResponse response =
+                sharedAlbumTimelineQueryService.getTimelineDays(principal.userId(), sharedAlbumId);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/shared-albums/{sharedAlbumId}/timeline-days/{timelineDayId}")
+    @Operation(summary = "공유 앨범 타임라인 일자 상세 조회", description = "공유 앨범에서 선택한 일차의 타임라인 상세를 조회합니다.")
+    public ApiResponse<TimelineDayDetailResponse> getSharedAlbumTimelineDayDetail(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("sharedAlbumId") UUID sharedAlbumId,
+            @PathVariable("timelineDayId") UUID timelineDayId
+    ) {
+        TimelineDayDetailResponse response =
+                sharedAlbumTimelineQueryService.getTimelineDayDetail(principal.userId(), sharedAlbumId, timelineDayId);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/shared-albums/{sharedAlbumId}/events/{eventId}")
+    @Operation(summary = "공유 앨범 이벤트 상세 조회", description = "공유 앨범에서 선택한 이벤트의 상세 정보를 조회합니다.")
+    public ApiResponse<EventDetailResponse> getSharedAlbumEventDetail(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("sharedAlbumId") UUID sharedAlbumId,
+            @PathVariable("eventId") UUID eventId
+    ) {
+        EventDetailResponse response =
+                sharedAlbumTimelineQueryService.getEventDetail(principal.userId(), sharedAlbumId, eventId);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/shared-albums/{sharedAlbumId}/settlements")
+    @Operation(summary = "공유 앨범 정산 목록 조회", description = "공유 앨범에서 펼칠 수 있는 정산 목록을 조회합니다.")
+    public ApiResponse<SettlementListResponse> getSharedAlbumSettlements(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("sharedAlbumId") UUID sharedAlbumId
+    ) {
+        SettlementListResponse response =
+                sharedAlbumSettlementQueryService.getSettlements(principal.userId(), sharedAlbumId);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/shared-albums/{sharedAlbumId}/settlements/{settlementId}")
+    @Operation(summary = "공유 앨범 정산 상세 조회", description = "공유 앨범에서 선택한 정산의 상세 정보를 조회합니다.")
+    public ApiResponse<SettlementDetailResponse> getSharedAlbumSettlementDetail(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("sharedAlbumId") UUID sharedAlbumId,
+            @PathVariable("settlementId") UUID settlementId
+    ) {
+        SettlementDetailResponse response =
+                sharedAlbumSettlementQueryService.getSettlementDetail(principal.userId(), sharedAlbumId, settlementId);
         return ApiResponse.ok(response);
     }
 }
