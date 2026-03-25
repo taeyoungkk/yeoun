@@ -4,12 +4,6 @@ import com.yeoun.domain.settlement.dto.response.SettlementDetailResponse;
 import com.yeoun.domain.settlement.dto.response.SettlementListResponse;
 import com.yeoun.domain.settlement.service.SettlementQueryService;
 import com.yeoun.domain.sharedalbum.entity.SharedAlbum;
-import com.yeoun.domain.sharedalbum.entity.SharedAlbumVisibility;
-import com.yeoun.domain.sharedalbum.repository.SharedAlbumMemberRepository;
-import com.yeoun.domain.sharedalbum.repository.SharedAlbumRepository;
-import com.yeoun.domain.trip.entity.Trip;
-import com.yeoun.domain.trip.entity.TripStatus;
-import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -21,56 +15,42 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class SharedAlbumSettlementQueryService {
 
-    private final SharedAlbumRepository sharedAlbumRepository;
-    private final SharedAlbumMemberRepository sharedAlbumMemberRepository;
-    private final TripRepository tripRepository;
+    private final SharedAlbumAccessService sharedAlbumAccessService;
     private final SettlementQueryService settlementQueryService;
 
     public SharedAlbumSettlementQueryService(
-            SharedAlbumRepository sharedAlbumRepository,
-            SharedAlbumMemberRepository sharedAlbumMemberRepository,
-            TripRepository tripRepository,
+            SharedAlbumAccessService sharedAlbumAccessService,
             SettlementQueryService settlementQueryService
     ) {
-        this.sharedAlbumRepository = sharedAlbumRepository;
-        this.sharedAlbumMemberRepository = sharedAlbumMemberRepository;
-        this.tripRepository = tripRepository;
+        this.sharedAlbumAccessService = sharedAlbumAccessService;
         this.settlementQueryService = settlementQueryService;
     }
 
     public SettlementListResponse getSettlements(UUID requesterUserId, UUID sharedAlbumId) {
-        SharedAlbum sharedAlbum = getAccessibleSharedAlbum(sharedAlbumId, requesterUserId);
+        SharedAlbum sharedAlbum = sharedAlbumAccessService.getAccessibleSharedAlbum(sharedAlbumId, requesterUserId);
         return settlementQueryService.getTripSettlements(requesterUserId, sharedAlbum.getTripId());
     }
 
     public SettlementDetailResponse getSettlementDetail(UUID requesterUserId, UUID sharedAlbumId, UUID settlementId) {
-        SharedAlbum sharedAlbum = getAccessibleSharedAlbum(sharedAlbumId, requesterUserId);
+        SharedAlbum sharedAlbum = sharedAlbumAccessService.getAccessibleSharedAlbum(sharedAlbumId, requesterUserId);
+        return buildSettlementDetail(sharedAlbum, requesterUserId, settlementId);
+    }
+
+    public SettlementListResponse getPublicSettlements(UUID sharedAlbumId) {
+        SharedAlbum sharedAlbum = sharedAlbumAccessService.getPublicSharedAlbum(sharedAlbumId);
+        return settlementQueryService.getTripSettlements(sharedAlbum.getCreatedByUserId(), sharedAlbum.getTripId());
+    }
+
+    public SettlementDetailResponse getPublicSettlementDetail(UUID sharedAlbumId, UUID settlementId) {
+        SharedAlbum sharedAlbum = sharedAlbumAccessService.getPublicSharedAlbum(sharedAlbumId);
+        return buildSettlementDetail(sharedAlbum, sharedAlbum.getCreatedByUserId(), settlementId);
+    }
+
+    private SettlementDetailResponse buildSettlementDetail(SharedAlbum sharedAlbum, UUID requesterUserId, UUID settlementId) {
         SettlementDetailResponse response = settlementQueryService.getSettlementDetail(requesterUserId, settlementId);
         if (!response.tripId().equals(sharedAlbum.getTripId())) {
             throw new BaseException(ErrorCode.SETTLEMENT_NOT_FOUND);
         }
         return response;
-    }
-
-    private SharedAlbum getAccessibleSharedAlbum(UUID sharedAlbumId, UUID requesterUserId) {
-        SharedAlbum sharedAlbum = sharedAlbumRepository.findById(sharedAlbumId)
-                .orElseThrow(() -> new BaseException(ErrorCode.SHARED_ALBUM_NOT_FOUND));
-        Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(sharedAlbum.getTripId(), TripStatus.DELETED)
-                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
-
-        if (trip.getOwnerUserId().equals(requesterUserId)) {
-            return sharedAlbum;
-        }
-
-        if (sharedAlbum.getVisibility() == SharedAlbumVisibility.PUBLIC) {
-            return sharedAlbum;
-        }
-
-        if (sharedAlbum.getVisibility() == SharedAlbumVisibility.MEMBERS
-                && sharedAlbumMemberRepository.existsBySharedAlbumIdAndUserId(sharedAlbumId, requesterUserId)) {
-            return sharedAlbum;
-        }
-
-        throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
     }
 }

@@ -3,9 +3,6 @@ package com.yeoun.domain.sharedalbum.service;
 import com.yeoun.domain.photo.entity.Photo;
 import com.yeoun.domain.photo.repository.PhotoRepository;
 import com.yeoun.domain.sharedalbum.entity.SharedAlbum;
-import com.yeoun.domain.sharedalbum.entity.SharedAlbumVisibility;
-import com.yeoun.domain.sharedalbum.repository.SharedAlbumMemberRepository;
-import com.yeoun.domain.sharedalbum.repository.SharedAlbumRepository;
 import com.yeoun.domain.timeline.dto.response.EventDetailResponse;
 import com.yeoun.domain.timeline.dto.response.EventMemoSummaryResponse;
 import com.yeoun.domain.timeline.dto.response.EventPhotoResponse;
@@ -21,9 +18,6 @@ import com.yeoun.domain.timeline.repository.EventMemoRepository;
 import com.yeoun.domain.timeline.repository.EventPhotoRepository;
 import com.yeoun.domain.timeline.repository.EventRepository;
 import com.yeoun.domain.timeline.repository.TimelineDayRepository;
-import com.yeoun.domain.trip.entity.Trip;
-import com.yeoun.domain.trip.entity.TripStatus;
-import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -42,9 +36,7 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class SharedAlbumTimelineQueryService {
 
-    private final SharedAlbumRepository sharedAlbumRepository;
-    private final SharedAlbumMemberRepository sharedAlbumMemberRepository;
-    private final TripRepository tripRepository;
+    private final SharedAlbumAccessService sharedAlbumAccessService;
     private final TimelineDayRepository timelineDayRepository;
     private final EventRepository eventRepository;
     private final EventPhotoRepository eventPhotoRepository;
@@ -52,18 +44,14 @@ public class SharedAlbumTimelineQueryService {
     private final PhotoRepository photoRepository;
 
     public SharedAlbumTimelineQueryService(
-            SharedAlbumRepository sharedAlbumRepository,
-            SharedAlbumMemberRepository sharedAlbumMemberRepository,
-            TripRepository tripRepository,
+            SharedAlbumAccessService sharedAlbumAccessService,
             TimelineDayRepository timelineDayRepository,
             EventRepository eventRepository,
             EventPhotoRepository eventPhotoRepository,
             EventMemoRepository eventMemoRepository,
             PhotoRepository photoRepository
     ) {
-        this.sharedAlbumRepository = sharedAlbumRepository;
-        this.sharedAlbumMemberRepository = sharedAlbumMemberRepository;
-        this.tripRepository = tripRepository;
+        this.sharedAlbumAccessService = sharedAlbumAccessService;
         this.timelineDayRepository = timelineDayRepository;
         this.eventRepository = eventRepository;
         this.eventPhotoRepository = eventPhotoRepository;
@@ -72,7 +60,36 @@ public class SharedAlbumTimelineQueryService {
     }
 
     public TimelineDayListResponse getTimelineDays(UUID requesterUserId, UUID sharedAlbumId) {
-        SharedAlbum sharedAlbum = getAccessibleSharedAlbum(sharedAlbumId, requesterUserId);
+        SharedAlbum sharedAlbum = sharedAlbumAccessService.getAccessibleSharedAlbum(sharedAlbumId, requesterUserId);
+        return buildTimelineDays(sharedAlbum);
+    }
+
+    public TimelineDayDetailResponse getTimelineDayDetail(UUID requesterUserId, UUID sharedAlbumId, UUID timelineDayId) {
+        SharedAlbum sharedAlbum = sharedAlbumAccessService.getAccessibleSharedAlbum(sharedAlbumId, requesterUserId);
+        return buildTimelineDayDetail(sharedAlbum, timelineDayId);
+    }
+
+    public EventDetailResponse getEventDetail(UUID requesterUserId, UUID sharedAlbumId, UUID eventId) {
+        SharedAlbum sharedAlbum = sharedAlbumAccessService.getAccessibleSharedAlbum(sharedAlbumId, requesterUserId);
+        return buildEventDetail(sharedAlbum, eventId, requesterUserId);
+    }
+
+    public TimelineDayListResponse getPublicTimelineDays(UUID sharedAlbumId) {
+        SharedAlbum sharedAlbum = sharedAlbumAccessService.getPublicSharedAlbum(sharedAlbumId);
+        return buildTimelineDays(sharedAlbum);
+    }
+
+    public TimelineDayDetailResponse getPublicTimelineDayDetail(UUID sharedAlbumId, UUID timelineDayId) {
+        SharedAlbum sharedAlbum = sharedAlbumAccessService.getPublicSharedAlbum(sharedAlbumId);
+        return buildTimelineDayDetail(sharedAlbum, timelineDayId);
+    }
+
+    public EventDetailResponse getPublicEventDetail(UUID sharedAlbumId, UUID eventId) {
+        SharedAlbum sharedAlbum = sharedAlbumAccessService.getPublicSharedAlbum(sharedAlbumId);
+        return buildEventDetail(sharedAlbum, eventId, null);
+    }
+
+    private TimelineDayListResponse buildTimelineDays(SharedAlbum sharedAlbum) {
         List<TimelineDayListItemResponse> items = timelineDayRepository.findByTripIdOrderByDayDateAsc(sharedAlbum.getTripId())
                 .stream()
                 .filter(timelineDay -> timelineDay.getEventCount() > 0 || timelineDay.getPhotoCount() > 0)
@@ -89,8 +106,7 @@ public class SharedAlbumTimelineQueryService {
         return new TimelineDayListResponse(items);
     }
 
-    public TimelineDayDetailResponse getTimelineDayDetail(UUID requesterUserId, UUID sharedAlbumId, UUID timelineDayId) {
-        SharedAlbum sharedAlbum = getAccessibleSharedAlbum(sharedAlbumId, requesterUserId);
+    private TimelineDayDetailResponse buildTimelineDayDetail(SharedAlbum sharedAlbum, UUID timelineDayId) {
         TimelineDay timelineDay = timelineDayRepository.findById(timelineDayId)
                 .orElseThrow(() -> new BaseException(ErrorCode.TIMELINE_DAY_NOT_FOUND));
         if (!timelineDay.getTripId().equals(sharedAlbum.getTripId())) {
@@ -138,8 +154,7 @@ public class SharedAlbumTimelineQueryService {
         );
     }
 
-    public EventDetailResponse getEventDetail(UUID requesterUserId, UUID sharedAlbumId, UUID eventId) {
-        SharedAlbum sharedAlbum = getAccessibleSharedAlbum(sharedAlbumId, requesterUserId);
+    private EventDetailResponse buildEventDetail(SharedAlbum sharedAlbum, UUID eventId, UUID requesterUserId) {
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new BaseException(ErrorCode.EVENT_NOT_FOUND));
         if (!event.getTripId().equals(sharedAlbum.getTripId())) {
@@ -148,9 +163,11 @@ public class SharedAlbumTimelineQueryService {
 
         List<EventPhotoResponse> photoResponses = buildEventPhotoResponses(List.of(eventId))
                 .getOrDefault(eventId, List.of());
-        EventMemoSummaryResponse myMemo = eventMemoRepository.findByEventIdAndUserId(eventId, requesterUserId)
-                .map(this::toEventMemoSummaryResponse)
-                .orElse(null);
+        EventMemoSummaryResponse myMemo = requesterUserId == null
+                ? null
+                : eventMemoRepository.findByEventIdAndUserId(eventId, requesterUserId)
+                        .map(this::toEventMemoSummaryResponse)
+                        .orElse(null);
 
         return new EventDetailResponse(
                 event.getEventId(),
@@ -172,28 +189,6 @@ public class SharedAlbumTimelineQueryService {
                 photoResponses,
                 myMemo
         );
-    }
-
-    private SharedAlbum getAccessibleSharedAlbum(UUID sharedAlbumId, UUID requesterUserId) {
-        SharedAlbum sharedAlbum = sharedAlbumRepository.findById(sharedAlbumId)
-                .orElseThrow(() -> new BaseException(ErrorCode.SHARED_ALBUM_NOT_FOUND));
-        Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(sharedAlbum.getTripId(), TripStatus.DELETED)
-                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
-
-        if (trip.getOwnerUserId().equals(requesterUserId)) {
-            return sharedAlbum;
-        }
-
-        if (sharedAlbum.getVisibility() == SharedAlbumVisibility.PUBLIC) {
-            return sharedAlbum;
-        }
-
-        if (sharedAlbum.getVisibility() == SharedAlbumVisibility.MEMBERS
-                && sharedAlbumMemberRepository.existsBySharedAlbumIdAndUserId(sharedAlbumId, requesterUserId)) {
-            return sharedAlbum;
-        }
-
-        throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
     }
 
     private Map<UUID, List<EventPhotoResponse>> buildEventPhotoResponses(List<UUID> eventIds) {

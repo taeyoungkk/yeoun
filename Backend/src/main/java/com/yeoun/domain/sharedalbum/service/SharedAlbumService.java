@@ -56,6 +56,7 @@ public class SharedAlbumService {
 
     private final SharedAlbumRepository sharedAlbumRepository;
     private final SharedAlbumMemberRepository sharedAlbumMemberRepository;
+    private final SharedAlbumAccessService sharedAlbumAccessService;
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
     private final TimelineDayRepository timelineDayRepository;
@@ -68,6 +69,7 @@ public class SharedAlbumService {
     public SharedAlbumService(
             SharedAlbumRepository sharedAlbumRepository,
             SharedAlbumMemberRepository sharedAlbumMemberRepository,
+            SharedAlbumAccessService sharedAlbumAccessService,
             TripRepository tripRepository,
             TripMemberRepository tripMemberRepository,
             TimelineDayRepository timelineDayRepository,
@@ -79,6 +81,7 @@ public class SharedAlbumService {
     ) {
         this.sharedAlbumRepository = sharedAlbumRepository;
         this.sharedAlbumMemberRepository = sharedAlbumMemberRepository;
+        this.sharedAlbumAccessService = sharedAlbumAccessService;
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
         this.timelineDayRepository = timelineDayRepository;
@@ -92,8 +95,18 @@ public class SharedAlbumService {
     public SharedAlbumTripResponse getSharedAlbumByTrip(UUID requesterUserId, UUID tripId) {
         Trip trip = findAccessibleTrip(requesterUserId, tripId);
         return sharedAlbumRepository.findByTripId(trip.getTripId())
-                .map(sharedAlbum -> new SharedAlbumTripResponse(true, buildSummary(sharedAlbum, trip)))
+                .map(sharedAlbum -> {
+                    sharedAlbumAccessService.validateAlbumAccessible(sharedAlbum, requesterUserId);
+                    return new SharedAlbumTripResponse(true, buildSummary(sharedAlbum, trip));
+                })
                 .orElseGet(() -> new SharedAlbumTripResponse(false, null));
+    }
+
+    public SharedAlbumCreateResponse getPublicSharedAlbum(UUID sharedAlbumId) {
+        SharedAlbum sharedAlbum = sharedAlbumAccessService.getPublicSharedAlbum(sharedAlbumId);
+        Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(sharedAlbum.getTripId(), TripStatus.DELETED)
+                .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
+        return new SharedAlbumCreateResponse(false, buildSummary(sharedAlbum, trip));
     }
 
     @Transactional
