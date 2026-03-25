@@ -5,14 +5,20 @@ import com.yeoun.domain.expense.repository.ExpenseRepository;
 import com.yeoun.domain.photo.entity.Photo;
 import com.yeoun.domain.photo.repository.PhotoRepository;
 import com.yeoun.domain.photo.service.PhotoProcessingImageUrlService;
+import com.yeoun.domain.sharedalbum.dto.request.SharedAlbumMemberReplaceRequest;
+import com.yeoun.domain.sharedalbum.dto.request.SharedAlbumUpdateRequest;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumCreateResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumDaySummaryResponse;
+import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumMemberItemResponse;
+import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumMemberListResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumSectionAvailabilityResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumSummaryResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumTripResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumTripSummaryResponse;
 import com.yeoun.domain.sharedalbum.entity.SharedAlbum;
+import com.yeoun.domain.sharedalbum.entity.SharedAlbumMember;
 import com.yeoun.domain.sharedalbum.entity.SharedAlbumVisibility;
+import com.yeoun.domain.sharedalbum.repository.SharedAlbumMemberRepository;
 import com.yeoun.domain.sharedalbum.repository.SharedAlbumRepository;
 import com.yeoun.domain.timeline.entity.TimelineDay;
 import com.yeoun.domain.timeline.repository.TimelineDayRepository;
@@ -23,6 +29,8 @@ import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.domain.tripprocessing.entity.TripProcessingStatusType;
 import com.yeoun.domain.tripprocessing.repository.TripProcessingStatusRepository;
+import com.yeoun.domain.user.entity.User;
+import com.yeoun.domain.user.repository.UserRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -35,9 +43,11 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -45,6 +55,7 @@ import java.util.UUID;
 public class SharedAlbumService {
 
     private final SharedAlbumRepository sharedAlbumRepository;
+    private final SharedAlbumMemberRepository sharedAlbumMemberRepository;
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
     private final TimelineDayRepository timelineDayRepository;
@@ -52,18 +63,22 @@ public class SharedAlbumService {
     private final ExpenseRepository expenseRepository;
     private final TripProcessingStatusRepository tripProcessingStatusRepository;
     private final PhotoProcessingImageUrlService photoProcessingImageUrlService;
+    private final UserRepository userRepository;
 
     public SharedAlbumService(
             SharedAlbumRepository sharedAlbumRepository,
+            SharedAlbumMemberRepository sharedAlbumMemberRepository,
             TripRepository tripRepository,
             TripMemberRepository tripMemberRepository,
             TimelineDayRepository timelineDayRepository,
             PhotoRepository photoRepository,
             ExpenseRepository expenseRepository,
             TripProcessingStatusRepository tripProcessingStatusRepository,
-            PhotoProcessingImageUrlService photoProcessingImageUrlService
+            PhotoProcessingImageUrlService photoProcessingImageUrlService,
+            UserRepository userRepository
     ) {
         this.sharedAlbumRepository = sharedAlbumRepository;
+        this.sharedAlbumMemberRepository = sharedAlbumMemberRepository;
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
         this.timelineDayRepository = timelineDayRepository;
@@ -71,6 +86,7 @@ public class SharedAlbumService {
         this.expenseRepository = expenseRepository;
         this.tripProcessingStatusRepository = tripProcessingStatusRepository;
         this.photoProcessingImageUrlService = photoProcessingImageUrlService;
+        this.userRepository = userRepository;
     }
 
     public SharedAlbumTripResponse getSharedAlbumByTrip(UUID requesterUserId, UUID tripId) {
@@ -110,6 +126,78 @@ public class SharedAlbumService {
         sharedAlbumRepository.save(sharedAlbum);
 
         return new SharedAlbumCreateResponse(true, buildSummary(sharedAlbum, trip));
+    }
+
+    @Transactional
+    public SharedAlbumCreateResponse updateSharedAlbum(
+            UUID requesterUserId,
+            UUID sharedAlbumId,
+            SharedAlbumUpdateRequest request
+    ) {
+        SharedAlbum sharedAlbum = sharedAlbumRepository.findById(sharedAlbumId)
+                .orElseThrow(() -> new BaseException(ErrorCode.SHARED_ALBUM_NOT_FOUND));
+        Trip trip = findAccessibleTrip(requesterUserId, sharedAlbum.getTripId());
+        validateTripOwner(requesterUserId, trip);
+
+        String title = normalizeRequiredTitle(request.title(), sharedAlbum.getTitle());
+        String regionLabel = normalizeOptionalText(request.regionLabel(), 100, sharedAlbum.getRegionLabel());
+        String description = normalizeOptionalDescription(request.description(), sharedAlbum.getDescription());
+        SharedAlbumVisibility visibility = request.visibility() == null
+                ? sharedAlbum.getVisibility()
+                : request.visibility();
+        UUID coverPhotoId = resolveCoverPhotoId(request.coverPhotoId(), sharedAlbum.getCoverPhotoId(), trip.getTripId());
+
+        sharedAlbum.updateBasicInfo(
+                title,
+                regionLabel,
+                description,
+                visibility,
+                coverPhotoId,
+                Instant.now()
+        );
+
+        return new SharedAlbumCreateResponse(false, buildSummary(sharedAlbum, trip));
+    }
+
+    public SharedAlbumMemberListResponse getSharedAlbumMembers(UUID requesterUserId, UUID sharedAlbumId) {
+        SharedAlbum sharedAlbum = sharedAlbumRepository.findById(sharedAlbumId)
+                .orElseThrow(() -> new BaseException(ErrorCode.SHARED_ALBUM_NOT_FOUND));
+        Trip trip = findAccessibleTrip(requesterUserId, sharedAlbum.getTripId());
+        validateTripOwner(requesterUserId, trip);
+
+        return buildMemberListResponse(sharedAlbumId);
+    }
+
+    @Transactional
+    public SharedAlbumMemberListResponse replaceSharedAlbumMembers(
+            UUID requesterUserId,
+            UUID sharedAlbumId,
+            SharedAlbumMemberReplaceRequest request
+    ) {
+        SharedAlbum sharedAlbum = sharedAlbumRepository.findById(sharedAlbumId)
+                .orElseThrow(() -> new BaseException(ErrorCode.SHARED_ALBUM_NOT_FOUND));
+        Trip trip = findAccessibleTrip(requesterUserId, sharedAlbum.getTripId());
+        validateTripOwner(requesterUserId, trip);
+
+        Set<UUID> requestedUserIds = normalizeUserIds(request.userIds());
+        Set<UUID> allowedUserIds = new LinkedHashSet<>(tripMemberRepository.findCurrentUserIdsByTripId(trip.getTripId()));
+        if (!allowedUserIds.containsAll(requestedUserIds)) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Shared album members must be current trip members.");
+        }
+
+        sharedAlbumMemberRepository.deleteBySharedAlbumId(sharedAlbumId);
+
+        Instant now = Instant.now();
+        for (UUID userId : requestedUserIds) {
+            sharedAlbumMemberRepository.save(SharedAlbumMember.builder()
+                    .sharedAlbumMemberId(UUID.randomUUID())
+                    .sharedAlbumId(sharedAlbumId)
+                    .userId(userId)
+                    .createdAt(now)
+                    .build());
+        }
+
+        return buildMemberListResponse(sharedAlbumId);
     }
 
     private SharedAlbumSummaryResponse buildSummary(SharedAlbum sharedAlbum, Trip trip) {
@@ -219,6 +307,88 @@ public class SharedAlbumService {
 
     private int calculateTripDayCount(Trip trip) {
         return Math.toIntExact(ChronoUnit.DAYS.between(trip.getStartDate(), trip.getEndDate()) + 1L);
+    }
+
+    private UUID resolveCoverPhotoId(UUID requestedCoverPhotoId, UUID currentCoverPhotoId, UUID tripId) {
+        if (requestedCoverPhotoId == null) {
+            return currentCoverPhotoId;
+        }
+
+        Photo photo = photoRepository.findById(requestedCoverPhotoId)
+                .orElseThrow(() -> new BaseException(ErrorCode.PHOTO_NOT_FOUND));
+        if (!photo.getTripId().equals(tripId)) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Cover photo must belong to the same trip.");
+        }
+        return requestedCoverPhotoId;
+    }
+
+    private String normalizeRequiredTitle(String requestedTitle, String currentTitle) {
+        if (requestedTitle == null) {
+            return currentTitle;
+        }
+        String trimmed = requestedTitle.trim();
+        if (trimmed.isEmpty()) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Shared album title must not be blank.");
+        }
+        return trimmed;
+    }
+
+    private String normalizeOptionalText(String requestedValue, int maxLength, String currentValue) {
+        if (requestedValue == null) {
+            return currentValue;
+        }
+        String trimmed = requestedValue.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (trimmed.length() > maxLength) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return trimmed;
+    }
+
+    private String normalizeOptionalDescription(String requestedDescription, String currentDescription) {
+        if (requestedDescription == null) {
+            return currentDescription;
+        }
+        String trimmed = requestedDescription.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private Set<UUID> normalizeUserIds(List<UUID> userIds) {
+        LinkedHashSet<UUID> normalized = new LinkedHashSet<>();
+        for (UUID userId : userIds) {
+            if (userId != null) {
+                normalized.add(userId);
+            }
+        }
+        return normalized;
+    }
+
+    private SharedAlbumMemberListResponse buildMemberListResponse(UUID sharedAlbumId) {
+        List<SharedAlbumMember> sharedAlbumMembers = sharedAlbumMemberRepository.findBySharedAlbumIdOrderByCreatedAtAsc(sharedAlbumId);
+        List<UUID> userIds = sharedAlbumMembers.stream()
+                .map(SharedAlbumMember::getUserId)
+                .toList();
+
+        Map<UUID, User> userMap = new LinkedHashMap<>();
+        for (User user : userRepository.findAllById(userIds)) {
+            userMap.put(user.getUserId(), user);
+        }
+
+        List<SharedAlbumMemberItemResponse> members = new ArrayList<>();
+        for (SharedAlbumMember sharedAlbumMember : sharedAlbumMembers) {
+            User user = userMap.get(sharedAlbumMember.getUserId());
+            if (user == null) {
+                continue;
+            }
+            members.add(new SharedAlbumMemberItemResponse(
+                    user.getUserId(),
+                    user.getNickname(),
+                    user.getProfileImageUrl()
+            ));
+        }
+        return new SharedAlbumMemberListResponse(sharedAlbumId, members);
     }
 
     private Trip findAccessibleTrip(UUID requesterUserId, UUID tripId) {
