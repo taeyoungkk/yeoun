@@ -4,11 +4,14 @@ import com.yeoun.domain.auth.repository.AccessTokenBlacklistRedisRepository;
 import com.yeoun.domain.user.entity.UserRole;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
+import com.yeoun.global.logging.HttpRequestLoggingFilter;
 import com.yeoun.global.security.principal.CustomUserPrincipal;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -23,6 +26,8 @@ import java.util.UUID;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
     private final JwtTokenResolver jwtTokenResolver;
     private final JwtTokenProvider jwtTokenProvider;
@@ -66,9 +71,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))
                     );
             SecurityContextHolder.getContext().setAuthentication(authentication);
+            request.setAttribute(HttpRequestLoggingFilter.AUTHENTICATED_USER_ID_ATTRIBUTE, userId);
             filterChain.doFilter(request, response);
         } catch (BaseException ex) {
             SecurityContextHolder.clearContext();
+            log.warn(
+                    "JWT 인증 실패. method={} uri={} errorCode={} message={}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    ex.getErrorCode().name(),
+                    ex.getMessage()
+            );
             response.setStatus(ex.getErrorCode().getStatus().value());
             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
