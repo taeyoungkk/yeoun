@@ -167,6 +167,7 @@ public class UserProfileService {
                 user.getNickname(),
                 user.getProfileImageUrl(),
                 user.getTimezone(),
+                user.getCreatedAt(),
                 user.getRole(),
                 user.getStatus()
         );
