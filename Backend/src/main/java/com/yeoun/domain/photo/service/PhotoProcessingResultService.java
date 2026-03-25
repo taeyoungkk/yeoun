@@ -82,7 +82,7 @@ public class PhotoProcessingResultService {
 
         if (STATUS_FAILED.equals(status)) {
             photo.applyProcessingMetadataOnly(mergedMetadataJson, now);
-            tripSyncStatusService.markFailed(
+            tripSyncStatusService.finishPhotoProcessing(
                     photo.getTripId(),
                     now,
                     event.errorMessage() == null ? "Photo sync failed." : event.errorMessage()
@@ -115,7 +115,7 @@ public class PhotoProcessingResultService {
         timelineIncrementalSyncService.syncTrip(photo.getTripId());
         tripSyncStatusService.increasePhotoVersion(photo.getTripId(), now);
         tripSyncStatusService.increaseTimelineVersion(photo.getTripId(), now);
-        tripSyncStatusService.markCompleted(photo.getTripId(), now);
+        tripSyncStatusService.finishPhotoProcessing(photo.getTripId(), now, null);
     }
 
     private ProcessingState extractProcessingState(String metadataJson) {

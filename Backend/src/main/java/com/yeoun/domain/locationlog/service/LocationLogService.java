@@ -92,7 +92,7 @@ public class LocationLogService {
                 lastLog.clientLogUuid().trim(),
                 lastLog.recordedAt()
         );
-        tripSyncStatusService.markProcessing(tripId, now);
+        tripSyncStatusService.startLocationProcessing(tripId, now);
         tripProcessingStatusService.markPending(tripId, now);
 
         // raw 저장은 더 이상 API 서버가 하지 않고, 컨슈머가 저장할 수 있도록 GPS batch 본문을 Kafka에 싣는다.

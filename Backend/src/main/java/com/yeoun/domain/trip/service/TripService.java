@@ -124,6 +124,8 @@ public class TripService {
                 .routeVersion(0L)
                 .timelineVersion(0L)
                 .photoVersion(0L)
+                .pendingPhotoCount(0)
+                .pendingLocationCount(0)
                 .lastErrorMessage(null)
                 .createdAt(now)
                 .updatedAt(now)

@@ -90,6 +90,52 @@ public class TripSyncStatusService {
         tripSyncStatus.increasePhotoVersion(now);
     }
 
+    @Transactional
+    public void startPhotoProcessing(UUID tripId, Instant now, int count) {
+        TripSyncStatus tripSyncStatus = getTripSyncStatusEntity(tripId);
+        tripSyncStatus.startPhotoProcessing(count, now);
+    }
+
+    @Transactional
+    public void startLocationProcessing(UUID tripId, Instant now) {
+        TripSyncStatus tripSyncStatus = getTripSyncStatusEntity(tripId);
+        tripSyncStatus.startLocationProcessing(now);
+    }
+
+    @Transactional
+    public void finishPhotoProcessing(UUID tripId, Instant now, String errorMessage) {
+        TripSyncStatus tripSyncStatus = getTripSyncStatusEntity(tripId);
+        tripSyncStatus.finishPhotoProcessing(now);
+        if (errorMessage != null && !errorMessage.isBlank()) {
+            tripSyncStatus.markFailed(now, errorMessage);
+            return;
+        }
+        refreshAggregateStatus(tripSyncStatus, now);
+    }
+
+    @Transactional
+    public void finishLocationProcessing(UUID tripId, Instant now, String errorMessage) {
+        TripSyncStatus tripSyncStatus = getTripSyncStatusEntity(tripId);
+        tripSyncStatus.finishLocationProcessing(now);
+        if (errorMessage != null && !errorMessage.isBlank()) {
+            tripSyncStatus.markFailed(now, errorMessage);
+            return;
+        }
+        refreshAggregateStatus(tripSyncStatus, now);
+    }
+
+    private void refreshAggregateStatus(TripSyncStatus tripSyncStatus, Instant now) {
+        if (tripSyncStatus.getLastErrorMessage() != null && !tripSyncStatus.getLastErrorMessage().isBlank()) {
+            tripSyncStatus.markFailed(now, tripSyncStatus.getLastErrorMessage());
+            return;
+        }
+        if (tripSyncStatus.hasPendingWork()) {
+            tripSyncStatus.markProcessing(now);
+            return;
+        }
+        tripSyncStatus.markCompleted(now);
+    }
+
     private TripSyncStatus getTripSyncStatusEntity(UUID tripId) {
         return tripSyncStatusRepository.findById(tripId)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));

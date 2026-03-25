@@ -31,7 +31,7 @@ public class LocationLogResultService {
             return;
         }
         if (event.isFailed()) {
-            tripSyncStatusService.markFailed(
+            tripSyncStatusService.finishLocationProcessing(
                     event.tripId(),
                     resolveEventTime(event),
                     event.errorMessage() == null ? "Location sync failed." : event.errorMessage()
@@ -64,7 +64,7 @@ public class LocationLogResultService {
         Instant now = resolveEventTime(event);
         tripSyncStatusService.increaseRouteVersion(event.tripId(), now);
         tripSyncStatusService.increaseTimelineVersion(event.tripId(), now);
-        tripSyncStatusService.markCompleted(event.tripId(), now);
+        tripSyncStatusService.finishLocationProcessing(event.tripId(), now, null);
     }
 
     private Instant resolveEventTime(LocationLogBatchResultEvent event) {
