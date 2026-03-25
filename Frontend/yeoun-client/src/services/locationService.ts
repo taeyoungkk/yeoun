@@ -4,7 +4,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { AppState, type AppStateStatus, Linking } from 'react-native';
 
-import { getTripLocationLogStatusApi, LocationLog, uploadLocationsApi } from '../api/trip';
+import { getTripSyncStatusApi, type TripSyncStatusData, LocationLog, uploadLocationsApi } from '../api/trip';
 import { useTripStore } from '../store/trip.store';
 
 const LOCATION_TRACKING_TASK = 'LOCATION_TRACKING_TASK';
@@ -297,47 +297,80 @@ const removeAppStateSubscription = () => {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const isLocationProcessingComplete = (status?: string | null) => {
-  const normalizedStatus = String(status ?? '').toUpperCase();
-  return normalizedStatus === 'SUCCESS' || normalizedStatus === 'COMPLETED' || normalizedStatus === 'DONE';
+const normalizeStatus = (status?: string | null) => String(status ?? '').toUpperCase();
+
+const isTripSyncComplete = (status?: string | null) => {
+  const normalizedStatus = normalizeStatus(status);
+  return (
+    normalizedStatus === 'IDLE' ||
+    normalizedStatus === 'READY' ||
+    normalizedStatus === 'SUCCESS' ||
+    normalizedStatus === 'COMPLETED' ||
+    normalizedStatus === 'DONE'
+  );
 };
 
-const isLocationProcessingFailed = (status?: string | null) => {
-  const normalizedStatus = String(status ?? '').toUpperCase();
+const isTripSyncProcessing = (status?: string | null) => {
+  const normalizedStatus = normalizeStatus(status);
+  return normalizedStatus === 'PENDING' || normalizedStatus === 'QUEUED' || normalizedStatus === 'PROCESSING';
+};
+
+const isTripSyncFailed = (status?: string | null) => {
+  const normalizedStatus = normalizeStatus(status);
   return normalizedStatus === 'FAILED' || normalizedStatus === 'ERROR';
 };
 
-const pollLocationProcessingStatus = async (tripId: string) => {
+const hasSyncVersionChanged = (
+  baseline: TripSyncStatusData | null,
+  nextStatus: TripSyncStatusData,
+) =>
+  baseline == null ||
+  baseline.routeVersion !== nextStatus.routeVersion ||
+  baseline.timelineVersion !== nextStatus.timelineVersion ||
+  baseline.photoVersion !== nextStatus.photoVersion;
+
+const pollTripSyncStatus = async (tripId: string, baseline: TripSyncStatusData | null) => {
   const startedAt = Date.now();
+  let observedProcessing = false;
 
   while (Date.now() - startedAt < LOCATION_STATUS_POLL_TIMEOUT_MS) {
-    const response = await getTripLocationLogStatusApi(tripId);
+    const response = await getTripSyncStatusApi(tripId);
 
     if (!response.success) {
-      console.warn('Failed to poll location processing status:', response.message);
-      setLocationSyncState('failed', response.message || 'Failed to poll GPS processing status.');
+      console.warn('Failed to poll trip sync status:', response.message);
+      setLocationSyncState('failed', response.message || '여행 동기화 상태를 확인하지 못했습니다.');
       return false;
     }
 
-    if (isLocationProcessingComplete(response.data.status)) {
-      console.log('Location processing completed:', response.data.status);
-      setLocationSyncState('completed', 'GPS data synchronized and route data refreshed.');
+    if (isTripSyncProcessing(response.data.syncStatus)) {
+      observedProcessing = true;
+      setLocationSyncState('processing', '여행 데이터를 동기화하는 중입니다. 경로와 타임라인 업데이트를 기다리고 있어요.');
+      await wait(LOCATION_STATUS_POLL_INTERVAL_MS);
+      continue;
+    }
+
+    if (isTripSyncFailed(response.data.syncStatus)) {
+      console.error('Trip sync failed:', response.data.lastErrorMessage ?? response.data.syncStatus);
+      setLocationSyncState('failed', response.data.lastErrorMessage ?? '여행 동기화에 실패했습니다.');
+      return false;
+    }
+
+    if (
+      hasSyncVersionChanged(baseline, response.data) ||
+      (observedProcessing && isTripSyncComplete(response.data.syncStatus))
+    ) {
+      console.log('Trip sync completed:', response.data);
+      setLocationSyncState('completed', '여행 데이터 동기화가 완료되었습니다.');
       useTripStore.getState().bumpRouteRefreshKey();
       return true;
     }
 
-    if (isLocationProcessingFailed(response.data.status)) {
-      console.error('Location processing failed:', response.data.lastErrorMessage ?? response.data.status);
-      setLocationSyncState('failed', response.data.lastErrorMessage ?? 'GPS processing failed.');
-      return false;
-    }
-
-    setLocationSyncState('processing', 'GPS logs uploaded. Waiting for worker processing.');
+    setLocationSyncState('processing', 'GPS 기록을 업로드했습니다. 동기화 상태 업데이트를 기다리고 있어요.');
     await wait(LOCATION_STATUS_POLL_INTERVAL_MS);
   }
 
-  console.warn('Location processing status polling timed out');
-  setLocationSyncState('failed', 'GPS processing timed out. Try syncing again.');
+  console.warn('Trip sync status polling timed out');
+  setLocationSyncState('failed', '여행 동기화가 시간 초과되었습니다. 다시 시도해 주세요.');
   return false;
 };
 
@@ -463,24 +496,26 @@ export const locationService = {
       const logs = await locationService.flushLogs();
       if (logs.length === 0) {
         console.log('No logs to sync');
-        setLocationSyncState('completed', 'No new GPS logs to synchronize.');
+        setLocationSyncState('completed', '새로 동기화할 GPS 기록이 없습니다.');
         return true;
       }
 
-      setLocationSyncState('uploading', `Uploading ${logs.length} GPS logs...`);
+      setLocationSyncState('uploading', `GPS 기록 ${logs.length}개를 업로드하는 중입니다.`);
       console.log(`Syncing ${logs.length} location logs for trip ${tripId}...`);
+      const baselineSyncStatusResponse = await getTripSyncStatusApi(tripId);
+      const baselineSyncStatus = baselineSyncStatusResponse.success ? baselineSyncStatusResponse.data : null;
       const response = await uploadLocationsApi(tripId, logs);
 
       if (!response.success) {
         await appendLogsToStorage(logs, { dedupe: false });
         console.error('Failed to sync logs, re-queued:', response.message);
-        setLocationSyncState('failed', response.message || 'Failed to upload GPS logs.');
+        setLocationSyncState('failed', response.message || 'GPS 기록 업로드에 실패했습니다.');
         return false;
       }
 
       console.log('Successfully synced logs to server');
-      setLocationSyncState('processing', 'GPS logs uploaded. Waiting for worker processing.');
-      const processed = await pollLocationProcessingStatus(tripId);
+      setLocationSyncState('processing', 'GPS 기록을 업로드했습니다. 동기화 상태 업데이트를 기다리고 있어요.');
+      const processed = await pollTripSyncStatus(tripId, baselineSyncStatus);
 
       if (!processed) {
         console.warn('Location logs uploaded but processing is not complete yet.');
@@ -489,7 +524,7 @@ export const locationService = {
       return processed;
     } catch (error) {
       console.error('Sync process error:', error);
-      setLocationSyncState('failed', 'Unexpected GPS sync error occurred.');
+      setLocationSyncState('failed', 'GPS 동기화 중 예기치 않은 오류가 발생했습니다.');
       return false;
     }
   },

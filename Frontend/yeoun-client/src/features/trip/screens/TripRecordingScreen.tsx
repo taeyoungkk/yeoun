@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AppState,
   Alert,
   Animated,
   InteractionManager,
@@ -56,6 +57,7 @@ import {
 } from '@/src/api/trip';
 import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 import { locationService } from '../../../services/locationService';
+import { requestTripPhotoPermission, syncTripPhotosForDateRange } from '../../../services/photoSyncService';
 import { type LocationSyncStatus, useTripStore } from '@/src/store/trip.store';
 import { useUserStore } from '@/src/store/user.store';
 import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
@@ -69,6 +71,7 @@ const INITIAL_PANEL_PEEK = 120;
 const MAP_SIDE_MARGIN = 16;
 const MAP_TOP_OFFSET = 112;
 const PANEL_TOP_OFFSET = 118;
+const AUTO_PHOTO_SYNC_INTERVAL_MS = 3 * 60 * 1000;
 
 type DayKey = `day${number}`;
 type DayFilter = 'all' | DayKey;
@@ -78,6 +81,7 @@ type MapFilterKey = 'showPhotoPins' | 'showPaymentPins';
 type ActionConfirmKind = 'end' | 'leave' | 'delete';
 type PaymentDialogMode = 'edit';
 type PaymentSplitType = 'equal';
+type PhotoSyncOutcome = 'synced' | 'empty' | 'skipped_permission' | 'skipped_range' | 'failed';
 
 type PhotoContributor = {
   id: string;
@@ -480,17 +484,11 @@ function appendRealExpenseEvents(
   });
 }
 
-export default function TripRecordingScreen({
+function RealTripRecordingScreen({
   reportRoute = '/trip/report',
-  useMockData = false,
 }: {
   reportRoute?: '/trip/report' | '/trip/mock-report';
-  useMockData?: boolean;
 }) {
-  if (useMockData) {
-    return <MockTripRecordingScreen reportRoute="/trip/mock-report" useMockData />;
-  }
-
   const router = useRouter();
   const cameraRef = useRef<Mapbox.Camera>(null);
   const scrollRef = useRef<ScrollView | null>(null);
@@ -512,6 +510,9 @@ export default function TripRecordingScreen({
   const routeRefreshKey = useTripStore((state) => state.routeRefreshKey);
   const locationSyncStatus = useTripStore((state) => state.locationSyncStatus);
   const locationSyncMessage = useTripStore((state) => state.locationSyncMessage);
+  const locationSyncUpdatedAt = useTripStore((state) => state.locationSyncUpdatedAt);
+  const setLocationSyncState = useTripStore((state) => state.setLocationSyncState);
+  const resetLocationSyncState = useTripStore((state) => state.resetLocationSyncState);
   const currentUserId = useUserStore((state) => state.profile?.userId);
   const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
 
@@ -556,6 +557,14 @@ export default function TripRecordingScreen({
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [liveCurrentLocation, setLiveCurrentLocation] = useState<Coordinate | null>(null);
   const [initialCurrentLocation, setInitialCurrentLocation] = useState<Coordinate | null>(null);
+  const [syncToast, setSyncToast] = useState<{ status: LocationSyncStatus; message: string } | null>(null);
+  const syncToastOpacity = useRef(new Animated.Value(0)).current;
+  const syncToastTranslateY = useRef(new Animated.Value(-14)).current;
+  const syncToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoPhotoSyncInFlightRef = useRef(false);
+  const autoPhotoSyncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastAutoPhotoSyncAtRef = useRef(0);
+  const appStateRef = useRef(AppState.currentState);
   const isReviewMode = params.mode === 'review';
   const displayTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
 
@@ -671,7 +680,7 @@ export default function TripRecordingScreen({
     completed: { icon: 'check-circle', tint: '#2F7A47', surface: '#EAF6EE' },
     failed: { icon: 'error-outline', tint: '#B25543', surface: '#FDEEEA' },
   };
-  const currentSyncMeta = syncStatusMeta[locationSyncStatus];
+  const syncToastMeta = syncToast ? syncStatusMeta[syncToast.status] : null;
   const memberNameByUserId = useMemo(
     () =>
       Object.fromEntries(
@@ -970,19 +979,234 @@ export default function TripRecordingScreen({
     }
   }, [photoViewer, selectedPhotoEvent, selectedPhotoItem]);
 
+  useEffect(() => {
+    return () => {
+      if (syncToastTimerRef.current) {
+        clearTimeout(syncToastTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (syncToastTimerRef.current) {
+      clearTimeout(syncToastTimerRef.current);
+      syncToastTimerRef.current = null;
+    }
+
+    if (!locationSyncMessage || locationSyncStatus === 'idle') {
+      Animated.parallel([
+        Animated.timing(syncToastOpacity, {
+          toValue: 0,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+        Animated.timing(syncToastTranslateY, {
+          toValue: -14,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (finished) {
+          setSyncToast(null);
+        }
+      });
+      return;
+    }
+
+    setSyncToast({ status: locationSyncStatus, message: locationSyncMessage });
+    Animated.parallel([
+      Animated.timing(syncToastOpacity, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+      Animated.timing(syncToastTranslateY, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    if (locationSyncStatus === 'completed' || locationSyncStatus === 'failed') {
+      syncToastTimerRef.current = setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(syncToastOpacity, {
+            toValue: 0,
+            duration: 220,
+            useNativeDriver: true,
+          }),
+          Animated.timing(syncToastTranslateY, {
+            toValue: -14,
+            duration: 220,
+            useNativeDriver: true,
+          }),
+        ]).start(({ finished }) => {
+          if (finished) {
+            setSyncToast(null);
+            resetLocationSyncState();
+          }
+        });
+      }, 2200);
+    }
+  }, [
+    locationSyncMessage,
+    locationSyncStatus,
+    locationSyncUpdatedAt,
+    resetLocationSyncState,
+    syncToastOpacity,
+    syncToastTranslateY,
+  ]);
+
+  const syncTripPhotosOnly = useCallback(
+    async ({ showStatus = false }: { showStatus?: boolean } = {}): Promise<{ outcome: PhotoSyncOutcome; syncedCount: number }> => {
+      if (!activeTripId) {
+        return { outcome: 'failed', syncedCount: 0 };
+      }
+
+      try {
+        const photoPermission = await requestTripPhotoPermission();
+
+        if (!photoPermission.granted) {
+          return { outcome: 'skipped_permission', syncedCount: 0 };
+        }
+
+        if (!displayTrip?.startDate || !displayTrip?.endDate) {
+          return { outcome: 'skipped_range', syncedCount: 0 };
+        }
+
+        if (showStatus) {
+          setLocationSyncState('processing', '여행 사진을 동기화하는 중입니다.');
+        }
+
+        const photoResult = await syncTripPhotosForDateRange({
+          tripId: activeTripId,
+          startDate: displayTrip.startDate,
+          endDate: displayTrip.endDate,
+        });
+
+        if (!photoResult.success) {
+          return { outcome: 'failed', syncedCount: 0 };
+        }
+
+        if (photoResult.syncedCount > 0) {
+          useTripStore.getState().bumpRouteRefreshKey();
+          return { outcome: 'synced', syncedCount: photoResult.syncedCount };
+        }
+
+        return { outcome: 'empty', syncedCount: 0 };
+      } catch (error) {
+        console.error('Failed to sync trip photos', error);
+        return { outcome: 'failed', syncedCount: 0 };
+      }
+    },
+    [activeTripId, displayTrip?.endDate, displayTrip?.startDate, setLocationSyncState],
+  );
+
+  const runAutoPhotoSync = useCallback(
+    async (force = false) => {
+      if (isReviewMode || !activeTripId || isSyncing || autoPhotoSyncInFlightRef.current) {
+        return;
+      }
+
+      const now = Date.now();
+      if (!force && now - lastAutoPhotoSyncAtRef.current < AUTO_PHOTO_SYNC_INTERVAL_MS) {
+        return;
+      }
+
+      autoPhotoSyncInFlightRef.current = true;
+      lastAutoPhotoSyncAtRef.current = now;
+
+      try {
+        await syncTripPhotosOnly();
+      } finally {
+        autoPhotoSyncInFlightRef.current = false;
+      }
+    },
+    [activeTripId, isReviewMode, isSyncing, syncTripPhotosOnly],
+  );
+
+  const syncTripAssets = useCallback(async () => {
+    if (!activeTripId) {
+      return false;
+    }
+
+    const photoResult = await syncTripPhotosOnly({ showStatus: true });
+    const locationSynced = await locationService.syncLocations(activeTripId);
+
+    if (!locationSynced) {
+      return false;
+    }
+
+    if (photoResult.outcome === 'synced') {
+      setLocationSyncState('completed', `위치 기록과 여행 사진 ${photoResult.syncedCount}장을 동기화했습니다.`);
+      return true;
+    }
+
+    if (photoResult.outcome === 'failed') {
+      setLocationSyncState('completed', '위치 기록은 동기화했고, 사진 동기화는 실패했습니다.');
+      return true;
+    }
+
+    if (photoResult.outcome === 'skipped_permission') {
+      setLocationSyncState('completed', '위치 기록은 동기화했고, 사진 권한이 없어 사진은 건너뛰었습니다.');
+      return true;
+    }
+
+    if (photoResult.outcome === 'skipped_range') {
+      setLocationSyncState('completed', '위치 기록은 동기화했고, 여행 기간 정보가 없어 사진은 건너뛰었습니다.');
+      return true;
+    }
+
+    setLocationSyncState('completed', '위치 기록 동기화가 완료되었습니다. 새로 가져올 여행 사진은 없습니다.');
+    return true;
+  }, [activeTripId, setLocationSyncState, syncTripPhotosOnly]);
+
   const handleManualSync = async () => {
     if (!activeTripId) {
-      Alert.alert('No active trip', 'Could not find the trip to sync.');
+      Alert.alert('진행 중인 여행이 없어요', '동기화할 여행 정보를 찾지 못했습니다.');
       return;
     }
 
     try {
       setIsSyncing(true);
-      await locationService.syncLocations(activeTripId);
+      await syncTripAssets();
     } finally {
       setIsSyncing(false);
     }
   };
+
+  useEffect(() => {
+    if (isReviewMode || !activeTripId) {
+      if (autoPhotoSyncTimerRef.current) {
+        clearInterval(autoPhotoSyncTimerRef.current);
+        autoPhotoSyncTimerRef.current = null;
+      }
+      return;
+    }
+
+    void runAutoPhotoSync(true);
+
+    autoPhotoSyncTimerRef.current = setInterval(() => {
+      void runAutoPhotoSync(false);
+    }, AUTO_PHOTO_SYNC_INTERVAL_MS);
+
+    const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+      const previousAppState = appStateRef.current;
+      appStateRef.current = nextAppState;
+
+      if ((previousAppState === 'background' || previousAppState === 'inactive') && nextAppState === 'active') {
+        void runAutoPhotoSync(true);
+      }
+    });
+
+    return () => {
+      appStateSubscription.remove();
+      if (autoPhotoSyncTimerRef.current) {
+        clearInterval(autoPhotoSyncTimerRef.current);
+        autoPhotoSyncTimerRef.current = null;
+      }
+    };
+  }, [activeTripId, isReviewMode, runAutoPhotoSync]);
 
   const handleOpenReport = () => {
     router.push(isReviewMode ? `${reportRoute}?mode=review` : reportRoute);
@@ -990,11 +1214,11 @@ export default function TripRecordingScreen({
 
   const performEndTrip = async () => {
     if (!activeTripId) {
-      Alert.alert('No active trip', 'Could not find the trip to end.');
+      Alert.alert('진행 중인 여행이 없어요', '종료할 여행 정보를 찾지 못했습니다.');
       return;
     }
     setIsSyncing(true);
-    await locationService.syncLocations(activeTripId);
+    await syncTripAssets();
     await endTripApi(activeTripId);
     await locationService.stopTracking();
     setIsSyncing(false);
@@ -1033,7 +1257,7 @@ export default function TripRecordingScreen({
 
   const performLeaveTrip = async () => {
     if (!activeTripId) {
-      Alert.alert('No active trip', 'Could not find the trip to leave.');
+      Alert.alert('진행 중인 여행이 없어요', '나갈 여행 정보를 찾지 못했습니다.');
       return;
     }
 
@@ -1120,7 +1344,7 @@ export default function TripRecordingScreen({
 
   const handleEndTrip = () => {
     if (!activeTripId) {
-      Alert.alert('No active trip', 'Could not find the trip to end.');
+      Alert.alert('진행 중인 여행이 없어요', '종료할 여행 정보를 찾지 못했습니다.');
       return;
     }
 
@@ -1134,7 +1358,7 @@ export default function TripRecordingScreen({
 
   const handleLeaveTrip = () => {
     if (!activeTripId) {
-      Alert.alert('No active trip', 'Could not find the trip to leave.');
+      Alert.alert('진행 중인 여행이 없어요', '나갈 여행 정보를 찾지 못했습니다.');
       return;
     }
 
@@ -1153,7 +1377,7 @@ export default function TripRecordingScreen({
 
   const handleDeleteTrip = () => {
     if (!activeTripId) {
-      Alert.alert('No active trip', 'Could not find the trip to delete.');
+      Alert.alert('진행 중인 여행이 없어요', '삭제할 여행 정보를 찾지 못했습니다.');
       return;
     }
 
@@ -1175,7 +1399,7 @@ export default function TripRecordingScreen({
     }
 
     if (!activeTripId) {
-      Alert.alert('No active trip', 'Could not find the trip for this action.');
+      Alert.alert('진행 중인 여행이 없어요', '이 작업을 처리할 여행 정보를 찾지 못했습니다.');
       return;
     }
 
@@ -1184,7 +1408,7 @@ export default function TripRecordingScreen({
     if (currentAction.kind === 'end') {
       try {
         setIsSyncing(true);
-        await locationService.syncLocations(activeTripId);
+        await syncTripAssets();
         await endTripApi(activeTripId);
         await locationService.stopTracking();
         endTrip();
@@ -1586,6 +1810,25 @@ export default function TripRecordingScreen({
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      {syncToast && syncToastMeta ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.syncToastWrap,
+            {
+              opacity: syncToastOpacity,
+              transform: [{ translateY: syncToastTranslateY }],
+            },
+          ]}
+        >
+          <View style={[styles.syncToastCard, { backgroundColor: syncToastMeta.surface }]}>
+            <MaterialIcons name={syncToastMeta.icon} size={16} color={syncToastMeta.tint} />
+            <Text style={[styles.syncToastText, { color: syncToastMeta.tint }]} numberOfLines={2}>
+              {syncToast.message}
+            </Text>
+          </View>
+        </Animated.View>
+      ) : null}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/(tabs)')} activeOpacity={0.85}>
           <MaterialIcons name="arrow-back" size={22} color="#17201A" />
@@ -1609,20 +1852,12 @@ export default function TripRecordingScreen({
             disabled={syncActionInFlight}
           >
             <MaterialIcons name={syncActionInFlight ? 'hourglass-top' : 'sync'} size={16} color="#274232" />
-            <Text style={styles.syncHeaderButtonText}>{syncActionInFlight ? 'Syncing' : 'Sync'}</Text>
+            <Text style={styles.syncHeaderButtonText}>{syncActionInFlight ? '동기화 중' : '동기화'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev) => !prev)} activeOpacity={0.85}>
             <MaterialIcons name="more-horiz" size={22} color="#274232" />
           </TouchableOpacity>
           </View>
-          {locationSyncMessage ? (
-            <View style={[styles.syncStatusBadge, { backgroundColor: currentSyncMeta.surface }]}>
-              <MaterialIcons name={currentSyncMeta.icon} size={14} color={currentSyncMeta.tint} />
-              <Text style={[styles.syncStatusBadgeText, { color: currentSyncMeta.tint }]} numberOfLines={2}>
-                {locationSyncMessage}
-              </Text>
-            </View>
-          ) : null}
           {!isReviewMode ? (
             <TouchableOpacity style={styles.hiddenAction} onPress={() => router.push('/trip/invite')} activeOpacity={0.88}>
               <MaterialIcons name="group-add" size={16} color="#274232" />
@@ -2399,6 +2634,20 @@ export default function TripRecordingScreen({
   );
 }
 
+export default function TripRecordingScreen({
+  reportRoute = '/trip/report',
+  useMockData = false,
+}: {
+  reportRoute?: '/trip/report' | '/trip/mock-report';
+  useMockData?: boolean;
+}) {
+  if (useMockData) {
+    return <MockTripRecordingScreen reportRoute="/trip/mock-report" useMockData />;
+  }
+
+  return <RealTripRecordingScreen reportRoute={reportRoute} />;
+}
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#EFF4EC' },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
@@ -2441,16 +2690,32 @@ const styles = StyleSheet.create({
   syncHeaderButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 18, backgroundColor: '#E3EBDD', paddingHorizontal: 12, height: 36 },
   syncHeaderButtonDisabled: { opacity: 0.7 },
   syncHeaderButtonText: { fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#274232' },
-  syncStatusBadge: {
-    maxWidth: 220,
+  syncToastWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 16,
+    right: 16,
+    bottom: 0,
+    zIndex: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncToastCard: {
+    maxWidth: 320,
+    minHeight: 48,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    gap: 8,
+    shadowColor: '#182119',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
-  syncStatusBadgeText: { flexShrink: 1, fontFamily: 'Pretendard-Medium', fontSize: 12, lineHeight: 17 },
+  syncToastText: { flexShrink: 1, fontFamily: 'Pretendard-SemiBold', fontSize: 13, lineHeight: 18 },
   moreButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E3EBDD', alignItems: 'center', justifyContent: 'center' },
   menuBackdrop: { position: 'absolute', top: 72, right: 16, left: 16, bottom: 0, zIndex: 30 },
   menuCard: { marginLeft: 'auto', width: 156, borderRadius: 20, backgroundColor: '#FCFEFB', paddingVertical: 8, shadowColor: '#223428', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
