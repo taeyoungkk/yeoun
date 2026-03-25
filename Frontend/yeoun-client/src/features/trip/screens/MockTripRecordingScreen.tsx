@@ -405,7 +405,25 @@ export default function MockTripRecordingScreen({
   const [liveRoute, setLiveRoute] = useState<Coordinate[]>([]);
   const showMockRouteMetrics = useMockData;
   const isReviewMode = params.mode === 'review';
-  const displayTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
+  const mockDisplayTrip = useMemo(
+    () =>
+      useMockData
+        ? {
+            tripId: 'mock-trip-preview',
+            tripName: typeof params.tripName === 'string' && params.tripName.trim().length > 0 ? params.tripName : 'Mock Trip',
+            startDate: typeof params.startDate === 'string' ? params.startDate : new Date().toISOString(),
+            endDate: typeof params.endDate === 'string' ? params.endDate : new Date().toISOString(),
+            memberCount:
+              typeof params.memberCount === 'string' && Number.isFinite(Number(params.memberCount))
+                ? Number(params.memberCount)
+                : 2,
+            origin: typeof params.origin === 'string' ? params.origin : 'Korea',
+            destination: typeof params.destination === 'string' ? params.destination : '',
+          }
+        : null,
+    [params.destination, params.endDate, params.memberCount, params.origin, params.startDate, params.tripName, useMockData]
+  );
+  const displayTrip = useMockData ? mockDisplayTrip : isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
 
   const tripDays = useMemo(() => {
     if (!useMockData) {
@@ -510,7 +528,11 @@ export default function MockTripRecordingScreen({
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
   const panelLift = -145 * collapseProgress;
-  const activeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
+  const activeTripId = useMockData
+    ? ''
+    : isReviewMode
+      ? reviewTrip?.tripId ?? currentTrip?.tripId ?? ''
+      : currentTripId ?? currentTrip?.tripId ?? '';
   const tripTitle = displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
@@ -1176,7 +1198,7 @@ export default function MockTripRecordingScreen({
     setEmotionPicker(null);
   };
 
-  if (!activeTripId && !isReviewMode) {
+  if (!useMockData && !activeTripId && !isReviewMode) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.emptyWrap}>
@@ -1905,7 +1927,7 @@ export default function MockTripRecordingScreen({
                               onPress={(pressEvent) => {
                                 pressEvent.stopPropagation();
                                 if (shouldShowOverlay) {
-                                  router.push({ pathname: '/trip/photo-album', params: { eventId: event.id } } as never);
+                                  router.push({ pathname: '/trip/mock-photo-album', params: { eventId: event.id } } as never);
                                   return;
                                 }
 

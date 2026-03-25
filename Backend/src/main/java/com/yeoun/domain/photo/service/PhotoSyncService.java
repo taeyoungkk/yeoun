@@ -15,6 +15,7 @@ import com.yeoun.domain.trip.entity.TripMemberInviteStatus;
 import com.yeoun.domain.trip.entity.TripStatus;
 import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
+import com.yeoun.domain.tripsync.service.TripSyncStatusService;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -55,6 +56,7 @@ public class PhotoSyncService {
     private final PhotoStorageService photoStorageService;
     private final PhotoProcessingImageUrlService photoProcessingImageUrlService;
     private final PhotoProcessingRequestEventPublisher photoProcessingRequestEventPublisher;
+    private final TripSyncStatusService tripSyncStatusService;
 
     public PhotoSyncService(
             TripRepository tripRepository,
@@ -62,7 +64,8 @@ public class PhotoSyncService {
             PhotoRepository photoRepository,
             PhotoStorageService photoStorageService,
             PhotoProcessingImageUrlService photoProcessingImageUrlService,
-            PhotoProcessingRequestEventPublisher photoProcessingRequestEventPublisher
+            PhotoProcessingRequestEventPublisher photoProcessingRequestEventPublisher,
+            TripSyncStatusService tripSyncStatusService
     ) {
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
@@ -70,6 +73,7 @@ public class PhotoSyncService {
         this.photoStorageService = photoStorageService;
         this.photoProcessingImageUrlService = photoProcessingImageUrlService;
         this.photoProcessingRequestEventPublisher = photoProcessingRequestEventPublisher;
+        this.tripSyncStatusService = tripSyncStatusService;
     }
 
     public PhotoSyncResponse syncTripPhotos(
@@ -93,6 +97,7 @@ public class PhotoSyncService {
 
         List<PhotoSyncItemResponse> syncedItems = new ArrayList<>();
         Instant now = Instant.now();
+        boolean processingMarked = false;
 
         for (int i = 0; i < files.size(); i++) {
             MultipartFile file = files.get(i);
@@ -137,6 +142,11 @@ public class PhotoSyncService {
                     .build();
             photoRepository.save(photo);
 
+            if (!processingMarked) {
+                tripSyncStatusService.markProcessing(tripId, now);
+                processingMarked = true;
+            }
+
             PhotoProcessingRequestEvent processingRequestEvent = new PhotoProcessingRequestEvent(
                     photo.getPhotoId(),
                     photo.getTripId(),
@@ -155,7 +165,7 @@ public class PhotoSyncService {
 
             syncedItems.add(new PhotoSyncItemResponse(
                     photo.getPhotoId(),
-                    photo.getThumbnailKey(),
+                    photoProcessingImageUrlService.createThumbnailUrl(photo.getThumbnailKey()),
                     photo.getTakenAt(),
                     photo.isExcluded()
             ));

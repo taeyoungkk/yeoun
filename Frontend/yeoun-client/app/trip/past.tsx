@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { TripCard, TripData } from '@/src/components/profile/TripCard';
 import { useFavoriteStore, useTripStore } from '@/src/store';
 
+const toSortableDate = (value?: string) => new Date(value ?? '').getTime() || 0;
+
 export default function PastTripsScreen() {
   const { favoriteIds, toggleFavorite } = useFavoriteStore();
   const serverTrips = useTripStore((state) => state.trips);
@@ -19,8 +21,16 @@ export default function PastTripsScreen() {
 
     try {
       const items = serverTrips.length > 0 ? serverTrips : await loadTrips();
-      const pastTrips = items
+      const pastTrips = [...items]
         .filter((item) => item.status === 'ENDED')
+        .sort((a, b) => {
+          const endDiff = toSortableDate(b.endDate) - toSortableDate(a.endDate);
+          if (endDiff !== 0) {
+            return endDiff;
+          }
+
+          return toSortableDate(b.startDate) - toSortableDate(a.startDate);
+        })
         .map((item) => ({
           id: item.tripId,
           title: item.title,

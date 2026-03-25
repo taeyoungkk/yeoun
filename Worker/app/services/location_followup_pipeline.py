@@ -3,7 +3,13 @@ import logging
 from psycopg import Connection
 
 from app.config import Settings
-from app.schemas.location import LocationCleanLog, LocationLogBatchStoredEvent, LocationPreprocessSummary
+from app.schemas.location import (
+    LocationCleanLog,
+    LocationLogBatchStoredEvent,
+    LocationPreprocessSummary,
+    LocationRouteDay,
+)
+from app.services.location_map_matcher import LocationMapMatcher
 from app.services.location_place_builder import LocationPlaceBuilder
 from app.services.location_place_writer import LocationPlaceWriter
 from app.services.location_route_builder import LocationRouteBuilder
@@ -25,6 +31,7 @@ class LocationFollowupPipeline:
     def __init__(self, settings: Settings):
         self.stay_detector = LocationStayDetector(settings)
         self.route_builder = LocationRouteBuilder()
+        self.map_matcher = LocationMapMatcher(settings)
         self.place_builder = LocationPlaceBuilder(settings)
         self.route_writer = LocationRouteDayWriter(settings)
         self.place_writer = LocationPlaceWriter(settings)
@@ -51,6 +58,7 @@ class LocationFollowupPipeline:
             payload.user_id,
             move_segments,
         )
+        route_days, map_matched_route_day_count, route_day_fallback_count = await self._apply_map_matching(route_days)
         places = self.place_builder.build(
             payload.trip_id,
             payload.user_id,
@@ -70,21 +78,24 @@ class LocationFollowupPipeline:
         )
         updated_summary = summary.model_copy(
             update={
-                "staySegmentCount": len(stay_segments),
-                "moveSegmentCount": len(move_segments),
-                "routeDayCount": len(route_days),
-                "placeCount": len(places),
-                "routePersistedCount": route_persisted_count,
-                "placePersistedCount": place_persisted_count,
-                "timelineCandidateCount": len(timeline_candidates),
-                "timelineCandidatePersistedCount": timeline_candidate_persisted_count,
+                "stay_segment_count": len(stay_segments),
+                "move_segment_count": len(move_segments),
+                "route_day_count": len(route_days),
+                "place_count": len(places),
+                "route_persisted_count": route_persisted_count,
+                "place_persisted_count": place_persisted_count,
+                "timeline_candidate_count": len(timeline_candidates),
+                "timeline_candidate_persisted_count": timeline_candidate_persisted_count,
+                "map_matched_route_day_count": map_matched_route_day_count,
+                "route_day_fallback_count": route_day_fallback_count,
             }
         )
         logger.info(
             (
                 "Location follow-up pipeline placeholder tripId=%s "
                 "preprocessed=%s stored=%s staySegments=%s moveSegments=%s routeDays=%s places=%s "
-                "routePersisted=%s placePersisted=%s timelineCandidates=%s timelineCandidatesPersisted=%s"
+                "routePersisted=%s placePersisted=%s timelineCandidates=%s timelineCandidatesPersisted=%s "
+                "mapMatchedRouteDays=%s routeDayFallbacks=%s"
             ),
             payload.trip_id,
             updated_summary.preprocessed_count,
@@ -97,5 +108,37 @@ class LocationFollowupPipeline:
             updated_summary.place_persisted_count,
             updated_summary.timeline_candidate_count,
             updated_summary.timeline_candidate_persisted_count,
+            updated_summary.map_matched_route_day_count,
+            updated_summary.route_day_fallback_count,
         )
         return updated_summary
+
+    async def _apply_map_matching(
+        self,
+        route_days: list[LocationRouteDay],
+    ) -> tuple[list[LocationRouteDay], int, int]:
+        if not route_days:
+            return route_days, 0, 0
+
+        matched_route_days = []
+        matched_count = 0
+        fallback_count = 0
+
+        for route_day in route_days:
+            matched_coordinates = await self.map_matcher.match_coordinates(route_day.coordinates)
+            if matched_coordinates is None:
+                matched_route_days.append(route_day)
+                fallback_count += 1
+                continue
+
+            matched_route_days.append(
+                route_day.model_copy(
+                    update={
+                        "point_count": len(matched_coordinates),
+                        "coordinates": matched_coordinates,
+                    }
+                )
+            )
+            matched_count += 1
+
+        return matched_route_days, matched_count, fallback_count

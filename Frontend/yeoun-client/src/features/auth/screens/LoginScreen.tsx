@@ -63,10 +63,7 @@ export const LoginScreen = () => {
   const handleNativeGoogleLogin = async () => {
     setIsLoading(true);
     setLoginError("");
-    console.log('[LoginScreen] Starting Google login', {
-      redirectUri,
-      idTokenPreview: `${idToken.slice(0, 16)}...`,
-    });
+    console.log('[LoginScreen] Starting Google login');
     try {
       await GoogleSignin.hasPlayServices();
       const googleResponse = await GoogleSignin.signIn();

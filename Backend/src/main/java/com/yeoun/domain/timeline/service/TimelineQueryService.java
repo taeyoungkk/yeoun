@@ -2,6 +2,7 @@ package com.yeoun.domain.timeline.service;
 
 import com.yeoun.domain.photo.entity.Photo;
 import com.yeoun.domain.photo.repository.PhotoRepository;
+import com.yeoun.domain.photo.service.PhotoProcessingImageUrlService;
 import com.yeoun.domain.timeline.dto.response.EventDetailResponse;
 import com.yeoun.domain.timeline.dto.response.EventMemoSummaryResponse;
 import com.yeoun.domain.timeline.dto.response.EventPhotoResponse;
@@ -51,6 +52,7 @@ public class TimelineQueryService {
     private final PhotoRepository photoRepository;
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
+    private final PhotoProcessingImageUrlService photoProcessingImageUrlService;
 
     public TimelineQueryService(
             TimelineDayRepository timelineDayRepository,
@@ -59,7 +61,8 @@ public class TimelineQueryService {
             EventMemoRepository eventMemoRepository,
             PhotoRepository photoRepository,
             TripRepository tripRepository,
-            TripMemberRepository tripMemberRepository
+            TripMemberRepository tripMemberRepository,
+            PhotoProcessingImageUrlService photoProcessingImageUrlService
     ) {
         this.timelineDayRepository = timelineDayRepository;
         this.eventRepository = eventRepository;
@@ -68,6 +71,7 @@ public class TimelineQueryService {
         this.photoRepository = photoRepository;
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
+        this.photoProcessingImageUrlService = photoProcessingImageUrlService;
     }
 
     public TimelineDayListResponse getTimelineDays(UUID requesterUserId, UUID tripId) {
@@ -229,8 +233,8 @@ public class TimelineQueryService {
         return new EventPhotoResponse(
                 eventPhoto.getEventPhotoId(),
                 photo.getPhotoId(),
-                photo.getStorageKey(),
-                photo.getThumbnailKey(),
+                photoProcessingImageUrlService.createOriginalUrl(photo.getStorageKey()),
+                photoProcessingImageUrlService.createThumbnailUrl(photo.getThumbnailKey()),
                 photo.getFileName(),
                 photo.getTakenAt(),
                 eventPhoto.getSortOrder(),

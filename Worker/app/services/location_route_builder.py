@@ -71,6 +71,8 @@ class LocationRouteBuilder:
                     tripId=trip_id,
                     userId=user_id,
                     day=day,
+                    startedAt=segments[0].started_at,
+                    endedAt=segments[-1].ended_at,
                     pointCount=len(deduped_coordinates),
                     distanceM=Decimal(str(round(total_distance, 2))),
                     coordinates=deduped_coordinates,

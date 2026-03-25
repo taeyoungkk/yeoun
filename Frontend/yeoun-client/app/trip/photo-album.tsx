@@ -1,5 +1,5 @@
-import TripPhotoAlbumScreen from '@/src/features/trip/screens/TripPhotoAlbumScreen';
+import TripPhotoAlbumApiScreen from '@/src/features/trip/screens/TripPhotoAlbumApiScreen';
 
 export default function TripPhotoAlbumRoute() {
-  return <TripPhotoAlbumScreen />;
+  return <TripPhotoAlbumApiScreen />;
 }

@@ -31,6 +31,9 @@ import com.yeoun.domain.trip.repository.TripMemberRepository;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.domain.trip.repository.TripMemberSummaryProjection;
 import com.yeoun.domain.trip.repository.TripInviteUserSummaryProjection;
+import com.yeoun.domain.tripsync.entity.SyncStatus;
+import com.yeoun.domain.tripsync.entity.TripSyncStatus;
+import com.yeoun.domain.tripsync.repository.TripSyncStatusRepository;
 import com.yeoun.domain.user.repository.UserRepository;
 import com.yeoun.domain.notification.entity.NotificationType;
 import com.yeoun.domain.notification.service.NotificationService;
@@ -59,6 +62,7 @@ public class TripService {
     private final TripMemberRepository tripMemberRepository;
     private final TripInviteRepository tripInviteRepository;
     private final UserRepository userRepository;
+    private final TripSyncStatusRepository tripSyncStatusRepository;
     private final NotificationService notificationService;
     private final String inviteBaseUrl;
 
@@ -67,6 +71,7 @@ public class TripService {
             TripMemberRepository tripMemberRepository,
             TripInviteRepository tripInviteRepository,
             UserRepository userRepository,
+            TripSyncStatusRepository tripSyncStatusRepository,
             NotificationService notificationService,
             @Value("${app.invite.base-url}") String inviteBaseUrl
     ) {
@@ -74,6 +79,7 @@ public class TripService {
         this.tripMemberRepository = tripMemberRepository;
         this.tripInviteRepository = tripInviteRepository;
         this.userRepository = userRepository;
+        this.tripSyncStatusRepository = tripSyncStatusRepository;
         this.notificationService = notificationService;
         this.inviteBaseUrl = inviteBaseUrl;
     }
@@ -111,6 +117,18 @@ public class TripService {
                 .createdAt(now)
                 .build();
         tripMemberRepository.save(ownerMember);
+
+        TripSyncStatus tripSyncStatus = TripSyncStatus.builder()
+                .tripId(trip.getTripId())
+                .syncStatus(SyncStatus.IDLE)
+                .routeVersion(0L)
+                .timelineVersion(0L)
+                .photoVersion(0L)
+                .lastErrorMessage(null)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        tripSyncStatusRepository.save(tripSyncStatus);
 
         return new TripCreateResponse(
                 trip.getTripId(),
