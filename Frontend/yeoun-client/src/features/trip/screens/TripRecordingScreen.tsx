@@ -1,8 +1,9 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Mapbox from '@rnmapbox/maps';
 import { Image } from 'expo-image';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -21,27 +22,44 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { configureMapbox } from '@/src/lib/mapbox';
-import { getTripExpensesApi } from '@/src/api/expense';
-import { getTimelineDayDetailApi, getTripTimelineDaysApi, type TimelineDayDetail } from '@/src/api/timeline';
-import { getTripDetailApi, startTripApi, endTripApi, leaveTripApi, deleteTripApi } from '@/src/api/trip';
-import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 import {
-  CURRENT_USER_ID,
-  deleteTripEvent,
-  deleteTripPhoto,
-  getTripEvents,
-  ignoreTripPaymentCandidate,
-  selectTripPaymentCandidate,
-  subscribeTripEvents,
-  updateTripEvent,
-  updateTripPaymentDetails,
-  updateTripPhoto,
-  type TimelineEvent,
-} from '@/src/features/trip/store/tripMockStore';
+  deleteExpenseApi,
+  getExpenseDetailApi,
+  getTripExpensesApi,
+  updateExpenseApi,
+} from '@/src/api/expense';
+import {
+  deletePhotoMemoApi,
+  getPhotoDetailApi,
+  updatePhotoApi,
+  upsertPhotoMemoApi,
+  type PhotoDetail,
+} from '@/src/api/photo';
+import {
+  getEventDetailApi,
+  getTimelineDayDetailApi,
+  getTripTimelineDaysApi,
+  updateEventApi,
+  upsertEventMemoApi,
+  type EventDetail,
+  type TimelineDayDetail,
+} from '@/src/api/timeline';
+import {
+  deleteTripApi,
+  endTripApi,
+  getTripDetailApi,
+  getTripMembersApi,
+  getTripRouteByDayApi,
+  leaveTripApi,
+  startTripApi,
+  type TripMemberItem,
+} from '@/src/api/trip';
+import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 import { locationService } from '../../../services/locationService';
-import { useTripStore } from '@/src/store/trip.store';
+import { type LocationSyncStatus, useTripStore } from '@/src/store/trip.store';
 import { useUserStore } from '@/src/store/user.store';
 import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
+import MockTripRecordingScreen from './MockTripRecordingScreen';
 
 const hasMapboxToken = configureMapbox();
 const MAX_MAP_HEIGHT = 620;
@@ -58,6 +76,50 @@ type TimelineEventType = 'location' | 'photo' | 'payment';
 type Coordinate = [number, number];
 type MapFilterKey = 'showPhotoPins' | 'showPaymentPins';
 type ActionConfirmKind = 'end' | 'leave' | 'delete';
+type PaymentDialogMode = 'edit';
+type PaymentSplitType = 'equal';
+
+type PhotoContributor = {
+  id: string;
+  name: string;
+  color: string;
+};
+
+type TimelinePhotoItem = {
+  id: string;
+  source: number | string;
+  memo?: string;
+  contributorId?: string;
+};
+
+type TimelineEvent = {
+  id: string;
+  day: DayKey;
+  type: TimelineEventType;
+  time: string;
+  title: string;
+  subtitle: string;
+  amount?: string;
+  chips?: string[];
+  coordinate?: Coordinate;
+  placeName?: string;
+  eventMemo?: string;
+  photoUrls?: string[];
+  photoContributors?: PhotoContributor[];
+  photoItems?: TimelinePhotoItem[];
+  paymentStatus?: 'confirmed';
+  paymentCardName?: string;
+  paymentPayerName?: string;
+  paymentPayerUserId?: string;
+  paymentSplitLabel?: string;
+  paymentExpenseId?: string;
+  paymentParticipantUserIds?: string[];
+  paymentParticipantNames?: string[];
+  paymentSplitType?: PaymentSplitType;
+  emotionEmoji?: string;
+  emotionLabel?: string;
+  emotionOwnerId?: string;
+};
 
 type TripDay = {
   id: DayKey;
@@ -119,8 +181,6 @@ const EMOTION_OPTIONS = [
   { emoji: '😴', label: '피곤함' },
   { emoji: '🥲', label: '뭉클함' },
 ] as const;
-const TRIP_MEMBER_OPTIONS = ['민지', '지훈', '서연'];
-
 function getBounds(route: Coordinate[]) {
   const longitudes = route.map(([longitude]) => longitude);
   const latitudes = route.map(([, latitude]) => latitude);
@@ -203,14 +263,25 @@ function formatWon(value: number) {
   return `₩${Math.round(value).toLocaleString('ko-KR')}`;
 }
 
-function buildRealTripDays(timelineDays: TimelineDayDetail[]): TripDay[] {
+function normalizeRouteCoordinates(routeDays: Array<{ coordinates: number[][] }>): Coordinate[] {
+  return routeDays.flatMap((routeDay) =>
+    routeDay.coordinates
+      .filter((coordinate): coordinate is Coordinate => Array.isArray(coordinate) && coordinate.length >= 2)
+      .map(([longitude, latitude]) => [longitude, latitude] as Coordinate),
+  );
+}
+
+function buildRealTripDays(
+  timelineDays: TimelineDayDetail[],
+  routeByDate: Map<string, Coordinate[]>,
+): TripDay[] {
   return timelineDays.map((timelineDay, index) => ({
     id: `day${index + 1}` as DayKey,
     label: `DAY ${index + 1}`,
     dateLabel: formatDateLabel(timelineDay.dayDate),
-    distanceKm: 0,
+    distanceKm: Math.round((timelineDay.distanceM / 1000) * 10) / 10,
     summary: timelineDay.summaryText || '',
-    route: [],
+    route: routeByDate.get(timelineDay.dayDate) ?? [],
   }));
 }
 
@@ -257,7 +328,37 @@ function buildEmptyRealTripDays(startDate?: string, endDate?: string): TripDay[]
   });
 }
 
-function buildRealTripEvents(timelineDays: TimelineDayDetail[]): TimelineEvent[] {
+const CONTRIBUTOR_COLORS = ['#5E8B7E', '#C96C50', '#6A7FDB', '#D19A32', '#8F5FB5', '#3F8C87'];
+
+const getContributorColor = (userId: string) => {
+  let seed = 0;
+
+  for (let index = 0; index < userId.length; index += 1) {
+    seed = (seed + userId.charCodeAt(index)) % CONTRIBUTOR_COLORS.length;
+  }
+
+  return CONTRIBUTOR_COLORS[seed];
+};
+
+const buildPhotoChipLabel = (photoCount: number) => `photo ${photoCount}`;
+
+const replacePhotoChip = (chips: string[] | undefined, photoCount: number) => {
+  const nextChips = (chips ?? []).filter((chip) => !chip.startsWith('photo '));
+  if (photoCount > 0) {
+    nextChips.push(buildPhotoChipLabel(photoCount));
+  }
+
+  return nextChips;
+};
+
+function buildRealTripEvents(
+  timelineDays: TimelineDayDetail[],
+  eventDetailsById: Record<string, EventDetail>,
+  photoDetailsById: Record<string, PhotoDetail>,
+  memberMap: Record<string, TripMemberItem>,
+  currentUserId?: string | null,
+  currentUserNickname?: string | null,
+): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
   timelineDays.forEach((timelineDay, dayIndex) => {
@@ -266,31 +367,65 @@ function buildRealTripEvents(timelineDays: TimelineDayDetail[]): TimelineEvent[]
     timelineDay.events
       .filter((event) => !event.hidden)
       .forEach((event) => {
-        const hasPhotos = event.photoCount > 0 || Boolean(event.representativePhoto?.imageUrl);
+        const eventDetail = eventDetailsById[event.eventId];
+        const visiblePhotos = (eventDetail?.photos ?? [])
+          .map((eventPhoto) => {
+            const photoDetail = photoDetailsById[eventPhoto.photoId];
+            if (!photoDetail || photoDetail.isExcluded) {
+              return null;
+            }
+
+            return {
+              photoId: eventPhoto.photoId,
+              sortOrder: eventPhoto.sortOrder,
+              source: photoDetail.thumbnailUrl || photoDetail.originalUrl,
+              memo: photoDetail.myMemo?.content,
+              contributorId: photoDetail.ownerUserId,
+            };
+          })
+          .filter((photo): photo is NonNullable<typeof photo> => Boolean(photo))
+          .sort((left, right) => left.sortOrder - right.sortOrder);
+        const contributorIds = Array.from(new Set(visiblePhotos.map((photo) => photo.contributorId).filter(Boolean)));
+        const photoContributors = contributorIds.map((userId) => {
+          const matchedMember = memberMap[userId];
+          const fallbackName = userId === currentUserId ? currentUserNickname : null;
+
+          return {
+            id: userId,
+            name: matchedMember?.nickname ?? fallbackName ?? '여행 메이트',
+            color: getContributorColor(userId),
+          };
+        });
+        const hasPhotos = visiblePhotos.length > 0;
+        const eventType = eventDetail?.eventType ?? event.eventType;
+        const startAt = eventDetail?.startAt ?? event.startAt;
+        const endAt = eventDetail?.endAt ?? event.endAt;
+        const placeName = eventDetail?.placeName ?? event.placeName ?? undefined;
 
         events.push({
           id: event.eventId,
           day: dayKey,
           type: hasPhotos ? 'photo' : 'location',
-          time: formatTimeLabel(event.startAt ?? event.endAt),
-          title: event.title || event.placeName || 'Trip event',
-          subtitle: event.placeName ?? '',
-          placeName: event.placeName ?? undefined,
-          chips: [event.eventType, hasPhotos ? `photo ${event.photoCount}` : null].filter(Boolean) as string[],
-          eventMemo: hasPhotos ? 'Photo detail sync is not connected yet.' : undefined,
-          photoContributors: hasPhotos ? [{ id: event.createdBy, name: 'member', color: '#77B6EA' }] : undefined,
-          photoUrls: event.representativePhoto?.imageUrl ? [event.representativePhoto.imageUrl] : [],
-          photoItems: event.representativePhoto?.imageUrl
-            ? [
-                {
-                  id: `${event.eventId}-photo`,
-                  source: event.representativePhoto.imageUrl,
-                  memo: 'Representative photo',
-                  contributorId: event.createdBy,
-                },
-              ]
+          time: formatTimeLabel(startAt ?? endAt),
+          title: eventDetail?.title || event.title || event.placeName || 'Trip event',
+          subtitle: hasPhotos ? '' : placeName ?? '',
+          placeName,
+          chips: [eventType, hasPhotos ? buildPhotoChipLabel(visiblePhotos.length) : null].filter(Boolean) as string[],
+          eventMemo: eventDetail?.myMemo?.content?.trim() || undefined,
+          photoContributors: hasPhotos ? photoContributors : undefined,
+          photoUrls: hasPhotos ? visiblePhotos.map((photo) => String(photo.source)) : [],
+          photoItems: hasPhotos
+            ? visiblePhotos.map((photo) => ({
+                id: photo.photoId,
+                source: photo.source,
+                memo: photo.memo,
+                contributorId: photo.contributorId,
+              }))
             : undefined,
-          coordinate: event.centerLatitude && event.centerLongitude ? [event.centerLongitude, event.centerLatitude] : undefined,
+          coordinate:
+            eventDetail?.centerLatitude != null && eventDetail?.centerLongitude != null
+              ? [eventDetail.centerLongitude, eventDetail.centerLatitude]
+              : undefined,
         });
       });
   });
@@ -301,13 +436,18 @@ function buildRealTripEvents(timelineDays: TimelineDayDetail[]): TimelineEvent[]
 function appendRealExpenseEvents(
   events: TimelineEvent[],
   timelineDays: TimelineDayDetail[],
-  expenses: Awaited<ReturnType<typeof getTripExpensesApi>>['data']['items']
+  expenses: Awaited<ReturnType<typeof getTripExpensesApi>>['data']['items'],
+  memberMap: Record<string, TripMemberItem>,
+  currentUserId?: string | null,
+  currentUserNickname?: string | null,
 ) {
   const dayIndexByDate = new Map(timelineDays.map((day, index) => [day.dayDate, index]));
 
-  expenses.forEach((expense, index) => {
+  expenses.forEach((expense) => {
     const expenseDate = expense.paidAt?.slice(0, 10);
     const dayIndex = expenseDate && dayIndexByDate.has(expenseDate) ? dayIndexByDate.get(expenseDate)! : 0;
+    const payerFallbackName = expense.payerUserId === currentUserId ? currentUserNickname : null;
+    const payerName = memberMap[expense.payerUserId]?.nickname ?? payerFallbackName ?? '여행 메이트';
     events.push({
       id: `expense-${expense.expenseId}`,
       day: `day${dayIndex + 1}` as DayKey,
@@ -317,11 +457,13 @@ function appendRealExpenseEvents(
       subtitle: expense.category || 'Trip expense',
       amount: formatWon(expense.totalAmount),
       chips: [expense.category, expense.sourceType].filter(Boolean),
-      paymentStatus: expense.status === 'PENDING' ? 'candidate' : 'confirmed',
+      paymentStatus: 'confirmed',
       paymentCardName: expense.sourceType || undefined,
-      paymentPayerName: 'member',
-      paymentSplitLabel: expense.splitType || undefined,
-      paymentParticipantNames: TRIP_MEMBER_OPTIONS,
+      paymentPayerName: payerName,
+      paymentPayerUserId: expense.payerUserId,
+      paymentSplitLabel: expense.splitType === 'EQUAL' ? '균등 분할' : expense.splitType || undefined,
+      paymentExpenseId: expense.expenseId,
+      paymentParticipantUserIds: expense.participantUserIds ?? [],
       paymentSplitType: 'equal',
       eventMemo: `${expense.currencyCode} ${expense.totalAmount.toLocaleString('ko-KR')}`,
     });
@@ -345,13 +487,18 @@ export default function TripRecordingScreen({
   reportRoute?: '/trip/report' | '/trip/mock-report';
   useMockData?: boolean;
 }) {
+  if (useMockData) {
+    return <MockTripRecordingScreen reportRoute="/trip/mock-report" useMockData />;
+  }
+
   const router = useRouter();
   const cameraRef = useRef<Mapbox.Camera>(null);
   const scrollRef = useRef<ScrollView | null>(null);
   const cardPositionsRef = useRef<Record<string, number>>({});
   const [scrollOffset, setScrollOffset] = useState(0);
-  const [tripEvents, setTripEvents] = useState<TimelineEvent[]>(() => (useMockData ? getTripEvents() : []));
+  const [tripEvents, setTripEvents] = useState<TimelineEvent[]>([]);
   const [realTripDays, setRealTripDays] = useState<TripDay[] | null>(null);
+  const [tripMembers, setTripMembers] = useState<TripMemberItem[]>([]);
   const params = useLocalSearchParams();
   const endTrip = useTripStore((state) => state.endTrip);
   const clearTrip = useTripStore((state) => state.clearTrip);
@@ -362,7 +509,11 @@ export default function TripRecordingScreen({
   const currentTripId = useTripStore((state) => state.currentTripId);
   const activeTrip = useTripStore((state) => state.activeTrip);
   const setActiveTrip = useTripStore((state) => state.setActiveTrip);
+  const routeRefreshKey = useTripStore((state) => state.routeRefreshKey);
+  const locationSyncStatus = useTripStore((state) => state.locationSyncStatus);
+  const locationSyncMessage = useTripStore((state) => state.locationSyncMessage);
   const currentUserId = useUserStore((state) => state.profile?.userId);
+  const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -374,15 +525,16 @@ export default function TripRecordingScreen({
   const [eventEditor, setEventEditor] = useState<{ eventId: string; title: string; placeName: string; body: string } | null>(null);
   const [photoEditor, setPhotoEditor] = useState<{ eventId: string; photoId: string; memo: string } | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<
-    | { kind: 'event'; eventId: string; title: string; message: string }
+    | { kind: 'event'; eventId: string; expenseId?: string; title: string; message: string }
     | { kind: 'photo'; eventId: string; photoId: string; title: string; message: string }
     | null
   >(null);
   const [paymentImportDialog, setPaymentImportDialog] = useState<{
-    mode: 'import' | 'edit';
+    mode: PaymentDialogMode;
     eventId: string;
-    payerName: string;
-    selectedMembers: string[];
+    expenseId: string;
+    payerUserId: string;
+    selectedMemberUserIds: string[];
     memo: string;
   } | null>(null);
   const [emotionPicker, setEmotionPicker] = useState<{
@@ -402,18 +554,14 @@ export default function TripRecordingScreen({
   } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
-  const [liveRoute, setLiveRoute] = useState<Coordinate[]>([]);
-  const showMockRouteMetrics = useMockData;
+  const [liveCurrentLocation, setLiveCurrentLocation] = useState<Coordinate | null>(null);
+  const [initialCurrentLocation, setInitialCurrentLocation] = useState<Coordinate | null>(null);
   const isReviewMode = params.mode === 'review';
   const displayTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
 
   const tripDays = useMemo(() => {
-    if (!useMockData) {
-      return realTripDays ?? buildEmptyRealTripDays(displayTrip?.startDate, displayTrip?.endDate);
-    }
-
-    return buildTripDays(displayTrip?.startDate, displayTrip?.endDate);
-  }, [displayTrip?.endDate, displayTrip?.startDate, realTripDays, useMockData]);
+    return realTripDays ?? buildEmptyRealTripDays(displayTrip?.startDate, displayTrip?.endDate);
+  }, [displayTrip?.endDate, displayTrip?.startDate, realTripDays]);
   const filteredDays = useMemo(() => getFilteredDays(activeFilter, tripDays), [activeFilter, tripDays]);
   const filteredEvents = useMemo(
     () => tripEvents.filter((event) => activeFilter === 'all' || event.day === activeFilter),
@@ -441,12 +589,11 @@ export default function TripRecordingScreen({
   );
 
   const routeCoordinates = useMemo(() => {
-    const historical = filteredDays.flatMap((day) => day.route);
-    return [...historical, ...liveRoute];
-  }, [filteredDays, liveRoute]);
+    return filteredDays.flatMap((day) => day.route);
+  }, [filteredDays]);
   const currentLocationCoordinate = useMemo(
-    () => (liveRoute.length > 0 ? liveRoute[liveRoute.length - 1] : null),
-    [liveRoute]
+    () => liveCurrentLocation ?? initialCurrentLocation,
+    [initialCurrentLocation, liveCurrentLocation]
   );
   const routeShape = useMemo(
     () => ({
@@ -482,14 +629,12 @@ export default function TripRecordingScreen({
   );
   const summaryStats = useMemo(
     () => ({
-      totalDistanceLabel: showMockRouteMetrics
-        ? `${filteredDays.reduce((sum, day) => sum + day.distanceKm, 0).toFixed(1)}km`
-        : '-',
-      visitedPlaceCount: showMockRouteMetrics ? filteredEvents.filter((event) => Boolean(event.coordinate)).length : '-',
+      totalDistanceLabel: `${filteredDays.reduce((sum, day) => sum + day.distanceKm, 0).toFixed(1)}km`,
+      visitedPlaceCount: filteredEvents.filter((event) => Boolean(event.coordinate)).length,
       photoCount: filteredEvents.reduce((sum, event) => sum + (event.photoItems?.length ?? 0), 0),
-      paymentCount: filteredEvents.filter((event) => event.type === 'payment' && event.paymentStatus !== 'candidate').length,
+      paymentCount: filteredEvents.filter((event) => event.type === 'payment').length,
     }),
-    [filteredDays, filteredEvents, showMockRouteMetrics]
+    [filteredDays, filteredEvents]
   );
   const selectedPhotoEvent = useMemo(
     () => filteredEvents.find((event) => event.id === photoViewer?.eventId) ?? null,
@@ -501,80 +646,273 @@ export default function TripRecordingScreen({
       selectedPhotoEvent?.photoContributors?.find((contributor) => contributor.id === selectedPhotoItem?.contributorId) ?? null,
     [selectedPhotoEvent, selectedPhotoItem]
   );
-  const selectedPhotoIsOwner = selectedPhotoContributor?.id === CURRENT_USER_ID;
+  const selectedPhotoIsOwner = selectedPhotoItem?.contributorId === currentUserId;
   const selectedPhotoEmotion =
-    selectedPhotoEvent?.emotionOwnerId === CURRENT_USER_ID && selectedPhotoEvent?.emotionEmoji && selectedPhotoEvent?.emotionLabel
+    selectedPhotoEvent?.emotionOwnerId === currentUserId && selectedPhotoEvent?.emotionEmoji && selectedPhotoEvent?.emotionLabel
       ? `${selectedPhotoEvent.emotionEmoji} ${selectedPhotoEvent.emotionLabel}`
       : null;
   const collapseProgress = Math.min(scrollOffset / MAP_COLLAPSE_DISTANCE, 1);
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
   const panelLift = -145 * collapseProgress;
-  const activeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
-  const tripTitle = displayTrip?.tripName || 'Trip';
+  const routeTripId = typeof params.tripId === 'string' ? params.tripId.trim() : '';
+  const storeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
+  const activeTripId = (routeTripId || storeTripId || '').trim();
+  const tripTitle = (displayTrip as { title?: string; tripName?: string } | null)?.title || displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
+
+  const syncActionInFlight =
+    isSyncing || locationSyncStatus === 'uploading' || locationSyncStatus === 'processing';
+  const syncStatusMeta: Record<LocationSyncStatus, { icon: keyof typeof MaterialIcons.glyphMap; tint: string; surface: string }> = {
+    idle: { icon: 'info-outline', tint: '#5F6E65', surface: '#EFF3EE' },
+    uploading: { icon: 'cloud-upload', tint: '#2362A8', surface: '#E8F2FF' },
+    processing: { icon: 'schedule', tint: '#8A5A11', surface: '#FFF3DD' },
+    completed: { icon: 'check-circle', tint: '#2F7A47', surface: '#EAF6EE' },
+    failed: { icon: 'error-outline', tint: '#B25543', surface: '#FDEEEA' },
+  };
+  const currentSyncMeta = syncStatusMeta[locationSyncStatus];
+  const memberNameByUserId = useMemo(
+    () =>
+      Object.fromEntries(
+        tripMembers.map((member) => [member.userId, member.nickname] as const),
+      ) as Record<string, string>,
+    [tripMembers],
+  );
+
+  const updateRealTimelinePhotoMemo = useCallback((eventId: string, photoId: string, memo?: string) => {
+    setTripEvents((prev) =>
+      prev.map((event) => {
+        if (event.id !== eventId || !event.photoItems) {
+          return event;
+        }
+
+        return {
+          ...event,
+          photoItems: event.photoItems.map((photo) =>
+            photo.id === photoId
+              ? {
+                  ...photo,
+                  memo,
+                }
+              : photo,
+          ),
+        };
+      }),
+    );
+  }, []);
+
+  const removeRealTimelinePhoto = useCallback((eventId: string, photoId: string) => {
+    setTripEvents((prev) =>
+      prev.flatMap((event) => {
+        if (event.id !== eventId || !event.photoItems) {
+          return [event];
+        }
+
+        const nextPhotoItems = event.photoItems.filter((photo) => photo.id !== photoId);
+        if (nextPhotoItems.length === 0 && event.chips?.[0] === 'OTHER') {
+          return [];
+        }
+
+        const nextContributorIds = new Set(nextPhotoItems.map((photo) => photo.contributorId).filter(Boolean));
+
+        return [
+          {
+            ...event,
+            type: nextPhotoItems.length > 0 ? 'photo' : 'location',
+            chips: replacePhotoChip(event.chips, nextPhotoItems.length),
+            photoItems: nextPhotoItems.length > 0 ? nextPhotoItems : undefined,
+            photoUrls: nextPhotoItems.length > 0 ? nextPhotoItems.map((photo) => String(photo.source)) : undefined,
+            photoContributors:
+              nextPhotoItems.length > 0
+                ? event.photoContributors?.filter((contributor) => nextContributorIds.has(contributor.id))
+                : undefined,
+          },
+        ];
+      }),
+    );
+  }, []);
+
+  const updateRealTimelineEvent = useCallback(
+    (eventId: string, updates: Partial<Pick<TimelineEvent, 'title' | 'placeName' | 'subtitle' | 'eventMemo'>>) => {
+      setTripEvents((prev) =>
+        prev.map((event) =>
+          event.id === eventId
+            ? {
+                ...event,
+                ...updates,
+              }
+            : event,
+        ),
+      );
+    },
+    [],
+  );
+
+  const removeRealTimelineEvent = useCallback((eventId: string) => {
+    setTripEvents((prev) => prev.filter((event) => event.id !== eventId));
+  }, []);
+
+  const updateRealExpenseEvent = useCallback(
+    (
+      eventId: string,
+      updates: Partial<
+        Pick<
+          TimelineEvent,
+          | 'paymentPayerName'
+          | 'paymentPayerUserId'
+          | 'paymentParticipantNames'
+          | 'paymentParticipantUserIds'
+          | 'paymentSplitLabel'
+          | 'eventMemo'
+        >
+      >,
+    ) => {
+      setTripEvents((prev) =>
+        prev.map((event) =>
+          event.id === eventId
+            ? {
+                ...event,
+                ...updates,
+              }
+            : event,
+        ),
+      );
+    },
+    [],
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadInitialCurrentLocation = async () => {
+      try {
+        let loc = await Location.getLastKnownPositionAsync({});
+        if (!loc) {
+          loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        }
+
+        if (isMounted && loc) {
+          setInitialCurrentLocation([loc.coords.longitude, loc.coords.latitude]);
+        }
+      } catch (error) {
+        console.warn('Failed to load initial current location:', error);
+      }
+    };
+
+    void loadInitialCurrentLocation();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (routeCoordinates.length < 2) {
       return;
     }
 
+    if (!currentLocationCoordinate) {
+      return;
+    }
+
     const { northEast, southWest } = getBounds(routeCoordinates);
     cameraRef.current?.fitBounds(northEast, southWest, 56, 900);
-  }, [routeCoordinates]);
+  }, [currentLocationCoordinate, routeCoordinates]);
 
   useEffect(() => {
-    if (!useMockData) {
-      return;
-    }
-
-    const unsubscribe = subscribeTripEvents(() => {
-      setTripEvents(getTripEvents());
-    });
-
-    return unsubscribe;
-  }, [useMockData]);
-
-  useEffect(() => {
-    if (useMockData) {
-      setTripEvents(getTripEvents());
-      setRealTripDays(null);
-      return;
-    }
-
     if (!activeTripId) {
       setTripEvents([]);
       setRealTripDays(null);
+      setTripMembers([]);
       return;
     }
 
     let cancelled = false;
 
-      const loadRealTripData = async () => {
-        try {
-        const [tripDetailResponse, timelineDaysResponse, expensesResponse] = await Promise.all([
+    const loadRealTripData = async () => {
+      try {
+        const [tripDetailResponse, timelineDaysResponse, expensesResponse, tripMembersResponse] = await Promise.all([
           getTripDetailApi(activeTripId),
           getTripTimelineDaysApi(activeTripId),
           getTripExpensesApi(activeTripId),
+          getTripMembersApi(activeTripId),
         ]);
 
         const timelineDays = await Promise.all(
           timelineDaysResponse.data.timelineDays.map(async (timelineDay) => {
             const detailResponse = await getTimelineDayDetailApi(timelineDay.timelineDayId);
             return detailResponse.data;
-          })
+          }),
+        );
+        const eventDetails = await Promise.all(
+          timelineDays.flatMap((timelineDay) =>
+            timelineDay.events
+              .filter((event) => !event.hidden)
+              .map(async (event) => {
+                const detailResponse = await getEventDetailApi(event.eventId);
+                return detailResponse.success ? detailResponse.data : null;
+              }),
+          ),
+        );
+        const validEventDetails = eventDetails.filter((eventDetail): eventDetail is EventDetail => Boolean(eventDetail));
+        const uniquePhotoIds = Array.from(
+          new Set(validEventDetails.flatMap((eventDetail) => eventDetail.photos.map((photo) => photo.photoId))),
+        );
+        const photoDetails = await Promise.all(
+          uniquePhotoIds.map(async (photoId) => {
+            const photoDetailResponse = await getPhotoDetailApi(photoId);
+            return photoDetailResponse.success ? photoDetailResponse.data : null;
+          }),
+        );
+        const routeByDate = new Map<string, Coordinate[]>(
+          await Promise.all(
+            timelineDays.map(async (timelineDay) => {
+              const routeResponse = await getTripRouteByDayApi(activeTripId, timelineDay.dayDate);
+              return [
+                timelineDay.dayDate,
+                routeResponse.success ? normalizeRouteCoordinates(routeResponse.data.routeDays) : [],
+              ] as const;
+            }),
+          ),
         );
 
         if (cancelled) {
           return;
         }
 
+        const eventDetailsById = Object.fromEntries(validEventDetails.map((eventDetail) => [eventDetail.eventId, eventDetail]));
+        const photoDetailsById = Object.fromEntries(
+          photoDetails
+            .filter((photoDetail): photoDetail is PhotoDetail => Boolean(photoDetail))
+            .map((photoDetail) => [photoDetail.photoId, photoDetail]),
+        );
+        const memberMap = tripMembersResponse.success
+          ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
+          : {};
+
         if (tripDetailResponse.success) {
           setActiveTrip(tripDetailResponse.data);
         }
-        setRealTripDays(buildRealTripDays(timelineDays));
-        setTripEvents(appendRealExpenseEvents(buildRealTripEvents(timelineDays), timelineDays, expensesResponse.data.items));
+        setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
+        setRealTripDays(buildRealTripDays(timelineDays, routeByDate));
+        setTripEvents(
+          appendRealExpenseEvents(
+            buildRealTripEvents(
+              timelineDays,
+              eventDetailsById,
+              photoDetailsById,
+              memberMap,
+              currentUserId,
+              currentUserNickname,
+            ),
+            timelineDays,
+            expensesResponse.data.items,
+            memberMap,
+            currentUserId,
+            currentUserNickname,
+          ),
+        );
       } catch (error) {
         if (cancelled) {
           return;
@@ -583,6 +921,7 @@ export default function TripRecordingScreen({
         console.error('Failed to load real trip data', error);
         setRealTripDays(null);
         setTripEvents([]);
+        setTripMembers([]);
         Alert.alert('Trip data load failed', 'Could not load real trip data.');
       }
     };
@@ -592,7 +931,7 @@ export default function TripRecordingScreen({
     return () => {
       cancelled = true;
     };
-  }, [activeTripId, setActiveTrip, useMockData]);
+  }, [activeTripId, currentUserId, currentUserNickname, routeRefreshKey, setActiveTrip]);
 
   useEffect(() => {
     const unsubscribe = subscribeUser(() => {
@@ -618,9 +957,8 @@ export default function TripRecordingScreen({
   }, [activeFilter, tripDays]);
 
   useEffect(() => {
-    // Subscribe to real-time location updates for instant map updates
     const unsubscribe = locationService.subscribe((location) => {
-      setLiveRoute((prev) => [...prev, [location.longitude, location.latitude]]);
+      setLiveCurrentLocation([location.longitude, location.latitude]);
     });
 
     return unsubscribe;
@@ -632,34 +970,17 @@ export default function TripRecordingScreen({
     }
   }, [photoViewer, selectedPhotoEvent, selectedPhotoItem]);
 
-  // Periodic Auto-sync (Every 5 minutes)
-  useEffect(() => {
-    if (!activeTripId) {
-      return;
-    }
-
-    const SYNC_INTERVAL = 5 * 60 * 1000;
-    const timer = setInterval(() => {
-      locationService.syncLocations(activeTripId);
-    }, SYNC_INTERVAL);
-
-    return () => clearInterval(timer);
-  }, [activeTripId]);
-
   const handleManualSync = async () => {
     if (!activeTripId) {
       Alert.alert('No active trip', 'Could not find the trip to sync.');
       return;
     }
 
-    setIsSyncing(true);
-    const success = await locationService.syncLocations(activeTripId);
-    setIsSyncing(false);
-    
-    if (success) {
-      Alert.alert('동기화 완료', '모든 위치 기록이 서버에 안전하게 저장되었습니다.');
-    } else {
-      Alert.alert('동기화 실패', '네트워크 연결을 확인해주세요. 기록은 안전하게 보관 중입니다.');
+    try {
+      setIsSyncing(true);
+      await locationService.syncLocations(activeTripId);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -798,6 +1119,11 @@ export default function TripRecordingScreen({
   };
 
   const handleEndTrip = () => {
+    if (!activeTripId) {
+      Alert.alert('No active trip', 'Could not find the trip to end.');
+      return;
+    }
+
     setActionConfirm({
       kind: 'end',
       title: '여행을 종료할까요?',
@@ -807,6 +1133,11 @@ export default function TripRecordingScreen({
   };
 
   const handleLeaveTrip = () => {
+    if (!activeTripId) {
+      Alert.alert('No active trip', 'Could not find the trip to leave.');
+      return;
+    }
+
     if (isTripOwner) {
       Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
       return;
@@ -821,6 +1152,11 @@ export default function TripRecordingScreen({
   };
 
   const handleDeleteTrip = () => {
+    if (!activeTripId) {
+      Alert.alert('No active trip', 'Could not find the trip to delete.');
+      return;
+    }
+
     setActionConfirm({
       kind: 'delete',
       title: '여행을 삭제할까요?',
@@ -835,6 +1171,11 @@ export default function TripRecordingScreen({
     setIsMenuOpen(false);
 
     if (!currentAction || isSubmittingAction) {
+      return;
+    }
+
+    if (!activeTripId) {
+      Alert.alert('No active trip', 'Could not find the trip for this action.');
       return;
     }
 
@@ -943,11 +1284,6 @@ export default function TripRecordingScreen({
   };
 
   const openEventEditor = (event: TimelineEvent) => {
-    if (!useMockData) {
-      Alert.alert('Real mode', 'Editing real timeline data is not connected yet.');
-      return;
-    }
-
     setEventEditor({
       eventId: event.id,
       title: event.title,
@@ -956,12 +1292,7 @@ export default function TripRecordingScreen({
     });
   };
 
-  const saveEventEditor = () => {
-    if (!useMockData) {
-      setEventEditor(null);
-      return;
-    }
-
+  const saveEventEditor = async () => {
     if (!eventEditor) {
       return;
     }
@@ -973,58 +1304,94 @@ export default function TripRecordingScreen({
     }
 
     const nextBody = eventEditor.body.trim();
-    updateTripEvent(eventEditor.eventId, {
-      title: eventEditor.title.trim() || originalEvent.title,
-      placeName: eventEditor.placeName.trim() || undefined,
-      subtitle: originalEvent.type === 'photo' ? originalEvent.subtitle : nextBody,
-      eventMemo: originalEvent.type === 'photo' ? nextBody : originalEvent.eventMemo,
+    const nextTitle = eventEditor.title.trim() || originalEvent.title;
+    const nextPlaceName = eventEditor.placeName.trim() || null;
+
+    const eventResponse = await updateEventApi(eventEditor.eventId, {
+      title: nextTitle,
+      placeName: nextPlaceName,
     });
+
+    if (!eventResponse.success) {
+      Alert.alert('이벤트 수정 실패', eventResponse.message ?? '이벤트를 수정하지 못했어요.');
+      return;
+    }
+
+    updateRealTimelineEvent(eventEditor.eventId, {
+      title: nextTitle,
+      placeName: nextPlaceName ?? undefined,
+      subtitle: nextPlaceName ?? '',
+    });
+
+    if (nextBody.length > 0) {
+      const memoResponse = await upsertEventMemoApi(eventEditor.eventId, {
+        content: nextBody,
+      });
+
+      if (!memoResponse.success) {
+        Alert.alert('메모 저장 실패', memoResponse.message ?? '이벤트 메모를 저장하지 못했어요.');
+        setEventEditor(null);
+        return;
+      }
+
+      updateRealTimelineEvent(eventEditor.eventId, {
+        eventMemo: nextBody,
+      });
+    } else if (originalEvent.eventMemo) {
+      Alert.alert('메모 삭제 미지원', '이벤트 메모 삭제는 아직 연결되지 않았어요. 제목과 장소만 수정했어요.');
+    } else {
+      updateRealTimelineEvent(eventEditor.eventId, {
+        eventMemo: undefined,
+      });
+    }
     setEventEditor(null);
   };
 
   const confirmDeleteEvent = (event: TimelineEvent) => {
-    if (!useMockData) {
-      Alert.alert('Real mode', 'Deleting real timeline data is not connected yet.');
-      return;
-    }
-
     setDeleteDialog({
       kind: 'event',
       eventId: event.id,
-      title: '이 이벤트를 삭제할까요?',
-      message: '삭제하면 타임라인과 지도에서 바로 사라져요. 목업 화면에서도 즉시 반영됩니다.',
+      expenseId: event.paymentExpenseId,
+      title: event.type === 'payment' ? '이 비용을 삭제할까요?' : '이 이벤트를 삭제할까요?',
+      message:
+        event.type === 'payment'
+          ? '삭제하면 여행 비용 목록과 타임라인에서 바로 사라져요.'
+          : '삭제하면 타임라인과 지도에서 바로 사라져요.',
     });
   };
 
   const openPhotoEditor = (eventId: string, photoId: string, memo?: string) => {
-    if (!useMockData) {
-      Alert.alert('Real mode', 'Editing real photo data is not connected yet.');
-      return;
-    }
-
     setPhotoEditor({ eventId, photoId, memo: memo ?? '' });
   };
 
-  const savePhotoEditor = () => {
-    if (!useMockData) {
-      setPhotoEditor(null);
-      return;
-    }
-
+  const savePhotoEditor = async () => {
     if (!photoEditor) {
       return;
     }
 
-    updateTripPhoto(photoEditor.eventId, photoEditor.photoId, { memo: photoEditor.memo.trim() });
+    const nextMemo = photoEditor.memo.trim();
+
+    try {
+      const response = nextMemo
+        ? await upsertPhotoMemoApi(photoEditor.photoId, { content: nextMemo })
+        : await deletePhotoMemoApi(photoEditor.photoId);
+
+      if (!response.success) {
+        Alert.alert('메모 저장 실패', response.message ?? '사진 메모를 저장하지 못했어요.');
+        return;
+      }
+
+      updateRealTimelinePhotoMemo(photoEditor.eventId, photoEditor.photoId, nextMemo || undefined);
+    } catch (error) {
+      console.error('Failed to save real photo memo', error);
+      Alert.alert('메모 저장 실패', '사진 메모를 저장하지 못했어요.');
+      return;
+    }
+
     setPhotoEditor(null);
   };
 
   const confirmDeletePhoto = (eventId: string, photoId: string, isOwner: boolean) => {
-    if (!useMockData) {
-      Alert.alert('Real mode', 'Deleting real photo data is not connected yet.');
-      return;
-    }
-
     if (!isOwner) {
       Alert.alert('삭제할 수 없어요', '내가 올린 사진만 삭제할 수 있어요.');
       return;
@@ -1035,22 +1402,40 @@ export default function TripRecordingScreen({
       eventId,
       photoId,
       title: '이 사진을 삭제할까요?',
-      message: '사진 메모와 함께 목록에서 사라져요. 삭제 후에는 이 목업 화면에서 되돌릴 수 없습니다.',
+      message: '사진 메모와 함께 목록에서 사라져요. 삭제 후에는 이 화면에서 되돌릴 수 없습니다.',
     });
   };
 
-  const handleConfirmDelete = () => {
-    if (!useMockData) {
-      setDeleteDialog(null);
-      return;
-    }
-
+  const handleConfirmDelete = async () => {
     if (!deleteDialog) {
       return;
     }
 
     if (deleteDialog.kind === 'event') {
-      deleteTripEvent(deleteDialog.eventId);
+      if (deleteDialog.expenseId) {
+        try {
+          const response = await deleteExpenseApi(deleteDialog.expenseId);
+          if (!response.success) {
+            Alert.alert('비용 삭제 실패', '비용을 삭제하지 못했어요.');
+            return;
+          }
+
+          removeRealTimelineEvent(deleteDialog.eventId);
+        } catch (error) {
+          console.error('Failed to delete expense', error);
+          Alert.alert('비용 삭제 실패', '비용을 삭제하지 못했어요.');
+          return;
+        }
+      } else {
+        const response = await updateEventApi(deleteDialog.eventId, { hidden: true });
+        if (!response.success) {
+          Alert.alert('이벤트 삭제 실패', response.message ?? '이벤트를 삭제하지 못했어요.');
+          return;
+        }
+
+        removeRealTimelineEvent(deleteDialog.eventId);
+      }
+
       if (photoViewer?.eventId === deleteDialog.eventId) {
         setPhotoViewer(null);
       }
@@ -1058,121 +1443,131 @@ export default function TripRecordingScreen({
       return;
     }
 
-    deleteTripPhoto(deleteDialog.eventId, deleteDialog.photoId);
+    try {
+      const response = await updatePhotoApi(deleteDialog.photoId, { isExcluded: true });
+      if (!response.success) {
+        Alert.alert('사진 삭제 실패', response.message ?? '사진을 제외하지 못했어요.');
+        return;
+      }
+
+      removeRealTimelinePhoto(deleteDialog.eventId, deleteDialog.photoId);
+    } catch (error) {
+      console.error('Failed to exclude real photo', error);
+      Alert.alert('사진 삭제 실패', '사진을 제외하지 못했어요.');
+      return;
+    }
+
     setPhotoViewer(null);
     setDeleteDialog(null);
   };
 
-  const openPaymentImportDialog = (event: TimelineEvent) => {
-    if (!useMockData) {
-      Alert.alert('Real mode', 'Editing real expense data is not connected yet.');
+  const openPaymentImportDialog = async (event: TimelineEvent) => {
+    if (!event.paymentExpenseId) {
+      Alert.alert('비용 정보를 찾을 수 없어요', '다시 시도해 주세요.');
       return;
     }
 
-    setPaymentImportDialog({
-      mode: event.paymentStatus === 'confirmed' ? 'edit' : 'import',
-      eventId: event.id,
-      payerName: event.paymentPayerName ?? TRIP_MEMBER_OPTIONS[0],
-      selectedMembers: event.paymentParticipantNames?.length ? event.paymentParticipantNames : TRIP_MEMBER_OPTIONS,
-      memo: event.eventMemo ?? '자동 가져온 결제를 여행 비용으로 확정해요.',
-    });
+    try {
+      const response = await getExpenseDetailApi(event.paymentExpenseId);
+      if (!response.success) {
+        Alert.alert('비용 정보를 불러오지 못했어요', '다시 시도해 주세요.');
+        return;
+      }
+
+      setPaymentImportDialog({
+        mode: 'edit',
+        eventId: event.id,
+        expenseId: response.data.expenseId,
+        payerUserId: response.data.payerUserId,
+        selectedMemberUserIds:
+          response.data.participantUserIds && response.data.participantUserIds.length > 0
+            ? response.data.participantUserIds
+            : tripMembers.map((member) => member.userId),
+        memo: response.data.memo ?? '',
+      });
+    } catch (error) {
+      console.error('Failed to load expense detail', error);
+      Alert.alert('비용 정보를 불러오지 못했어요', '다시 시도해 주세요.');
+      return;
+    }
   };
 
-  const togglePaymentMember = (memberName: string) => {
-    if (!useMockData) {
-      return;
-    }
-
+  const togglePaymentMember = (memberUserId: string) => {
     setPaymentImportDialog((prev) => {
       if (!prev) {
         return prev;
       }
 
-      const nextMembers = prev.selectedMembers.includes(memberName)
-        ? prev.selectedMembers.filter((member) => member !== memberName)
-        : [...prev.selectedMembers, memberName];
+      const nextMembers = prev.selectedMemberUserIds.includes(memberUserId)
+        ? prev.selectedMemberUserIds.filter((member) => member !== memberUserId)
+        : [...prev.selectedMemberUserIds, memberUserId];
 
       return {
         ...prev,
-        selectedMembers: nextMembers.length > 0 ? nextMembers : [memberName],
+        selectedMemberUserIds: nextMembers.length > 0 ? nextMembers : [memberUserId],
       };
     });
   };
 
-  const confirmPaymentImport = () => {
-    if (!useMockData) {
-      setPaymentImportDialog(null);
-      return;
-    }
-
+  const confirmPaymentImport = async () => {
     if (!paymentImportDialog) {
       return;
     }
 
-    if (paymentImportDialog.mode === 'import') {
-      selectTripPaymentCandidate(paymentImportDialog.eventId, {
-        payerName: paymentImportDialog.payerName,
-        participantNames: paymentImportDialog.selectedMembers,
-        splitType: 'equal',
-        memo: paymentImportDialog.memo,
-      });
-    } else {
-      updateTripPaymentDetails(paymentImportDialog.eventId, {
-        payerName: paymentImportDialog.payerName,
-        participantNames: paymentImportDialog.selectedMembers,
-        splitType: 'equal',
-        memo: paymentImportDialog.memo,
-      });
+    if (paymentImportDialog.selectedMemberUserIds.length === 0) {
+      Alert.alert('정산 대상이 필요해요', '함께 나누는 사람을 한 명 이상 선택해 주세요.');
+      return;
     }
-    setPaymentImportDialog(null);
+
+    try {
+      const response = await updateExpenseApi(paymentImportDialog.expenseId, {
+        payerUserId: paymentImportDialog.payerUserId,
+        participantUserIds: paymentImportDialog.selectedMemberUserIds,
+        memo: paymentImportDialog.memo.trim() || undefined,
+      });
+
+      if (!response.success) {
+        Alert.alert('비용 수정 실패', '비용 정산 정보를 저장하지 못했어요.');
+        return;
+      }
+
+      updateRealExpenseEvent(paymentImportDialog.eventId, {
+        paymentPayerName: memberNameByUserId[paymentImportDialog.payerUserId] ?? '여행 메이트',
+        paymentPayerUserId: paymentImportDialog.payerUserId,
+        paymentParticipantUserIds: paymentImportDialog.selectedMemberUserIds,
+        paymentParticipantNames: paymentImportDialog.selectedMemberUserIds.map(
+          (memberUserId) => memberNameByUserId[memberUserId] ?? '여행 메이트',
+        ),
+        paymentSplitLabel: `${paymentImportDialog.selectedMemberUserIds.length}명 균등 분할`,
+        eventMemo: paymentImportDialog.memo.trim() || undefined,
+      });
+
+      setPaymentImportDialog(null);
+    } catch (error) {
+      console.error('Failed to update expense', error);
+      Alert.alert('비용 수정 실패', '비용 정산 정보를 저장하지 못했어요.');
+    }
   };
 
   const openEmotionPicker = (event: TimelineEvent) => {
-    if (!useMockData) {
-      Alert.alert('Real mode', 'Emotion updates for real data are not connected yet.');
-      return;
-    }
-
-    setEmotionPicker({
-      eventId: event.id,
-      selectedEmoji: event.emotionOwnerId === CURRENT_USER_ID ? event.emotionEmoji : undefined,
-      selectedLabel: event.emotionOwnerId === CURRENT_USER_ID ? event.emotionLabel : undefined,
-    });
+    Alert.alert('감정 기능 준비 중', '감정 기록은 아직 실데이터와 연결되지 않았어요.');
   };
 
-  const selectEmotion = (emoji: string, label: string) => {
-    if (!useMockData) {
-      setEmotionPicker(null);
-      return;
-    }
-
+  const selectEmotion = (_emoji: string, _label: string) => {
     if (!emotionPicker) {
       return;
     }
 
-    updateTripEvent(emotionPicker.eventId, {
-      emotionEmoji: emoji,
-      emotionLabel: label,
-      emotionOwnerId: CURRENT_USER_ID,
-    });
+    Alert.alert('감정 기능 준비 중', '감정 기록은 아직 실데이터와 연결되지 않았어요.');
     setEmotionPicker(null);
   };
 
   const clearEmotion = () => {
-    if (!useMockData) {
-      setEmotionPicker(null);
-      return;
-    }
-
     if (!emotionPicker) {
       return;
     }
 
-    updateTripEvent(emotionPicker.eventId, {
-      emotionEmoji: undefined,
-      emotionLabel: undefined,
-      emotionOwnerId: undefined,
-    });
+    Alert.alert('감정 기능 준비 중', '감정 기록은 아직 실데이터와 연결되지 않았어요.');
     setEmotionPicker(null);
   };
 
@@ -1208,17 +1603,26 @@ export default function TripRecordingScreen({
         <View style={styles.headerActions}>
           <View style={styles.headerActionsTopRow}>
           <TouchableOpacity 
-            style={styles.syncHeaderButton} 
+            style={[styles.syncHeaderButton, syncActionInFlight && styles.syncHeaderButtonDisabled]} 
             activeOpacity={0.88}
             onPress={handleManualSync}
+            disabled={syncActionInFlight}
           >
-            <MaterialIcons name="sync" size={16} color="#274232" />
-            <Text style={styles.syncHeaderButtonText}>동기화</Text>
+            <MaterialIcons name={syncActionInFlight ? 'hourglass-top' : 'sync'} size={16} color="#274232" />
+            <Text style={styles.syncHeaderButtonText}>{syncActionInFlight ? 'Syncing' : 'Sync'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev) => !prev)} activeOpacity={0.85}>
             <MaterialIcons name="more-horiz" size={22} color="#274232" />
           </TouchableOpacity>
           </View>
+          {locationSyncMessage ? (
+            <View style={[styles.syncStatusBadge, { backgroundColor: currentSyncMeta.surface }]}>
+              <MaterialIcons name={currentSyncMeta.icon} size={14} color={currentSyncMeta.tint} />
+              <Text style={[styles.syncStatusBadgeText, { color: currentSyncMeta.tint }]} numberOfLines={2}>
+                {locationSyncMessage}
+              </Text>
+            </View>
+          ) : null}
           {!isReviewMode ? (
             <TouchableOpacity style={styles.hiddenAction} onPress={() => router.push('/trip/invite')} activeOpacity={0.88}>
               <MaterialIcons name="group-add" size={16} color="#274232" />
@@ -1431,25 +1835,25 @@ export default function TripRecordingScreen({
         <Pressable style={styles.sheetBackdrop} onPress={() => setPaymentImportDialog(null)}>
           <Pressable style={styles.importSheetCard} onPress={() => undefined}>
             <View style={styles.importSheetHandle} />
-            <Text style={styles.importSheetEyebrow}>
-              {paymentImportDialog?.mode === 'edit' ? '여행 비용 수정' : '자동 가져온 결제 확인'}
-            </Text>
-            <Text style={styles.importSheetTitle}>
-              {paymentImportDialog?.mode === 'edit' ? '결제자와 정산 대상을 다시 조정할 수 있어요' : '누가 결제했고 누구와 나눌지 확인해 주세요'}
-            </Text>
+            <Text style={styles.importSheetEyebrow}>여행 비용 수정</Text>
+            <Text style={styles.importSheetTitle}>결제자와 정산 대상을 다시 조정할 수 있어요</Text>
 
             <Text style={styles.importSheetLabel}>결제자</Text>
             <View style={styles.importPayerRow}>
-              {TRIP_MEMBER_OPTIONS.map((member) => {
-                const isActive = paymentImportDialog?.payerName === member;
+              {tripMembers.map((member) => {
+                const isActive = paymentImportDialog?.payerUserId === member.userId;
                 return (
                   <TouchableOpacity
-                    key={member}
+                    key={member.userId}
                     style={[styles.importPayerChip, isActive && styles.importPayerChipActive]}
                     activeOpacity={0.85}
-                    onPress={() => setPaymentImportDialog((prev) => (prev ? { ...prev, payerName: member } : prev))}
+                    onPress={() =>
+                      setPaymentImportDialog((prev) => (prev ? { ...prev, payerUserId: member.userId } : prev))
+                    }
                   >
-                    <Text style={[styles.importPayerChipText, isActive && styles.importPayerChipTextActive]}>{member}</Text>
+                    <Text style={[styles.importPayerChipText, isActive && styles.importPayerChipTextActive]}>
+                      {member.nickname}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -1457,16 +1861,18 @@ export default function TripRecordingScreen({
 
             <Text style={styles.importSheetLabel}>함께 나누는 사람</Text>
             <View style={styles.importMemberWrap}>
-              {TRIP_MEMBER_OPTIONS.map((member) => {
-                const isActive = paymentImportDialog?.selectedMembers.includes(member);
+              {tripMembers.map((member) => {
+                const isActive = paymentImportDialog?.selectedMemberUserIds.includes(member.userId);
                 return (
                   <TouchableOpacity
-                    key={member}
+                    key={member.userId}
                     style={[styles.importMemberChip, isActive && styles.importMemberChipActive]}
                     activeOpacity={0.85}
-                    onPress={() => togglePaymentMember(member)}
+                    onPress={() => togglePaymentMember(member.userId)}
                   >
-                    <Text style={[styles.importMemberChipText, isActive && styles.importMemberChipTextActive]}>{member}</Text>
+                    <Text style={[styles.importMemberChipText, isActive && styles.importMemberChipTextActive]}>
+                      {member.nickname}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -1486,9 +1892,7 @@ export default function TripRecordingScreen({
             <View style={styles.importSummaryCard}>
               <Text style={styles.importSummaryText}>
                 {paymentImportDialog
-                  ? paymentImportDialog.mode === 'edit'
-                    ? `${paymentImportDialog.selectedMembers.length}명 기준으로 정산 정보가 다시 계산돼요.`
-                    : `${paymentImportDialog.selectedMembers.length}명 균등 분할로 비용에 반영돼요.`
+                  ? `${paymentImportDialog.selectedMemberUserIds.length}명 기준으로 정산 정보가 다시 계산돼요.`
                   : ''}
               </Text>
             </View>
@@ -1498,9 +1902,7 @@ export default function TripRecordingScreen({
                 <Text style={styles.deleteDialogGhostButtonText}>취소</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.importConfirmButton} onPress={confirmPaymentImport} activeOpacity={0.88}>
-                <Text style={styles.importConfirmButtonText}>
-                  {paymentImportDialog?.mode === 'edit' ? '정산 정보 저장' : '비용으로 가져오기'}
-                </Text>
+                <Text style={styles.importConfirmButtonText}>정산 정보 저장</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -1793,12 +2195,10 @@ export default function TripRecordingScreen({
                 <Text style={styles.daySummaryTitle}>{day.label} · {day.dateLabel}</Text>
                 <Text style={styles.daySummaryText}>{day.summary}</Text>
               </View>
-              {showMockRouteMetrics ? (
-                <View style={styles.dayDistanceBadge}>
-                  <MaterialIcons name="directions-walk" size={16} color="#5A6D61" />
-                  <Text style={styles.dayDistanceText}>{day.distanceKm.toFixed(1)}km</Text>
-                </View>
-              ) : null}
+              <View style={styles.dayDistanceBadge}>
+                <MaterialIcons name="directions-walk" size={16} color="#5A6D61" />
+                <Text style={styles.dayDistanceText}>{day.distanceKm.toFixed(1)}km</Text>
+              </View>
             </View>
           ))}
 
@@ -1830,10 +2230,9 @@ export default function TripRecordingScreen({
             {filteredEvents.map((event, index) => {
               const theme = EVENT_THEME[event.type];
               const isSelected = selectedEventId === event.id;
-              const isPaymentCandidate = event.type === 'payment' && event.paymentStatus === 'candidate';
               const isPaymentConfirmed = event.type === 'payment' && event.paymentStatus === 'confirmed';
               const emotionValue =
-                event.emotionOwnerId === CURRENT_USER_ID && event.emotionEmoji && event.emotionLabel
+                event.emotionOwnerId === currentUserId && event.emotionEmoji && event.emotionLabel
                   ? `${event.emotionEmoji} ${event.emotionLabel}`
                   : null;
 
@@ -1848,11 +2247,7 @@ export default function TripRecordingScreen({
                   <Pressable style={[styles.eventCard, isSelected && styles.eventCardSelected]} onPress={() => focusEvent(event.id)}>
                     <View style={styles.eventHeaderRow}>
                       <Text style={styles.eventTime}>{event.time}</Text>
-                      {isPaymentCandidate ? (
-                        <View style={styles.paymentCandidateBadge}>
-                          <Text style={styles.paymentCandidateBadgeText}>결제 후보</Text>
-                        </View>
-                      ) : event.amount ? (
+                      {event.amount ? (
                         <Text style={styles.eventAmount}>{event.amount}</Text>
                       ) : event.photoContributors?.length ? (
                         <View style={styles.photoByWrap}>
@@ -1951,55 +2346,32 @@ export default function TripRecordingScreen({
                           </Text>
                         </TouchableOpacity>
                       </View>
-                      {isPaymentCandidate ? (
-                        <View style={styles.photoEventActionRow}>
-                          <TouchableOpacity
-                            activeOpacity={0.82}
-                            onPress={(pressEvent) => {
-                              pressEvent.stopPropagation();
-                              openPaymentImportDialog(event);
-                            }}
-                          >
-                            <Text style={[styles.photoEventActionText, styles.paymentImportActionText]}>가져오기</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            activeOpacity={0.82}
-                            onPress={(pressEvent) => {
-                              pressEvent.stopPropagation();
-                              ignoreTripPaymentCandidate(event.id);
-                            }}
-                          >
-                            <Text style={[styles.photoEventActionText, styles.photoEventDeleteText]}>무시</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <View style={styles.photoEventActionRow}>
-                          <TouchableOpacity
-                            activeOpacity={0.8}
-                            onPress={(pressEvent) => {
-                              pressEvent.stopPropagation();
-                              if (isPaymentConfirmed) {
-                                openPaymentImportDialog(event);
-                                return;
-                              }
-                              openEventEditor(event);
-                            }}
-                          >
-                            <Text style={styles.photoEventActionText}>{isPaymentConfirmed ? '정산 수정' : '수정'}</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            activeOpacity={0.8}
-                            onPress={(pressEvent) => {
-                              pressEvent.stopPropagation();
-                              confirmDeleteEvent(event);
-                            }}
-                          >
-                            <Text style={[styles.photoEventActionText, styles.photoEventDeleteText]}>
-                              {isPaymentConfirmed ? '비용 삭제' : '삭제'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                      <View style={styles.photoEventActionRow}>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={(pressEvent) => {
+                            pressEvent.stopPropagation();
+                            if (isPaymentConfirmed) {
+                              void openPaymentImportDialog(event);
+                              return;
+                            }
+                            openEventEditor(event);
+                          }}
+                        >
+                          <Text style={styles.photoEventActionText}>{isPaymentConfirmed ? '정산 수정' : '수정'}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={(pressEvent) => {
+                            pressEvent.stopPropagation();
+                            confirmDeleteEvent(event);
+                          }}
+                        >
+                          <Text style={[styles.photoEventActionText, styles.photoEventDeleteText]}>
+                            {isPaymentConfirmed ? '비용 삭제' : '삭제'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </Pressable>
                 </View>
@@ -2064,10 +2436,21 @@ const styles = StyleSheet.create({
   recordingStatusText: { fontFamily: 'Pretendard-SemiBold', fontSize: 11, color: '#F35B4F' },
   recordingStatusTextCompleted: { color: '#4C8E5E' },
   headerTitle: { fontFamily: 'Pretendard-Bold', fontSize: 22, color: '#17201A' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerActions: { alignItems: 'flex-end', gap: 6 },
   headerActionsTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   syncHeaderButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 18, backgroundColor: '#E3EBDD', paddingHorizontal: 12, height: 36 },
+  syncHeaderButtonDisabled: { opacity: 0.7 },
   syncHeaderButtonText: { fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#274232' },
+  syncStatusBadge: {
+    maxWidth: 220,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  syncStatusBadgeText: { flexShrink: 1, fontFamily: 'Pretendard-Medium', fontSize: 12, lineHeight: 17 },
   moreButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E3EBDD', alignItems: 'center', justifyContent: 'center' },
   menuBackdrop: { position: 'absolute', top: 72, right: 16, left: 16, bottom: 0, zIndex: 30 },
   menuCard: { marginLeft: 'auto', width: 156, borderRadius: 20, backgroundColor: '#FCFEFB', paddingVertical: 8, shadowColor: '#223428', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 8 },

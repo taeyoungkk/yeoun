@@ -237,6 +237,9 @@ export type TripPlaceListResponse = CommonApiResponse<{ places: TripPlaceItem[] 
 
 const API_MOCKS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_API_MOCKS === 'true';
 
+export const isMockTripId = (tripId?: string | null) =>
+  typeof tripId === 'string' && tripId.trim().length > 0 && tripId.startsWith('mock-');
+
 const shouldMockInDev = (error: unknown) => {
   if (!__DEV__ || !API_MOCKS_ENABLED) {
     return false;
@@ -608,6 +611,19 @@ export const uploadLocationsApi = async (
 };
 
 export const getTripRouteByDayApi = async (tripId: string, dayDate: string): Promise<TripRouteResponse> => {
+  if (isMockTripId(tripId)) {
+    return {
+      success: true,
+      code: 'SUCCESS',
+      message: 'Trip route fetched (MOCK)',
+      data: {
+        dayDate,
+        routeDays: [],
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   try {
     const response = await apiClient.get<TripRouteResponse>(`/trips/${tripId}/days/${dayDate}/route`);
     return response.data;
@@ -700,6 +716,22 @@ export const getTripPlacesApi = async (tripId: string): Promise<TripPlaceListRes
 };
 
 export const getTripLocationLogStatusApi = async (tripId: string): Promise<TripLocationLogStatusResponse> => {
+  if (isMockTripId(tripId)) {
+    return {
+      success: true,
+      code: 'SUCCESS',
+      message: 'Location log status fetched (MOCK)',
+      data: {
+        tripId,
+        status: 'SUCCESS',
+        lastRequestedAt: new Date().toISOString(),
+        lastProcessedAt: new Date().toISOString(),
+        lastErrorMessage: null,
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   try {
     const response = await apiClient.get<TripLocationLogStatusResponse>(`/trips/${tripId}/location-log-status`);
     return response.data;
@@ -738,6 +770,16 @@ export const getTripLocationLogStatusApi = async (tripId: string): Promise<TripL
 };
 
 export const getTripMembersApi = async (tripId: string): Promise<TripMembersResponse> => {
+  if (isMockTripId(tripId)) {
+    return {
+      success: true,
+      code: 'SUCCESS',
+      message: 'Trip members fetched (MOCK)',
+      data: { items: [] },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   try {
     const response = await apiClient.get<TripMembersResponse>(`/trips/${tripId}/members`);
     return response.data;
@@ -836,6 +878,26 @@ export const createTripInviteLinkApi = async (
 };
 
 export const getTripDetailApi = async (tripId: string): Promise<TripDetailResponse> => {
+  if (isMockTripId(tripId)) {
+    return {
+      success: true,
+      code: 'SUCCESS',
+      message: 'Trip details fetched (MOCK)',
+      data: {
+        tripId,
+        title: 'mock trip',
+        startDate: '2024-02-03',
+        endDate: '2024-02-06',
+        status: 'ACTIVE',
+        memberCount: 2,
+        region: 'Jeju',
+        country: 'Korea',
+        participants: 2,
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   try {
     const response = await apiClient.get<TripDetailResponse>(`/trips/${tripId}`);
     return {

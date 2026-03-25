@@ -32,6 +32,7 @@ interface TripState {
   setReviewTrip: (trip: CurrentTrip) => void;
   clearReviewTrip: () => void;
   setActiveTrip: (trip: TripDetail) => void;
+  syncAcceptedTrip: (trip: TripDetail) => void;
   fetchTrips: (force?: boolean) => Promise<TripListItem[]>;
   bumpRouteRefreshKey: () => void;
   setLocationSyncState: (status: LocationSyncStatus, message?: string | null) => void;
@@ -76,6 +77,33 @@ export const useTripStore = create<TripState>((set, get) => ({
   setActiveTrip: (trip) =>
     set({
       activeTrip: trip,
+    }),
+  syncAcceptedTrip: (trip) =>
+    set((state) => {
+      const nextCurrentTrip: CurrentTrip = {
+        tripId: trip.tripId,
+        tripName: trip.title,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        memberCount: trip.memberCount ?? trip.participants ?? state.currentTrip?.memberCount ?? 0,
+        origin: trip.country ?? state.currentTrip?.origin ?? '',
+        destination: trip.region ?? trip.title,
+      };
+
+      if (trip.status === 'ACTIVE') {
+        return {
+          isTripActive: true,
+          currentTripId: trip.tripId,
+          currentTrip: nextCurrentTrip,
+          activeTrip: trip,
+        };
+      }
+
+      return {
+        currentTripId: state.currentTripId === trip.tripId ? trip.tripId : state.currentTripId,
+        currentTrip: state.currentTrip?.tripId === trip.tripId ? nextCurrentTrip : state.currentTrip,
+        activeTrip: trip,
+      };
     }),
   fetchTrips: async (force = false) => {
     const { trips, isTripsLoading, tripsFetchedAt } = get();

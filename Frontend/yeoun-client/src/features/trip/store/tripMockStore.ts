@@ -46,6 +46,12 @@ export type TimelineEvent = {
 
 export const CURRENT_USER_ID = 'user-1';
 
+const PHOTO_CONTRIBUTORS: PhotoContributor[] = [
+  { id: 'user-1', name: '나', color: '#5B8DEF' },
+  { id: 'user-2', name: '민지', color: '#63B995' },
+  { id: 'user-3', name: '현우', color: '#F29E4C' },
+];
+
 const PHOTO_STACK = [
   "https://images.unsplash.com/photo-1480074568708-e7b720bb3f09?q=80&w=500&auto=format",
   "https://images.unsplash.com/photo-1449844908441-8829872d2607?q=80&w=500&auto=format",
@@ -76,6 +82,13 @@ const INITIAL_TRIP_EVENTS: TimelineEvent[] = [
     eventMemo: '한복 입고 찍은 사진들이 정말 잘 나왔어요! 날씨도 완벽했고요.',
     chips: ['사진 4장', '한복 체험'],
     photoUrls: [...PHOTO_STACK],
+    photoContributors: PHOTO_CONTRIBUTORS,
+    photoItems: [
+      { id: 'ev-2-photo-1', source: PHOTO_STACK[0], contributorId: 'user-1', memo: '첫 장은 광장 정면 구도.' },
+      { id: 'ev-2-photo-2', source: PHOTO_STACK[1], contributorId: 'user-2', memo: '이동하면서 잡은 거리 컷.' },
+      { id: 'ev-2-photo-3', source: PHOTO_STACK[2], contributorId: 'user-3', memo: '건물 라인이 예쁘게 나온 장면.' },
+      { id: 'ev-2-photo-4', source: PHOTO_STACK[3], contributorId: 'user-1', memo: '마지막으로 하늘까지 같이 담은 컷.' },
+    ],
     coordinate: [126.9772, 37.5815],
   },
   {
@@ -112,6 +125,11 @@ const INITIAL_TRIP_EVENTS: TimelineEvent[] = [
     eventMemo: '사람이 정말 많았지만 화려한 불빛들이 예뻤어요.',
     chips: ['사진 2장', '도심 야경'],
     photoUrls: [PHOTO_STACK[0], PHOTO_STACK[1]],
+    photoContributors: PHOTO_CONTRIBUTORS.slice(0, 2),
+    photoItems: [
+      { id: 'ev-5-photo-1', source: PHOTO_STACK[0], contributorId: 'user-1', memo: '야경 시작될 때 찍은 컷.' },
+      { id: 'ev-5-photo-2', source: PHOTO_STACK[1], contributorId: 'user-2', memo: '조명 들어온 뒤 분위기 사진.' },
+    ],
     coordinate: [127.0276, 37.4979],
   },
   {

@@ -36,7 +36,7 @@ export default function TabLayout() {
       icon: ({ color, size }: { color: string; size: number }) => <CreditCardSvg color={color} size={size} />,
     },
     {
-      label: '알림',
+      label: '알림함',
       href: '/notifications',
       icon: ({ color, size }: { color: string; size: number }) => <BellSvg color={color} size={size} />,
       badgeCount: unreadCount,
@@ -65,7 +65,7 @@ export default function TabLayout() {
       <Tabs.Screen name="index" options={{ title: '홈' }} />
       <Tabs.Screen name="explore" options={{ title: '탐색' }} />
       <Tabs.Screen name="cards" options={{ title: '카드' }} />
-      <Tabs.Screen name="notifications" options={{ title: '알림' }} />
+      <Tabs.Screen name="notifications" options={{ title: '알림함' }} />
       <Tabs.Screen name="mypage" options={{ title: '마이페이지' }} />
     </Tabs>
   );
