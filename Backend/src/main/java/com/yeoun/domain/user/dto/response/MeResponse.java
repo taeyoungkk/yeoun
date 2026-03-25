@@ -4,28 +4,32 @@ import com.yeoun.domain.user.entity.UserRole;
 import com.yeoun.domain.user.entity.UserStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.time.Instant;
 import java.util.UUID;
 
 public record MeResponse(
-        @Schema(description = "사용자 ID")
+        @Schema(description = "User ID")
         UUID userId,
 
-        @Schema(description = "이메일")
+        @Schema(description = "Email")
         String email,
 
-        @Schema(description = "닉네임")
+        @Schema(description = "Nickname")
         String nickname,
 
-        @Schema(description = "프로필 이미지 URL")
+        @Schema(description = "Profile image URL")
         String profileImageUrl,
 
-        @Schema(description = "Timezone(시간대)")
+        @Schema(description = "Timezone")
         String timezone,
 
-        @Schema(description = "권한")
+        @Schema(description = "Account creation time")
+        Instant createdAt,
+
+        @Schema(description = "Role")
         UserRole role,
 
-        @Schema(description = "상태")
+        @Schema(description = "Status")
         UserStatus status
 ) {
 }
