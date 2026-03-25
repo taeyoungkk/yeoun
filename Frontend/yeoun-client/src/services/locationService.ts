@@ -4,7 +4,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { AppState, type AppStateStatus, Linking } from 'react-native';
 
-import { getTripLocationLogStatusApi, LocationLog, uploadLocationsApi } from '../api/trip';
+import { getTripSyncStatusApi, type TripSyncStatusData, LocationLog, uploadLocationsApi } from '../api/trip';
 import { useTripStore } from '../store/trip.store';
 
 const LOCATION_TRACKING_TASK = 'LOCATION_TRACKING_TASK';
@@ -297,52 +297,80 @@ const removeAppStateSubscription = () => {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const isLocationProcessingComplete = (status?: string | null) => {
-  const normalizedStatus = String(status ?? '').toUpperCase();
+const normalizeStatus = (status?: string | null) => String(status ?? '').toUpperCase();
+
+const isTripSyncComplete = (status?: string | null) => {
+  const normalizedStatus = normalizeStatus(status);
   return (
+    normalizedStatus === 'IDLE' ||
+    normalizedStatus === 'READY' ||
     normalizedStatus === 'SUCCESS' ||
     normalizedStatus === 'COMPLETED' ||
-    normalizedStatus === 'DONE' ||
-    normalizedStatus === 'READY'
+    normalizedStatus === 'DONE'
   );
 };
 
-const isLocationProcessingFailed = (status?: string | null) => {
-  const normalizedStatus = String(status ?? '').toUpperCase();
+const isTripSyncProcessing = (status?: string | null) => {
+  const normalizedStatus = normalizeStatus(status);
+  return normalizedStatus === 'PENDING' || normalizedStatus === 'QUEUED' || normalizedStatus === 'PROCESSING';
+};
+
+const isTripSyncFailed = (status?: string | null) => {
+  const normalizedStatus = normalizeStatus(status);
   return normalizedStatus === 'FAILED' || normalizedStatus === 'ERROR';
 };
 
-const pollLocationProcessingStatus = async (tripId: string) => {
+const hasSyncVersionChanged = (
+  baseline: TripSyncStatusData | null,
+  nextStatus: TripSyncStatusData,
+) =>
+  baseline == null ||
+  baseline.routeVersion !== nextStatus.routeVersion ||
+  baseline.timelineVersion !== nextStatus.timelineVersion ||
+  baseline.photoVersion !== nextStatus.photoVersion;
+
+const pollTripSyncStatus = async (tripId: string, baseline: TripSyncStatusData | null) => {
   const startedAt = Date.now();
+  let observedProcessing = false;
 
   while (Date.now() - startedAt < LOCATION_STATUS_POLL_TIMEOUT_MS) {
-    const response = await getTripLocationLogStatusApi(tripId);
+    const response = await getTripSyncStatusApi(tripId);
 
     if (!response.success) {
-      console.warn('Failed to poll location processing status:', response.message);
-      setLocationSyncState('failed', response.message || 'Failed to poll GPS processing status.');
+      console.warn('Failed to poll trip sync status:', response.message);
+      setLocationSyncState('failed', response.message || 'Failed to poll trip sync status.');
       return false;
     }
 
-    if (isLocationProcessingComplete(response.data.status)) {
-      console.log('Location processing completed:', response.data.status);
-      setLocationSyncState('completed', 'GPS data synchronized and route data refreshed.');
+    if (isTripSyncProcessing(response.data.syncStatus)) {
+      observedProcessing = true;
+      setLocationSyncState('processing', 'Trip data is syncing. Waiting for route and timeline updates.');
+      await wait(LOCATION_STATUS_POLL_INTERVAL_MS);
+      continue;
+    }
+
+    if (isTripSyncFailed(response.data.syncStatus)) {
+      console.error('Trip sync failed:', response.data.lastErrorMessage ?? response.data.syncStatus);
+      setLocationSyncState('failed', response.data.lastErrorMessage ?? 'Trip sync failed.');
+      return false;
+    }
+
+    if (
+      hasSyncVersionChanged(baseline, response.data) ||
+      (observedProcessing && isTripSyncComplete(response.data.syncStatus))
+    ) {
+      console.log('Trip sync completed:', response.data);
+      setLocationSyncState('completed', 'Trip data synchronized and refreshed.');
       useTripStore.getState().bumpRouteRefreshKey();
       return true;
     }
 
-    if (isLocationProcessingFailed(response.data.status)) {
-      console.error('Location processing failed:', response.data.lastErrorMessage ?? response.data.status);
-      setLocationSyncState('failed', response.data.lastErrorMessage ?? 'GPS processing failed.');
-      return false;
-    }
-
-    setLocationSyncState('processing', 'GPS logs uploaded. Waiting for worker processing.');
+    setLocationSyncState('processing', 'GPS logs uploaded. Waiting for trip sync status update.');
     await wait(LOCATION_STATUS_POLL_INTERVAL_MS);
   }
 
-  console.warn('Location processing status polling timed out');
-  setLocationSyncState('failed', 'GPS processing timed out. Try syncing again.');
+  console.warn('Trip sync status polling timed out');
+  setLocationSyncState('failed', 'Trip sync timed out. Try syncing again.');
   return false;
 };
 
@@ -474,6 +502,8 @@ export const locationService = {
 
       setLocationSyncState('uploading', `Uploading ${logs.length} GPS logs...`);
       console.log(`Syncing ${logs.length} location logs for trip ${tripId}...`);
+      const baselineSyncStatusResponse = await getTripSyncStatusApi(tripId);
+      const baselineSyncStatus = baselineSyncStatusResponse.success ? baselineSyncStatusResponse.data : null;
       const response = await uploadLocationsApi(tripId, logs);
 
       if (!response.success) {
@@ -484,8 +514,8 @@ export const locationService = {
       }
 
       console.log('Successfully synced logs to server');
-      setLocationSyncState('processing', 'GPS logs uploaded. Waiting for worker processing.');
-      const processed = await pollLocationProcessingStatus(tripId);
+      setLocationSyncState('processing', 'GPS logs uploaded. Waiting for trip sync status update.');
+      const processed = await pollTripSyncStatus(tripId, baselineSyncStatus);
 
       if (!processed) {
         console.warn('Location logs uploaded but processing is not complete yet.');

@@ -185,6 +185,18 @@ export interface TripLocationLogStatusData {
 
 export type TripLocationLogStatusResponse = CommonApiResponse<TripLocationLogStatusData>;
 
+export interface TripSyncStatusData {
+  tripId: string;
+  syncStatus: string;
+  routeVersion: number;
+  timelineVersion: number;
+  photoVersion: number;
+  updatedAt?: string | null;
+  lastErrorMessage?: string | null;
+}
+
+export type TripSyncStatusResponse = CommonApiResponse<TripSyncStatusData>;
+
 export interface TripRouteDay {
   routeDayId: string;
   tripId: string;
@@ -762,6 +774,66 @@ export const getTripLocationLogStatusApi = async (tripId: string): Promise<TripL
         status: 'UNKNOWN',
         lastRequestedAt: null,
         lastProcessedAt: null,
+        lastErrorMessage: null,
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const getTripSyncStatusApi = async (tripId: string): Promise<TripSyncStatusResponse> => {
+  if (isMockTripId(tripId)) {
+    return {
+      success: true,
+      code: 'SUCCESS',
+      message: 'Trip sync status fetched (MOCK)',
+      data: {
+        tripId,
+        syncStatus: 'IDLE',
+        routeVersion: 1,
+        timelineVersion: 1,
+        photoVersion: 1,
+        updatedAt: new Date().toISOString(),
+        lastErrorMessage: null,
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const response = await apiClient.get<TripSyncStatusResponse>(`/trips/${tripId}/sync-status`);
+    return response.data;
+  } catch (error: any) {
+    if (shouldMockInDev(error)) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Trip sync status fetched (MOCK)',
+        data: {
+          tripId,
+          syncStatus: 'IDLE',
+          routeVersion: 1,
+          timelineVersion: 1,
+          photoVersion: 1,
+          updatedAt: new Date().toISOString(),
+          lastErrorMessage: null,
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.error('Get Trip Sync Status API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch trip sync status.'),
+      data: {
+        tripId,
+        syncStatus: 'UNKNOWN',
+        routeVersion: 0,
+        timelineVersion: 0,
+        photoVersion: 0,
+        updatedAt: null,
         lastErrorMessage: null,
       },
       timestamp: new Date().toISOString(),
