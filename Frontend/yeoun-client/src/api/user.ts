@@ -33,16 +33,6 @@ export const getMyInfo = async (): Promise<CommonResponse<UserProfileData>> => {
     const response = await apiClient.get<CommonResponse<UserProfileData>>('/users/me');
     return response.data;
   } catch (error) {
-    if (__DEV__) {
-      console.log('getMyInfo failed, using mock data');
-      return {
-        success: true,
-        code: 'SUCCESS',
-        message: 'Info fetched (MOCK)',
-        data: { ...mockProfile },
-        timestamp: new Date().toISOString(),
-      };
-    }
     throw error;
   }
 };
@@ -92,21 +82,6 @@ export const updateMyInfo = async (data: UpdateProfileRequest): Promise<CommonRe
     // If successful, we would ideally update our local mock too, but we return fresh data from server
     return response.data;
   } catch (error) {
-    if (__DEV__) {
-      console.log('updateMyInfo failed, updating mock data locally');
-      
-      // Update our local mock so getMyInfo returns the new values
-      if (data.nickname) mockProfile.nickname = data.nickname;
-      if (data.profileImageUrl !== undefined) mockProfile.profileImageUrl = data.profileImageUrl;
-
-      return {
-        success: true,
-        code: 'SUCCESS',
-        message: 'Info updated (MOCK)',
-        data: { ...mockProfile },
-        timestamp: new Date().toISOString(),
-      };
-    }
     throw error;
   }
 };
@@ -120,22 +95,6 @@ export const updatePassword = async (data: PasswordChangeRequest): Promise<Commo
     const response = await apiClient.patch<CommonResponse<PasswordChangeResponse>>('/users/me/password', data);
     return response.data;
   } catch (error) {
-    if (__DEV__) {
-      console.log('updatePassword failed, mocking success in dev');
-      return {
-        success: true,
-        code: 'SUCCESS',
-        message: 'Password updated (MOCK)',
-        data: {
-          accessToken: 'mock-access-token-new-pw',
-          refreshToken: 'mock-refresh-token-new-pw',
-          tokenType: 'Bearer',
-          expiresIn: 1800,
-          isNewUser: false,
-        },
-        timestamp: new Date().toISOString(),
-      };
-    }
     throw error;
   }
 };
