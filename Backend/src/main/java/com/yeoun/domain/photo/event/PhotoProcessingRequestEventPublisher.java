@@ -32,7 +32,23 @@ public class PhotoProcessingRequestEventPublisher {
     public void publish(PhotoProcessingRequestEvent event) {
         try {
             String payload = objectMapper.writeValueAsString(event);
+            log.info(
+                    "사진 처리 이벤트 Kafka 발행 시작. topic={} tripId={} photoId={} userId={} requestedAt={} attempt={}",
+                    topic,
+                    event.tripId(),
+                    event.photoId(),
+                    event.ownerUserId(),
+                    event.requestedAt(),
+                    event.attempt()
+            );
             kafkaTemplate.send(topic, event.photoId().toString(), payload).join();
+            log.info(
+                    "사진 처리 이벤트 Kafka 발행 완료. topic={} tripId={} photoId={} userId={}",
+                    topic,
+                    event.tripId(),
+                    event.photoId(),
+                    event.ownerUserId()
+            );
         } catch (JsonProcessingException exception) {
             log.error("Failed to serialize photo-processing-request event for photoId={}", event.photoId(), exception);
             throw new BaseException(

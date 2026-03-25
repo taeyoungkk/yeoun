@@ -29,6 +29,7 @@ public class PhotoProcessingResultEventConsumer {
             groupId = "${app.kafka.photo-processing-result-group:backend-photo-processing}"
     )
     public void consume(String payload) {
+        log.info("사진 처리 결과 Kafka 수신. payloadSize={}", payload.length());
         PhotoProcessingResultEvent event;
         try {
             event = objectMapper.readValue(payload, PhotoProcessingResultEvent.class);
@@ -37,6 +38,15 @@ public class PhotoProcessingResultEventConsumer {
             return;
         }
 
+        log.info(
+                "사진 처리 결과 이벤트 파싱 완료. photoId={} tripId={} status={} processedAt={} attempt={} errorCode={}",
+                event.photoId(),
+                event.tripId(),
+                event.status(),
+                event.processedAt(),
+                event.attempt(),
+                event.errorCode()
+        );
         photoProcessingResultService.handleResult(event);
     }
 }
