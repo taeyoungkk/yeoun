@@ -115,8 +115,14 @@ Worker/
 - `PHOTO_GPS_MATCH_LOG_RADIUS_M`
 - `PHOTO_MANUAL_REVIEW_SCORE_THRESHOLD`
 - `GPS_ACCURACY_THRESHOLD_M`
+- `GPS_MAP_MATCHING_ENABLED`
+- `GPS_MAP_MATCHING_PROVIDER`
+- `GPS_MAP_MATCHING_PROFILE`
+- `GPS_MAP_MATCHING_TIMEOUT_SECONDS`
+- `GPS_MAP_MATCHING_MAX_COORDINATES`
 - `GPS_STAY_RADIUS_M`
 - `GPS_STAY_MIN_DURATION_SECONDS`
+- `MAPBOX_ACCESS_TOKEN`
 
 ## 실행
 
@@ -130,3 +136,8 @@ Kafka consumer를 함께 실행하려면 `.env`에서 각 기능별 Kafka 플래
 - `KAFKA_PHOTO_ENABLED=true`
 - `KAFKA_LOCATION_ENABLED=true`
 
+GPS route behavior:
+
+- `GPS_MAP_MATCHING_ENABLED=true` and `MAPBOX_ACCESS_TOKEN` enable Mapbox-based map matching for generated route geometry.
+- When map matching succeeds, the worker persists road-snapped route coordinates.
+- When map matching is disabled or the external request fails, the worker falls back to clean GPS coordinates for route geometry.

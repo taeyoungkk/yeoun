@@ -1,6 +1,5 @@
 import logging
-from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
 from app.schemas.location import LocationPlaceCandidate, LocationRouteDay, LocationTimelineCandidate
 
@@ -22,13 +21,13 @@ class LocationTimelineLinker:
         for route_day in route_days:
             candidates.append(
                 LocationTimelineCandidate(
-                    candidateId=str(uuid4()),
+                    candidateId=self._candidate_id(trip_id, user_id, "ROUTE_DAY", route_day.day),
                     tripId=trip_id,
                     userId=user_id,
                     candidateType="ROUTE_DAY",
                     referenceId=route_day.day,
-                    startedAt=self._route_started_at(route_day),
-                    endedAt=self._route_started_at(route_day),
+                    startedAt=route_day.started_at,
+                    endedAt=route_day.ended_at,
                     title=f"{route_day.day} route",
                 )
             )
@@ -36,7 +35,7 @@ class LocationTimelineLinker:
         for place in places:
             candidates.append(
                 LocationTimelineCandidate(
-                    candidateId=str(uuid4()),
+                    candidateId=self._candidate_id(trip_id, user_id, "PLACE", place.place_id),
                     tripId=trip_id,
                     userId=user_id,
                     candidateType="PLACE",
@@ -56,5 +55,5 @@ class LocationTimelineLinker:
         )
         return candidates
 
-    def _route_started_at(self, route_day: LocationRouteDay):
-        return datetime.fromisoformat(f"{route_day.day}T00:00:00+00:00").astimezone(timezone.utc)
+    def _candidate_id(self, trip_id: str, user_id: str, candidate_type: str, reference_id: str) -> str:
+        return str(uuid5(NAMESPACE_URL, f"{trip_id}:{user_id}:{candidate_type}:{reference_id}"))
