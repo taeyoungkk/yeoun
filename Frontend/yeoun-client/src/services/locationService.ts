@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Crypto from 'expo-crypto';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import { Linking } from 'react-native';
+import { AppState, type AppStateStatus, Linking } from 'react-native';
 
 import { getTripLocationLogStatusApi, LocationLog, uploadLocationsApi } from '../api/trip';
 import { useTripStore } from '../store/trip.store';
@@ -10,10 +11,16 @@ const LOCATION_TRACKING_TASK = 'LOCATION_TRACKING_TASK';
 const STORAGE_KEY_PREFIX = 'pending_location_logs_chunk_';
 const STORAGE_INDEX_KEY = 'pending_location_logs_index';
 const MAX_LOGS_PER_CHUNK = 100;
+const LOG_DEDUPE_WINDOW_MS = 2000;
 
 export type StartTrackingResult = {
   success: boolean;
   foregroundGranted: boolean;
+  backgroundGranted: boolean;
+};
+
+type CollectorMode = 'idle' | 'foreground' | 'background';
+type TrackingSessionConfig = {
   backgroundGranted: boolean;
 };
 
@@ -23,44 +30,94 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
     return;
   }
 
+  if (activeCollectorMode !== 'background') {
+    return;
+  }
+
   if (data) {
     const { locations } = data as { locations: Location.LocationObject[] };
     if (locations && locations.length > 0) {
-      const newLogs = locations.map((loc) => ({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        accuracy: loc.coords.accuracy,
-        recordedAt: new Date(loc.timestamp).toISOString(),
-      }));
+      const newLogs = locations.map(toLocationLog);
 
       await appendLogsToStorage(newLogs);
     }
   }
 });
 
-async function appendLogsToStorage(newLogs: any[]) {
-  try {
-    const existingIndexRaw = await AsyncStorage.getItem(STORAGE_INDEX_KEY);
-    const existingIndex = existingIndexRaw ? (JSON.parse(existingIndexRaw) as string[]) : [];
-    const chunkKeys = [...existingIndex];
+const toOptionalNumber = (value: number | null | undefined) => (typeof value === 'number' ? value : undefined);
 
-    for (let i = 0; i < newLogs.length; i += MAX_LOGS_PER_CHUNK) {
-      const chunk = newLogs.slice(i, i + MAX_LOGS_PER_CHUNK);
-      const chunkKey = `${STORAGE_KEY_PREFIX}${Date.now()}_${i}`;
-      await AsyncStorage.setItem(chunkKey, JSON.stringify(chunk));
-      chunkKeys.push(chunkKey);
+const toLocationLog = (location: Location.LocationObject): LocationLog => ({
+  clientLogUuid: Crypto.randomUUID(),
+  latitude: location.coords.latitude,
+  longitude: location.coords.longitude,
+  accuracy: toOptionalNumber(location.coords.accuracy),
+  accuracyM: toOptionalNumber(location.coords.accuracy),
+  recordedAt: new Date(location.timestamp).toISOString(),
+  speedMps: toOptionalNumber(location.coords.speed),
+  heading: toOptionalNumber(location.coords.heading),
+  source: 'GPS',
+});
+
+async function appendLogsToStorage(newLogs: LocationLog[], options: { dedupe?: boolean } = {}) {
+  return runQueuedStorageOperation(async () => {
+    try {
+      const shouldDedupe = options.dedupe ?? true;
+      const normalizedLogs: LocationLog[] = [];
+      let rollingSnapshot = lastQueuedLogSnapshot;
+
+      for (const log of newLogs) {
+        if (shouldDedupe && shouldDropAsDuplicate(log, rollingSnapshot)) {
+          continue;
+        }
+
+        normalizedLogs.push(log);
+        const nextSnapshot = toQueuedLogSnapshot(log);
+        if (nextSnapshot) {
+          rollingSnapshot = nextSnapshot;
+        }
+      }
+
+      if (normalizedLogs.length === 0) {
+        return;
+      }
+
+      const existingIndexRaw = await AsyncStorage.getItem(STORAGE_INDEX_KEY);
+      const existingIndex = existingIndexRaw ? (JSON.parse(existingIndexRaw) as string[]) : [];
+      const chunkKeys = [...existingIndex];
+
+      for (let i = 0; i < normalizedLogs.length; i += MAX_LOGS_PER_CHUNK) {
+        const chunk = normalizedLogs.slice(i, i + MAX_LOGS_PER_CHUNK);
+        const chunkKey = `${STORAGE_KEY_PREFIX}${Date.now()}_${i}_${Crypto.randomUUID()}`;
+        await AsyncStorage.setItem(chunkKey, JSON.stringify(chunk));
+        chunkKeys.push(chunkKey);
+      }
+
+      normalizedLogs.forEach(rememberQueuedLog);
+      await AsyncStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(chunkKeys));
+    } catch (error) {
+      console.error('Failed to save location logs to storage:', error);
     }
-
-    await AsyncStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(chunkKeys));
-  } catch (error) {
-    console.error('Failed to save location logs to storage:', error);
-  }
+  });
 }
 
 type LocationListener = (location: LocationLog) => void;
 
 let listeners: LocationListener[] = [];
 let foregroundSubscription: Location.LocationSubscription | null = null;
+let appStateSubscription: { remove: () => void } | null = null;
+let trackingSessionConfig: TrackingSessionConfig | null = null;
+let trackingEnabled = false;
+let activeCollectorMode: CollectorMode = 'idle';
+let lastKnownAppState: AppStateStatus = AppState.currentState;
+let collectorTransitionQueue: Promise<void> = Promise.resolve();
+let storageOperationQueue: Promise<unknown> = Promise.resolve();
+let lastQueuedLogSnapshot:
+  | {
+      latitude: number;
+      longitude: number;
+      recordedAtMs: number;
+    }
+  | null = null;
 const LOCATION_STATUS_POLL_INTERVAL_MS = 1500;
 const LOCATION_STATUS_POLL_TIMEOUT_MS = 20000;
 
@@ -69,6 +126,58 @@ const setLocationSyncState = (
   message?: string | null,
 ) => {
   useTripStore.getState().setLocationSyncState(status, message ?? null);
+};
+
+const runQueuedStorageOperation = async <T>(operation: () => Promise<T>): Promise<T> => {
+  const nextOperation = storageOperationQueue.catch(() => undefined).then(operation);
+  storageOperationQueue = nextOperation.then(
+    () => undefined,
+    () => undefined,
+  );
+  return nextOperation;
+};
+
+const toQueuedLogSnapshot = (log: LocationLog) => {
+  const recordedAtMs = Date.parse(log.recordedAt);
+  if (!Number.isFinite(recordedAtMs)) {
+    return null;
+  }
+
+  return {
+    latitude: log.latitude,
+    longitude: log.longitude,
+    recordedAtMs,
+  };
+};
+
+const shouldDropAsDuplicate = (
+  log: LocationLog,
+  snapshot:
+    | {
+        latitude: number;
+        longitude: number;
+        recordedAtMs: number;
+      }
+    | null,
+) => {
+  if (!snapshot) {
+    return false;
+  }
+
+  const nextSnapshot = toQueuedLogSnapshot(log);
+  if (!nextSnapshot) {
+    return false;
+  }
+
+  return (
+    Math.abs(snapshot.recordedAtMs - nextSnapshot.recordedAtMs) <= LOG_DEDUPE_WINDOW_MS &&
+    Math.abs(snapshot.latitude - nextSnapshot.latitude) < 0.00001 &&
+    Math.abs(snapshot.longitude - nextSnapshot.longitude) < 0.00001
+  );
+};
+
+const rememberQueuedLog = (log: LocationLog) => {
+  lastQueuedLogSnapshot = toQueuedLogSnapshot(log);
 };
 
 const startForegroundWatcher = async () => {
@@ -83,16 +192,26 @@ const startForegroundWatcher = async () => {
       distanceInterval: 5,
     },
     (loc) => {
-      const newLog = {
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        accuracy: loc.coords.accuracy ?? undefined,
-        recordedAt: new Date(loc.timestamp).toISOString(),
-      };
+      if (activeCollectorMode !== 'foreground') {
+        return;
+      }
+
+      const newLog = toLocationLog(loc);
+      void appendLogsToStorage([newLog]);
       listeners.forEach((listener) => listener(newLog));
     },
   );
   console.log('Foreground location watcher started');
+};
+
+const stopForegroundWatcher = async () => {
+  if (!foregroundSubscription) {
+    return;
+  }
+
+  foregroundSubscription.remove();
+  foregroundSubscription = null;
+  console.log('Foreground location watcher stopped');
 };
 
 const startBackgroundWatcher = async () => {
@@ -113,6 +232,67 @@ const startBackgroundWatcher = async () => {
     pausesUpdatesAutomatically: false,
   });
   console.log('Background location tracking started');
+};
+
+const stopBackgroundWatcher = async () => {
+  const isStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
+  if (!isStarted) {
+    return;
+  }
+
+  await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK);
+  console.log('Background location tracking stopped');
+};
+
+const syncCollectorsForAppState = async (nextAppState: AppStateStatus) => {
+  if (!trackingEnabled) {
+    activeCollectorMode = 'idle';
+    return;
+  }
+
+  if (nextAppState === 'active') {
+    await stopBackgroundWatcher();
+    activeCollectorMode = 'foreground';
+    await startForegroundWatcher();
+    return;
+  }
+
+  await stopForegroundWatcher();
+
+  if (trackingSessionConfig?.backgroundGranted) {
+    activeCollectorMode = 'background';
+    await startBackgroundWatcher();
+    return;
+  }
+
+  activeCollectorMode = 'idle';
+};
+
+const runCollectorTransition = async (nextAppState: AppStateStatus) => {
+  const transition = collectorTransitionQueue.catch(() => undefined).then(async () => {
+    lastKnownAppState = nextAppState;
+    await syncCollectorsForAppState(nextAppState);
+  });
+
+  collectorTransitionQueue = transition;
+  return transition;
+};
+
+const ensureAppStateSubscription = () => {
+  if (appStateSubscription) {
+    return;
+  }
+
+  appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+    void runCollectorTransition(nextAppState).catch((error) => {
+      console.error('Failed to switch location collectors:', error);
+    });
+  });
+};
+
+const removeAppStateSubscription = () => {
+  appStateSubscription?.remove();
+  appStateSubscription = null;
 };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -198,11 +378,13 @@ export const locationService = {
         console.warn('Background location permission denied. Falling back to foreground tracking only.');
       }
 
-      if (backgroundGranted) {
-        await startBackgroundWatcher();
-      }
-
-      await startForegroundWatcher();
+      trackingSessionConfig = {
+        backgroundGranted,
+      };
+      trackingEnabled = true;
+      lastKnownAppState = AppState.currentState;
+      ensureAppStateSubscription();
+      await runCollectorTransition(lastKnownAppState);
 
       return {
         success: true,
@@ -231,50 +413,49 @@ export const locationService = {
 
   stopTracking: async () => {
     try {
-      const isStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
-      if (isStarted) {
-        await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK);
-        console.log('Background location tracking stopped');
-      }
-
-      if (foregroundSubscription) {
-        foregroundSubscription.remove();
-        foregroundSubscription = null;
-        console.log('Foreground location watcher stopped');
-      }
+      trackingEnabled = false;
+      trackingSessionConfig = null;
+      removeAppStateSubscription();
+      lastKnownAppState = AppState.currentState;
+      await runCollectorTransition(lastKnownAppState);
+      await stopBackgroundWatcher();
+      await stopForegroundWatcher();
+      activeCollectorMode = 'idle';
     } catch (error) {
       console.error('Failed to stop tracking:', error);
     }
   },
 
   flushLogs: async (): Promise<LocationLog[]> => {
-    try {
-      const existingIndexRaw = await AsyncStorage.getItem(STORAGE_INDEX_KEY);
-      const chunkKeys = existingIndexRaw ? (JSON.parse(existingIndexRaw) as string[]) : [];
-      if (chunkKeys.length === 0) {
+    return runQueuedStorageOperation(async () => {
+      try {
+        const existingIndexRaw = await AsyncStorage.getItem(STORAGE_INDEX_KEY);
+        const chunkKeys = existingIndexRaw ? (JSON.parse(existingIndexRaw) as string[]) : [];
+        if (chunkKeys.length === 0) {
+          return [];
+        }
+
+        const chunkEntries = await AsyncStorage.multiGet(chunkKeys);
+        await AsyncStorage.multiRemove(chunkKeys);
+        await AsyncStorage.removeItem(STORAGE_INDEX_KEY);
+
+        return chunkEntries.flatMap(([, value]) => {
+          if (!value) {
+            return [];
+          }
+
+          try {
+            return JSON.parse(value) as LocationLog[];
+          } catch (parseError) {
+            console.error('Failed to parse location log chunk:', parseError);
+            return [];
+          }
+        });
+      } catch (error) {
+        console.error('Failed to flush logs:', error);
         return [];
       }
-
-      const chunkEntries = await AsyncStorage.multiGet(chunkKeys);
-      await AsyncStorage.multiRemove(chunkKeys);
-      await AsyncStorage.removeItem(STORAGE_INDEX_KEY);
-
-      return chunkEntries.flatMap(([, value]) => {
-        if (!value) {
-          return [];
-        }
-
-        try {
-          return JSON.parse(value) as LocationLog[];
-        } catch (parseError) {
-          console.error('Failed to parse location log chunk:', parseError);
-          return [];
-        }
-      });
-    } catch (error) {
-      console.error('Failed to flush logs:', error);
-      return [];
-    }
+    });
   },
 
   syncLocations: async (tripId: string) => {
@@ -291,7 +472,7 @@ export const locationService = {
       const response = await uploadLocationsApi(tripId, logs);
 
       if (!response.success) {
-        await appendLogsToStorage(logs);
+        await appendLogsToStorage(logs, { dedupe: false });
         console.error('Failed to sync logs, re-queued:', response.message);
         setLocationSyncState('failed', response.message || 'Failed to upload GPS logs.');
         return false;

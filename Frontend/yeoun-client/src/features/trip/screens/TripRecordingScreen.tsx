@@ -42,6 +42,7 @@ import {
   endTripApi,
   getTripDetailApi,
   getTripMembersApi,
+  getTripRouteByDayApi,
   leaveTripApi,
   startTripApi,
   type TripMemberItem,
@@ -61,7 +62,7 @@ import {
   type TimelineEvent,
 } from '@/src/features/trip/store/tripMockStore';
 import { locationService } from '../../../services/locationService';
-import { useTripStore } from '@/src/store/trip.store';
+import { type LocationSyncStatus, useTripStore } from '@/src/store/trip.store';
 import { useUserStore } from '@/src/store/user.store';
 import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
 
@@ -225,14 +226,25 @@ function formatWon(value: number) {
   return `₩${Math.round(value).toLocaleString('ko-KR')}`;
 }
 
-function buildRealTripDays(timelineDays: TimelineDayDetail[]): TripDay[] {
+function normalizeRouteCoordinates(routeDays: Array<{ coordinates: number[][] }>): Coordinate[] {
+  return routeDays.flatMap((routeDay) =>
+    routeDay.coordinates
+      .filter((coordinate): coordinate is Coordinate => Array.isArray(coordinate) && coordinate.length >= 2)
+      .map(([longitude, latitude]) => [longitude, latitude] as Coordinate),
+  );
+}
+
+function buildRealTripDays(
+  timelineDays: TimelineDayDetail[],
+  routeByDate: Map<string, Coordinate[]>,
+): TripDay[] {
   return timelineDays.map((timelineDay, index) => ({
     id: `day${index + 1}` as DayKey,
     label: `DAY ${index + 1}`,
     dateLabel: formatDateLabel(timelineDay.dayDate),
-    distanceKm: 0,
+    distanceKm: Math.round((timelineDay.distanceM / 1000) * 10) / 10,
     summary: timelineDay.summaryText || '',
-    route: [],
+    route: routeByDate.get(timelineDay.dayDate) ?? [],
   }));
 }
 
@@ -448,6 +460,9 @@ export default function TripRecordingScreen({
   const currentTripId = useTripStore((state) => state.currentTripId);
   const activeTrip = useTripStore((state) => state.activeTrip);
   const setActiveTrip = useTripStore((state) => state.setActiveTrip);
+  const routeRefreshKey = useTripStore((state) => state.routeRefreshKey);
+  const locationSyncStatus = useTripStore((state) => state.locationSyncStatus);
+  const locationSyncMessage = useTripStore((state) => state.locationSyncMessage);
   const currentUserId = useUserStore((state) => state.profile?.userId);
   const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
 
@@ -489,7 +504,7 @@ export default function TripRecordingScreen({
   } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
-  const [liveRoute, setLiveRoute] = useState<Coordinate[]>([]);
+  const [liveCurrentLocation, setLiveCurrentLocation] = useState<Coordinate | null>(null);
   const [initialCurrentLocation, setInitialCurrentLocation] = useState<Coordinate | null>(null);
   const showMockRouteMetrics = useMockData;
   const isReviewMode = params.mode === 'review';
@@ -529,12 +544,11 @@ export default function TripRecordingScreen({
   );
 
   const routeCoordinates = useMemo(() => {
-    const historical = filteredDays.flatMap((day) => day.route);
-    return [...historical, ...liveRoute];
-  }, [filteredDays, liveRoute]);
+    return filteredDays.flatMap((day) => day.route);
+  }, [filteredDays]);
   const currentLocationCoordinate = useMemo(
-    () => (liveRoute.length > 0 ? liveRoute[liveRoute.length - 1] : initialCurrentLocation),
-    [initialCurrentLocation, liveRoute]
+    () => liveCurrentLocation ?? initialCurrentLocation,
+    [initialCurrentLocation, liveCurrentLocation]
   );
   const routeShape = useMemo(
     () => ({
@@ -603,6 +617,17 @@ export default function TripRecordingScreen({
   const tripTitle = displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
+
+  const syncActionInFlight =
+    isSyncing || locationSyncStatus === 'uploading' || locationSyncStatus === 'processing';
+  const syncStatusMeta: Record<LocationSyncStatus, { icon: keyof typeof MaterialIcons.glyphMap; tint: string; surface: string }> = {
+    idle: { icon: 'info-outline', tint: '#5F6E65', surface: '#EFF3EE' },
+    uploading: { icon: 'cloud-upload', tint: '#2362A8', surface: '#E8F2FF' },
+    processing: { icon: 'schedule', tint: '#8A5A11', surface: '#FFF3DD' },
+    completed: { icon: 'check-circle', tint: '#2F7A47', surface: '#EAF6EE' },
+    failed: { icon: 'error-outline', tint: '#B25543', surface: '#FDEEEA' },
+  };
+  const currentSyncMeta = syncStatusMeta[locationSyncStatus];
 
   const updateRealTimelinePhotoMemo = useCallback((eventId: string, photoId: string, memo?: string) => {
     setTripEvents((prev) =>
@@ -757,6 +782,17 @@ export default function TripRecordingScreen({
             return photoDetailResponse.success ? photoDetailResponse.data : null;
           }),
         );
+        const routeByDate = new Map<string, Coordinate[]>(
+          await Promise.all(
+            timelineDays.map(async (timelineDay) => {
+              const routeResponse = await getTripRouteByDayApi(activeTripId, timelineDay.dayDate);
+              return [
+                timelineDay.dayDate,
+                routeResponse.success ? normalizeRouteCoordinates(routeResponse.data.routeDays) : [],
+              ] as const;
+            }),
+          ),
+        );
 
         if (cancelled) {
           return;
@@ -775,7 +811,7 @@ export default function TripRecordingScreen({
         if (tripDetailResponse.success) {
           setActiveTrip(tripDetailResponse.data);
         }
-        setRealTripDays(buildRealTripDays(timelineDays));
+        setRealTripDays(buildRealTripDays(timelineDays, routeByDate));
         setTripEvents(
           appendRealExpenseEvents(
             buildRealTripEvents(
@@ -807,7 +843,7 @@ export default function TripRecordingScreen({
     return () => {
       cancelled = true;
     };
-  }, [activeTripId, currentUserId, currentUserNickname, setActiveTrip, useMockData]);
+  }, [activeTripId, currentUserId, currentUserNickname, routeRefreshKey, setActiveTrip, useMockData]);
 
   useEffect(() => {
     const unsubscribe = subscribeUser(() => {
@@ -833,9 +869,8 @@ export default function TripRecordingScreen({
   }, [activeFilter, tripDays]);
 
   useEffect(() => {
-    // Subscribe to real-time location updates for instant map updates
     const unsubscribe = locationService.subscribe((location) => {
-      setLiveRoute((prev) => [...prev, [location.longitude, location.latitude]]);
+      setLiveCurrentLocation([location.longitude, location.latitude]);
     });
 
     return unsubscribe;
@@ -847,34 +882,17 @@ export default function TripRecordingScreen({
     }
   }, [photoViewer, selectedPhotoEvent, selectedPhotoItem]);
 
-  // Periodic Auto-sync (Every 5 minutes)
-  useEffect(() => {
-    if (!activeTripId) {
-      return;
-    }
-
-    const SYNC_INTERVAL = 5 * 60 * 1000;
-    const timer = setInterval(() => {
-      locationService.syncLocations(activeTripId);
-    }, SYNC_INTERVAL);
-
-    return () => clearInterval(timer);
-  }, [activeTripId]);
-
   const handleManualSync = async () => {
     if (!activeTripId) {
       Alert.alert('No active trip', 'Could not find the trip to sync.');
       return;
     }
 
-    setIsSyncing(true);
-    const success = await locationService.syncLocations(activeTripId);
-    setIsSyncing(false);
-    
-    if (success) {
-      Alert.alert('동기화 완료', '모든 위치 기록이 서버에 안전하게 저장되었습니다.');
-    } else {
-      Alert.alert('동기화 실패', '네트워크 연결을 확인해주세요. 기록은 안전하게 보관 중입니다.');
+    try {
+      setIsSyncing(true);
+      await locationService.syncLocations(activeTripId);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -1452,17 +1470,26 @@ export default function TripRecordingScreen({
         <View style={styles.headerActions}>
           <View style={styles.headerActionsTopRow}>
           <TouchableOpacity 
-            style={styles.syncHeaderButton} 
+            style={[styles.syncHeaderButton, syncActionInFlight && styles.syncHeaderButtonDisabled]} 
             activeOpacity={0.88}
             onPress={handleManualSync}
+            disabled={syncActionInFlight}
           >
-            <MaterialIcons name="sync" size={16} color="#274232" />
-            <Text style={styles.syncHeaderButtonText}>동기화</Text>
+            <MaterialIcons name={syncActionInFlight ? 'hourglass-top' : 'sync'} size={16} color="#274232" />
+            <Text style={styles.syncHeaderButtonText}>{syncActionInFlight ? 'Syncing' : 'Sync'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev) => !prev)} activeOpacity={0.85}>
             <MaterialIcons name="more-horiz" size={22} color="#274232" />
           </TouchableOpacity>
           </View>
+          {locationSyncMessage ? (
+            <View style={[styles.syncStatusBadge, { backgroundColor: currentSyncMeta.surface }]}>
+              <MaterialIcons name={currentSyncMeta.icon} size={14} color={currentSyncMeta.tint} />
+              <Text style={[styles.syncStatusBadgeText, { color: currentSyncMeta.tint }]} numberOfLines={2}>
+                {locationSyncMessage}
+              </Text>
+            </View>
+          ) : null}
           {!isReviewMode ? (
             <TouchableOpacity style={styles.hiddenAction} onPress={() => router.push('/trip/invite')} activeOpacity={0.88}>
               <MaterialIcons name="group-add" size={16} color="#274232" />
@@ -2308,10 +2335,21 @@ const styles = StyleSheet.create({
   recordingStatusText: { fontFamily: 'Pretendard-SemiBold', fontSize: 11, color: '#F35B4F' },
   recordingStatusTextCompleted: { color: '#4C8E5E' },
   headerTitle: { fontFamily: 'Pretendard-Bold', fontSize: 22, color: '#17201A' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerActions: { alignItems: 'flex-end', gap: 6 },
   headerActionsTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   syncHeaderButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 18, backgroundColor: '#E3EBDD', paddingHorizontal: 12, height: 36 },
+  syncHeaderButtonDisabled: { opacity: 0.7 },
   syncHeaderButtonText: { fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#274232' },
+  syncStatusBadge: {
+    maxWidth: 220,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  syncStatusBadgeText: { flexShrink: 1, fontFamily: 'Pretendard-Medium', fontSize: 12, lineHeight: 17 },
   moreButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E3EBDD', alignItems: 'center', justifyContent: 'center' },
   menuBackdrop: { position: 'absolute', top: 72, right: 16, left: 16, bottom: 0, zIndex: 30 },
   menuCard: { marginLeft: 'auto', width: 156, borderRadius: 20, backgroundColor: '#FCFEFB', paddingVertical: 8, shadowColor: '#223428', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
