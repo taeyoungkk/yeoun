@@ -62,11 +62,8 @@ class LocationTimelineCandidateWriter:
                             %(created_at)s,
                             %(updated_at)s
                         )
-                        ON CONFLICT (candidate_id) DO UPDATE
-                        SET trip_id = EXCLUDED.trip_id,
-                            user_id = EXCLUDED.user_id,
-                            candidate_type = EXCLUDED.candidate_type,
-                            reference_id = EXCLUDED.reference_id,
+                        ON CONFLICT (trip_id, user_id, candidate_type, reference_id) DO UPDATE
+                        SET candidate_id = EXCLUDED.candidate_id,
                             started_at = EXCLUDED.started_at,
                             ended_at = EXCLUDED.ended_at,
                             title = EXCLUDED.title,
