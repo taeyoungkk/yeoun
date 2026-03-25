@@ -48,4 +48,37 @@ public class TripSyncStatus {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public void markProcessing(Instant now) {
+        this.syncStatus = SyncStatus.PROCESSING;
+        this.lastErrorMessage = null;
+        this.updatedAt = now;
+    }
+
+    public void markCompleted(Instant now) {
+        this.syncStatus = SyncStatus.COMPLETED;
+        this.lastErrorMessage = null;
+        this.updatedAt = now;
+    }
+
+    public void markFailed(Instant now, String errorMessage) {
+        this.syncStatus = SyncStatus.FAILED;
+        this.lastErrorMessage = errorMessage;
+        this.updatedAt = now;
+    }
+
+    public void increaseRouteVersion(Instant now) {
+        this.routeVersion += 1;
+        this.updatedAt = now;
+    }
+
+    public void increaseTimelineVersion(Instant now) {
+        this.timelineVersion += 1;
+        this.updatedAt = now;
+    }
+
+    public void increasePhotoVersion(Instant now) {
+        this.photoVersion += 1;
+        this.updatedAt = now;
+    }
 }
