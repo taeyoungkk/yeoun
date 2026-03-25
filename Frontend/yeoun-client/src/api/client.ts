@@ -1,10 +1,30 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/auth.store';
 
-// We'll use a default if EXPO_PUBLIC_API_URL is not set,
-// though in a real app you'd want this to be mandatory.
-const normalizeApiUrl = (url: string) => url.replace(/\/+$/, '');
-const API_URL = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL || 'https://api.yeoun.com/api/v1');
+const DEFAULT_API_URL = 'https://j14b105.p.ssafy.io/api/v1';
+const API_BASE_PATH = '/api/v1';
+
+const trimTrailingSlashes = (value: string) => value.replace(/\/+$/, '');
+
+const normalizeApiUrl = (value?: string) => {
+  const rawValue = value?.trim();
+  if (!rawValue) {
+    return DEFAULT_API_URL;
+  }
+
+  try {
+    const parsedUrl = new URL(rawValue);
+    const normalizedPath = trimTrailingSlashes(parsedUrl.pathname);
+
+    // Accept root origins like https://host and promote them to the API base path.
+    parsedUrl.pathname = normalizedPath ? normalizedPath : API_BASE_PATH;
+    return trimTrailingSlashes(parsedUrl.toString());
+  } catch {
+    return trimTrailingSlashes(rawValue);
+  }
+};
+
+const API_URL = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL);
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -12,6 +32,8 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+console.log('[API Client] baseURL:', API_URL);
 
 const PUBLIC_API_PATH_PREFIXES = [
   '/auth/signup',

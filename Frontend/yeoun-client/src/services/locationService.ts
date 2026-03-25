@@ -299,7 +299,12 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isLocationProcessingComplete = (status?: string | null) => {
   const normalizedStatus = String(status ?? '').toUpperCase();
-  return normalizedStatus === 'SUCCESS' || normalizedStatus === 'COMPLETED' || normalizedStatus === 'DONE';
+  return (
+    normalizedStatus === 'SUCCESS' ||
+    normalizedStatus === 'COMPLETED' ||
+    normalizedStatus === 'DONE' ||
+    normalizedStatus === 'READY'
+  );
 };
 
 const isLocationProcessingFailed = (status?: string | null) => {

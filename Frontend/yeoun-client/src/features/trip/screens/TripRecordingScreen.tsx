@@ -480,17 +480,11 @@ function appendRealExpenseEvents(
   });
 }
 
-export default function TripRecordingScreen({
+function RealTripRecordingScreen({
   reportRoute = '/trip/report',
-  useMockData = false,
 }: {
   reportRoute?: '/trip/report' | '/trip/mock-report';
-  useMockData?: boolean;
 }) {
-  if (useMockData) {
-    return <MockTripRecordingScreen reportRoute="/trip/mock-report" useMockData />;
-  }
-
   const router = useRouter();
   const cameraRef = useRef<Mapbox.Camera>(null);
   const scrollRef = useRef<ScrollView | null>(null);
@@ -2397,6 +2391,20 @@ export default function TripRecordingScreen({
       </Animated.ScrollView>
     </SafeAreaView>
   );
+}
+
+export default function TripRecordingScreen({
+  reportRoute = '/trip/report',
+  useMockData = false,
+}: {
+  reportRoute?: '/trip/report' | '/trip/mock-report';
+  useMockData?: boolean;
+}) {
+  if (useMockData) {
+    return <MockTripRecordingScreen reportRoute="/trip/mock-report" useMockData />;
+  }
+
+  return <RealTripRecordingScreen reportRoute={reportRoute} />;
 }
 
 const styles = StyleSheet.create({
