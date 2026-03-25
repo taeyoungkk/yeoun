@@ -13,6 +13,8 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
 
     List<Event> findByTimelineDayIdAndHiddenFalseOrderByStartAtAscEndAtAscCreatedAtAsc(UUID timelineDayId);
 
+    List<Event> findByTripIdAndHiddenFalseOrderByStartAtAscEndAtAscCreatedAtAsc(UUID tripId);
+
     List<Event> findByTripIdAndEventTypeOrderByStartAtAscEndAtAscCreatedAtAsc(UUID tripId, EventType eventType);
 
     Optional<Event> findByTripIdAndPlaceExternalId(UUID tripId, String placeExternalId);
