@@ -8,12 +8,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { acceptFriendRequestApi, declineFriendRequestApi } from '@/src/api/friend';
 import { acceptTripInviteByIdApi, declineTripInviteByIdApi } from '@/src/api/invite';
 import { getTripDetailApi } from '@/src/api/trip';
+import { ReceiptOcrButton } from '@/src/features/payment/components/ReceiptOcrButton';
 import { Notification, useNotificationStore } from '@/src/store/notification.store';
 import { useTripStore } from '@/src/store/trip.store';
 import { useUIStore } from '@/src/store/ui.store';
 
 const isFriendRequestNotification = (type: string) => type.includes('FRIEND_REQUEST');
 const isTripInviteNotification = (type: string) => type.includes('TRIP_INVITE');
+const isReceiptReminderNotification = (type: string) => type.includes('RECEIPT_REMINDER');
+const isPaymentRequestNotification = (type: string) => type.includes('PAYMENT_REQUEST');
 
 const getApiErrorCode = (error: unknown) => {
   if (!axios.isAxiosError(error)) {
@@ -32,7 +35,31 @@ const getNotificationIcon = (type: string) => {
     return { name: 'person-add' as const, color: '#2563EB' };
   }
 
+  if (isReceiptReminderNotification(type)) {
+    return { name: 'receipt-long' as const, color: '#10B981' };
+  }
+
+  if (isPaymentRequestNotification(type)) {
+    return { name: 'account-balance-wallet' as const, color: '#F59E0B' };
+  }
+
   return { name: 'notifications' as const, color: '#6B7280' };
+};
+
+const getDecisionLabel = (status?: Notification['decisionStatus']) => {
+  if (status === 'accept') {
+    return '수락됨';
+  }
+
+  if (status === 'decline') {
+    return '거절됨';
+  }
+
+  if (status === 'unavailable') {
+    return '처리 불가';
+  }
+
+  return null;
 };
 
 export default function NotificationsScreen() {
@@ -41,7 +68,9 @@ export default function NotificationsScreen() {
   const [noticeModal, setNoticeModal] = useState<{ title: string; message: string } | null>(null);
   const notifications = useNotificationStore((state) => state.notifications);
   const archivedNotifications = useNotificationStore((state) => state.archivedNotifications);
+  const unreadCount = useNotificationStore((state) => state.unreadCount);
   const fetchNotifications = useNotificationStore((state) => state.fetchNotifications);
+  const markAllAsRead = useNotificationStore((state) => state.markAllAsRead);
   const markAsRead = useNotificationStore((state) => state.markAsRead);
   const archiveNotification = useNotificationStore((state) => state.archiveNotification);
   const fetchTrips = useTripStore((state) => state.fetchTrips);
@@ -78,6 +107,19 @@ export default function NotificationsScreen() {
     archiveNotification(notification, 'unavailable');
   };
 
+  const openNotificationDestination = async (notification: Notification) => {
+    await markAsRead(notification.id);
+
+    if (isReceiptReminderNotification(notification.type)) {
+      router.push('/receipt-ocr');
+      return;
+    }
+
+    if (isPaymentRequestNotification(notification.type)) {
+      router.push('/cards');
+    }
+  };
+
   const handleFriendRequest = async (notification: Notification, action: 'accept' | 'decline') => {
     const friendshipId = notification.data?.friendshipId ?? notification.data?.resourceId;
     if (!friendshipId) {
@@ -95,7 +137,10 @@ export default function NotificationsScreen() {
       if (response.success) {
         await markAsRead(notification.id);
         archiveNotification(notification, action);
-        showToast(action === 'accept' ? '친구 요청을 수락했습니다.' : '친구 요청을 거절했습니다.', action === 'accept' ? 'success' : 'info');
+        showToast(
+          action === 'accept' ? '친구 요청을 수락했습니다.' : '친구 요청을 거절했습니다.',
+          action === 'accept' ? 'success' : 'info',
+        );
       }
     } catch (error) {
       console.error('[Notifications] Failed to handle friend request.', error);
@@ -130,7 +175,10 @@ export default function NotificationsScreen() {
 
         await markAsRead(notification.id);
         archiveNotification(notification, action);
-        showToast(action === 'accept' ? '여행 초대를 수락했습니다.' : '여행 초대를 거절했습니다.', action === 'accept' ? 'success' : 'info');
+        showToast(
+          action === 'accept' ? '여행 초대를 수락했습니다.' : '여행 초대를 거절했습니다.',
+          action === 'accept' ? 'success' : 'info',
+        );
 
         if (action === 'accept' && response.data.tripId) {
           router.push('/(tabs)');
@@ -141,7 +189,7 @@ export default function NotificationsScreen() {
 
       if (errorCode === 'TRIP_NOT_FOUND') {
         await moveNotificationToHistory(notification);
-        openNoticeModal('여행을 확인할 수 없어요', '이 여행은 이미 삭제되어 더 이상 참여할 수 없습니다.');
+        openNoticeModal('여행을 확인할 수 없어요', '이미 삭제된 여행이라 더 이상 참여할 수 없습니다.');
         return;
       }
 
@@ -154,7 +202,7 @@ export default function NotificationsScreen() {
 
           if (tripDetailResponse.success && tripDetailResponse.data.status === 'ENDED') {
             await moveNotificationToHistory(notification);
-            openNoticeModal('여행이 종료되었어요', '이 여행은 이미 종료되었습니다. 지난 여행에서 기록을 확인해 주세요.');
+            openNoticeModal('여행이 종료되었어요', '이미 종료된 여행입니다. 지난 여행 기록에서 내용을 확인해 주세요.');
             return;
           }
         }
@@ -185,7 +233,7 @@ export default function NotificationsScreen() {
       return;
     }
 
-    await markAsRead(notification.id);
+    await openNotificationDestination(notification);
   };
 
   const handleSecondaryAction = async (notification: Notification) => {
@@ -215,7 +263,7 @@ export default function NotificationsScreen() {
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setActiveTab('history')}>
               <Text className={`text-sm ${activeTab === 'history' ? 'text-[#5F6B65] font-semibold' : 'text-[#AEB5B1]'}`}>
-                과거알림
+                과거 알림
               </Text>
             </TouchableOpacity>
           </View>
@@ -224,10 +272,19 @@ export default function NotificationsScreen() {
           <TouchableOpacity onPress={() => router.push('/notifications-mock' as any)}>
             <Text className="text-sm text-[#5F6B65]">목업 화면</Text>
           </TouchableOpacity>
+          {activeTab === 'active' && unreadCount > 0 ? (
+            <TouchableOpacity onPress={() => void markAllAsRead()}>
+              <Text className="text-sm font-semibold text-[#315B45]">알림 모두 확인</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
-      <ScrollView className="flex-1 px-4" contentContainerStyle={{ paddingTop: 12, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        className="flex-1 px-4"
+        contentContainerStyle={{ paddingTop: 12, paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+      >
         {visibleNotifications.length === 0 ? (
           <View className="flex-1 items-center justify-center pt-20">
             <View className="w-16 h-16 bg-gray-50 rounded-full items-center justify-center mb-4">
@@ -242,13 +299,16 @@ export default function NotificationsScreen() {
             const icon = getNotificationIcon(item.type);
             const hasDecisionAction =
               activeTab === 'active' && (isFriendRequestNotification(item.type) || isTripInviteNotification(item.type));
-            const decisionLabel =
-              item.decisionStatus === 'accept' ? '수락됨' : item.decisionStatus === 'decline' ? '거절됨' : item.decisionStatus === 'unavailable' ? '처리불가' : null;
+            const hasNavigationAction =
+              activeTab === 'active' &&
+              !hasDecisionAction &&
+              (isReceiptReminderNotification(item.type) || isPaymentRequestNotification(item.type));
+            const decisionLabel = getDecisionLabel(item.decisionStatus);
 
             return (
               <View
                 key={item.id}
-                className="mb-4 p-4 rounded-3xl bg-white"
+                className={`mb-4 rounded-3xl border border-gray-100 p-4 ${item.isRead ? 'bg-white' : 'bg-blue-50/40'}`}
                 style={{
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 2 },
@@ -264,6 +324,7 @@ export default function NotificationsScreen() {
                   <View className="flex-1">
                     <View className="flex-row justify-between items-center">
                       <Text className="text-base font-bold text-gray-900">{item.title}</Text>
+                      {activeTab === 'active' && !item.isRead ? <View className="w-2 h-2 rounded-full bg-[#2563EB]" /> : null}
                     </View>
                     <Text className="text-sm text-gray-600 mt-1 leading-5">{item.message}</Text>
                   </View>
@@ -283,16 +344,31 @@ export default function NotificationsScreen() {
                     {decisionLabel ? (
                       <View
                         className="px-3 py-2 rounded-xl"
-                        style={{ backgroundColor: item.decisionStatus === 'accept' ? '#E3F0E7' : item.decisionStatus === 'decline' ? '#ECEFF1' : '#F4EEE7' }}
+                        style={{
+                          backgroundColor:
+                            item.decisionStatus === 'accept'
+                              ? '#E3F0E7'
+                              : item.decisionStatus === 'decline'
+                                ? '#ECEFF1'
+                                : '#F4EEE7',
+                        }}
                       >
                         <Text
                           className="text-sm font-semibold"
-                          style={{ color: item.decisionStatus === 'accept' ? '#315B45' : item.decisionStatus === 'decline' ? '#6B7280' : '#9A6B2F' }}
+                          style={{
+                            color:
+                              item.decisionStatus === 'accept'
+                                ? '#315B45'
+                                : item.decisionStatus === 'decline'
+                                  ? '#6B7280'
+                                  : '#9A6B2F',
+                          }}
                         >
                           {decisionLabel}
                         </Text>
                       </View>
                     ) : null}
+
                     {hasDecisionAction ? (
                       <>
                         <TouchableOpacity
@@ -301,7 +377,6 @@ export default function NotificationsScreen() {
                         >
                           <Text className="text-sm font-semibold text-gray-600">거절</Text>
                         </TouchableOpacity>
-
                         <TouchableOpacity
                           className="px-6 py-2 rounded-xl bg-blue-500"
                           onPress={() => void handlePrimaryAction(item)}
@@ -309,6 +384,26 @@ export default function NotificationsScreen() {
                           <Text className="text-sm font-bold text-white">수락</Text>
                         </TouchableOpacity>
                       </>
+                    ) : null}
+
+                    {hasNavigationAction ? (
+                      <TouchableOpacity
+                        className="px-4 py-2 rounded-xl bg-[#315B45]"
+                        onPress={() => void handlePrimaryAction(item)}
+                      >
+                        <Text className="text-sm font-semibold text-white">
+                          {isReceiptReminderNotification(item.type) ? '영수증 확인' : '결제 확인'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {activeTab === 'active' && !hasDecisionAction && !hasNavigationAction && !item.isRead ? (
+                      <TouchableOpacity
+                        className="px-4 py-2 rounded-xl bg-gray-100"
+                        onPress={() => void markAsRead(item.id)}
+                      >
+                        <Text className="text-sm font-semibold text-gray-600">확인</Text>
+                      </TouchableOpacity>
                     ) : null}
                   </View>
                 </View>
@@ -332,6 +427,10 @@ export default function NotificationsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <View className="absolute bottom-6 right-6 z-50">
+        <ReceiptOcrButton />
+      </View>
     </SafeAreaView>
   );
 }

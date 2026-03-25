@@ -7,6 +7,8 @@ import com.yeoun.domain.photo.entity.Photo;
 import com.yeoun.domain.photo.event.PhotoProcessingCoordinatesEvent;
 import com.yeoun.domain.photo.event.PhotoProcessingResultEvent;
 import com.yeoun.domain.photo.repository.PhotoRepository;
+import com.yeoun.domain.timeline.service.TimelineIncrementalSyncService;
+import com.yeoun.domain.tripsync.service.TripSyncStatusService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,13 +28,19 @@ public class PhotoProcessingResultService {
 
     private final PhotoRepository photoRepository;
     private final ObjectMapper objectMapper;
+    private final TimelineIncrementalSyncService timelineIncrementalSyncService;
+    private final TripSyncStatusService tripSyncStatusService;
 
     public PhotoProcessingResultService(
             PhotoRepository photoRepository,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            TimelineIncrementalSyncService timelineIncrementalSyncService,
+            TripSyncStatusService tripSyncStatusService
     ) {
         this.photoRepository = photoRepository;
         this.objectMapper = objectMapper;
+        this.timelineIncrementalSyncService = timelineIncrementalSyncService;
+        this.tripSyncStatusService = tripSyncStatusService;
     }
 
     @Transactional
@@ -74,6 +82,11 @@ public class PhotoProcessingResultService {
 
         if (STATUS_FAILED.equals(status)) {
             photo.applyProcessingMetadataOnly(mergedMetadataJson, now);
+            tripSyncStatusService.markFailed(
+                    photo.getTripId(),
+                    now,
+                    event.errorMessage() == null ? "Photo sync failed." : event.errorMessage()
+            );
             return;
         }
 
@@ -99,6 +112,10 @@ public class PhotoProcessingResultService {
                 mergedMetadataJson,
                 now
         );
+        timelineIncrementalSyncService.syncTrip(photo.getTripId());
+        tripSyncStatusService.increasePhotoVersion(photo.getTripId(), now);
+        tripSyncStatusService.increaseTimelineVersion(photo.getTripId(), now);
+        tripSyncStatusService.markCompleted(photo.getTripId(), now);
     }
 
     private ProcessingState extractProcessingState(String metadataJson) {

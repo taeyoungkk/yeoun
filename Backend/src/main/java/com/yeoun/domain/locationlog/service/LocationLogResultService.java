@@ -2,9 +2,12 @@ package com.yeoun.domain.locationlog.service;
 
 import com.yeoun.domain.locationlog.event.LocationLogBatchResultEvent;
 import com.yeoun.domain.timeline.service.TimelineIncrementalSyncService;
+import com.yeoun.domain.tripsync.service.TripSyncStatusService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+
+import java.time.Instant;
 
 @Service
 public class LocationLogResultService {
@@ -12,9 +15,14 @@ public class LocationLogResultService {
     private static final Logger log = LoggerFactory.getLogger(LocationLogResultService.class);
 
     private final TimelineIncrementalSyncService timelineIncrementalSyncService;
+    private final TripSyncStatusService tripSyncStatusService;
 
-    public LocationLogResultService(TimelineIncrementalSyncService timelineIncrementalSyncService) {
+    public LocationLogResultService(
+            TimelineIncrementalSyncService timelineIncrementalSyncService,
+            TripSyncStatusService tripSyncStatusService
+    ) {
         this.timelineIncrementalSyncService = timelineIncrementalSyncService;
+        this.tripSyncStatusService = tripSyncStatusService;
     }
 
     public void handleResult(LocationLogBatchResultEvent event) {
@@ -23,8 +31,13 @@ public class LocationLogResultService {
             return;
         }
         if (event.isFailed()) {
+            tripSyncStatusService.markFailed(
+                    event.tripId(),
+                    resolveEventTime(event),
+                    event.errorMessage() == null ? "Location sync failed." : event.errorMessage()
+            );
             log.error(
-                    "위치 로그 워커 처리 실패. tripId={} userId={} errorCode={} errorMessage={}",
+                    "Location processing failed. tripId={} userId={} errorCode={} errorMessage={}",
                     event.tripId(),
                     event.userId(),
                     event.errorCode(),
@@ -38,7 +51,7 @@ public class LocationLogResultService {
         }
 
         log.info(
-                "위치 로그 워커 처리 완료. tripId={} storedCount={} preprocessedCount={} placePersistedCount={} routePersistedCount={} timelineCandidatePersistedCount={}",
+                "Location processing completed. tripId={} storedCount={} preprocessedCount={} placePersistedCount={} routePersistedCount={} timelineCandidatePersistedCount={}",
                 event.tripId(),
                 event.storedCount(),
                 event.preprocessedCount(),
@@ -46,8 +59,21 @@ public class LocationLogResultService {
                 event.routePersistedCount(),
                 event.timelineCandidatePersistedCount()
         );
-        log.info("위치 로그 워커 완료 후 타임라인 동기화 시작. tripId={}", event.tripId());
         timelineIncrementalSyncService.syncTrip(event.tripId());
-        log.info("위치 로그 워커 완료 후 타임라인 동기화 완료. tripId={}", event.tripId());
+
+        Instant now = resolveEventTime(event);
+        tripSyncStatusService.increaseRouteVersion(event.tripId(), now);
+        tripSyncStatusService.increaseTimelineVersion(event.tripId(), now);
+        tripSyncStatusService.markCompleted(event.tripId(), now);
+    }
+
+    private Instant resolveEventTime(LocationLogBatchResultEvent event) {
+        if (event.processedAt() != null) {
+            return event.processedAt();
+        }
+        if (event.requestedAt() != null) {
+            return event.requestedAt();
+        }
+        return Instant.now();
     }
 }

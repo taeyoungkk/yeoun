@@ -8,6 +8,7 @@ import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStor
 import { useAuthStore, useUserStore } from '@/src/store';
 import { logoutApi } from '@/src/api/auth';
 import { withdrawAccount } from '@/src/api/user';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 const IosSwitch = ({
   value,
@@ -101,14 +102,23 @@ export default function SettingsScreen() {
 
   const handleLogout = async () => {
     try {
-      // 1. 로그아웃 API 호출
+      // 1. Google 계정 로그아웃 처리
+      const hasPlayServices = await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: false }).catch(() => false);
+      if (hasPlayServices) {
+        const isSignedIn = GoogleSignin.hasPreviousSignIn();
+        if (isSignedIn) {
+          await GoogleSignin.signOut();
+        }
+      }
+      
+      // 2. 로그아웃 API 호출
       await logoutApi();
     } catch (error) {
       console.log('Logout error:', error);
     } finally {
-      // 2. 인증 토큰 제거
+      // 3. 인증 토큰 및 프로필 초기화
+      // 상태 관리가 초기화되면 app/_layout.tsx의 useEffect가 자동으로 로그인 화면으로 리다이렉트합니다.
       useAuthStore.getState().clearTokens();
-      // 3. 사용자 프로필 정보 제거
       useUserStore.getState().clearProfile();
     }
   };
@@ -118,10 +128,19 @@ export default function SettingsScreen() {
       // 1. 회원 탈퇴 API 호출
       const response = await withdrawAccount();
       if (response.success) {
-        // 2. 상태 및 토큰 초기화
+        // 2. Google 계정 연동 해제 및 로그아웃 처리
+        const hasPlayServices = await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: false }).catch(() => false);
+        if (hasPlayServices) {
+          const isSignedIn = GoogleSignin.hasPreviousSignIn();
+          if (isSignedIn) {
+            await GoogleSignin.revokeAccess();
+            await GoogleSignin.signOut();
+          }
+        }
+
+        // 3. 상태 및 토큰 초기화
         useAuthStore.getState().clearTokens();
         useUserStore.getState().clearProfile();
-        // 네비게이션은 루트 레이아웃의 Redirect에 의해 처리됨
       }
     } catch (error) {
       console.log('Withdrawal error:', error);

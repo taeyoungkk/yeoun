@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import * as AuthSession from "expo-auth-session";
 import { Controller, useForm } from "react-hook-form";
 import * as WebBrowser from "expo-web-browser";
-import * as Google from "expo-auth-session/providers/google";
+import {
+  GoogleSignin,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 import {
   ActivityIndicator,
   Image,
@@ -48,75 +51,38 @@ export const LoginScreen = () => {
     defaultValues: { email: "", password: "" },
   });
 
-  const redirectUri = AuthSession.makeRedirectUri({
-    path: "oauthredirect",
-    native: "com.hoimook.yeoun:/oauthredirect",
-  });
-
-  // Google OAuth Hook
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    redirectUri,
-    scopes: ["openid", "profile", "email"],
-  });
-
+  // ─── Native Google Sign-In Setup ──────────────────────────────────────────
   useEffect(() => {
-    if (!request) {
-      return;
-    }
-
-    console.log("[LoginScreen] Google auth request ready", {
-      redirectUri,
-      requestUrl: request.url,
-      responseType: request.responseType,
-      androidClientIdPreview: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.slice(0, 24),
-      iosClientIdPreview: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.slice(0, 24),
-      webClientIdPreview: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.slice(0, 24),
+    GoogleSignin.configure({
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      // For native sign-in, the SHA-1 registers the Android client automatically.
+      // We ONLY need the Web Client ID here so Google can issue an ID token for our backend.
     });
-  }, [request, redirectUri]);
+  }, []);
 
-  useEffect(() => {
-    if (response) {
-      const responseParams = "params" in response ? response.params : undefined;
-      const responseAuthentication = "authentication" in response ? response.authentication : undefined;
-
-      console.log("[LoginScreen] Google auth session response", {
-        type: response.type,
-        params: responseParams,
-        authentication: responseAuthentication
-          ? {
-              accessTokenPresent: Boolean(responseAuthentication.accessToken),
-              idTokenPresent: Boolean(responseAuthentication.idToken),
-            }
-          : null,
-        errorCode: "errorCode" in response ? response.errorCode : undefined,
-      });
-    }
-
-    if (response?.type === "success") {
-      const authentication = "authentication" in response ? response.authentication : undefined;
-      const params = "params" in response ? response.params : undefined;
-      const idToken = authentication?.idToken || params?.id_token;
+  const handleNativeGoogleLogin = async () => {
+    setIsLoading(true);
+    setLoginError("");
+    console.log('[LoginScreen] Starting Google login');
+    try {
+      await GoogleSignin.hasPlayServices();
+      const googleResponse = await GoogleSignin.signIn();
+      
+      let idToken = null;
+      if (googleResponse.data?.idToken) {
+        idToken = googleResponse.data.idToken;
+      } else {
+        const tokens = await GoogleSignin.getTokens();
+        idToken = tokens.idToken;
+      }
 
       if (!idToken) {
-        setLoginError("Google id token을 받지 못했습니다.");
+        setLoginError("구글 인증 토큰을 가져오지 못했습니다.");
+        setIsLoading(false);
         return;
       }
 
-      handleGoogleLogin(idToken);
-    }
-  }, [response]);
-
-  const handleGoogleLogin = async (idToken: string) => {
-    setIsLoading(true);
-    setLoginError("");
-    console.log('[LoginScreen] Starting Google login', {
-      redirectUri,
-      idTokenPreview: `${idToken.slice(0, 16)}...`,
-    });
-    try {
+      // ─── Call our Backend API ───
       const apiResponse = await googleAuthApi(idToken);
       console.log('[LoginScreen] Google Auth Response:', JSON.stringify(apiResponse, null, 2));
 
@@ -140,31 +106,38 @@ export const LoginScreen = () => {
           hasRefreshToken: Boolean(refreshToken),
         });
         
-        // If user info is missing, we might need a fallback or another API call.
-        // For now, let's use what we have or placeholder.
-        const user = data.user || {
-          userId: 'google-user',
-          email: '',
-          nickname: 'Google 사용자',
-        };
+        // Extract basic info from either backend (best) or google (fallback)
+        const userNickname = data.user?.nickname || googleResponse.data?.user.name || 'Google 사용자';
+        const userEmail = data.user?.email || googleResponse.data?.user.email || '';
+        const userPhoto = data.user?.profileImageUrl || googleResponse.data?.user.photo || null;
 
         setProfile({
-          userId: user.userId,
-          email: user.email,
-          nickname: user.nickname,
-          profileImageUrl: null,
-          timezone: 'Asia/Seoul',
-          role: 'USER',
-          status: 'ACTIVE',
+          userId: data.user?.userId || googleResponse.data?.user.id || 'google-user',
+          email: userEmail,
+          nickname: userNickname,
+          profileImageUrl: userPhoto,
+          timezone: data.user?.timezone || 'Asia/Seoul',
+          role: data.user?.role || 'USER',
+          status: data.user?.status || 'ACTIVE',
         });
 
         router.replace("/(tabs)");
       } else {
         setLoginError(apiResponse.message || "구글 로그인에 실패했습니다.");
       }
-    } catch (error) {
-      setLoginError("구글 로그인 중 오류가 발생했습니다.");
-      console.error("Google Login Error:", error);
+    } catch (error: any) {
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        // user cancelled the login flow
+        console.log("User cancelled Google Login");
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        // operation (e.g. sign in) is in progress already
+        console.log("Google Login is already in progress");
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        setLoginError("Google Play 서비스를 사용할 수 없습니다.");
+      } else {
+        setLoginError("구글 로그인 중 오류가 발생했습니다.");
+        console.error("Google Login Error:", error);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -360,15 +333,9 @@ export const LoginScreen = () => {
 
           {/* Google button */}
           <TouchableOpacity
-            style={[styles.googleButton, (!request || isLoading) && { opacity: 0.5 }]}
-            onPress={() => {
-              console.log("[LoginScreen] Google login button pressed", {
-                redirectUri,
-                requestUrl: request?.url,
-              });
-              promptAsync();
-            }}
-            disabled={!request || isLoading}
+            style={[styles.googleButton, isLoading && { opacity: 0.5 }]}
+            onPress={handleNativeGoogleLogin}
+            disabled={isLoading}
             accessibilityLabel="구글 로그인"
           >
             <View style={styles.googleInner}>
