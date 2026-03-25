@@ -1,0 +1,2 @@
+ALTER TABLE shared_albums
+    ADD COLUMN IF NOT EXISTS event_selection_applied BOOLEAN NOT NULL DEFAULT FALSE;

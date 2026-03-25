@@ -52,6 +52,9 @@ public class SharedAlbum {
     @Column(name = "cover_photo_id")
     private UUID coverPhotoId;
 
+    @Column(name = "event_selection_applied", nullable = false)
+    private boolean eventSelectionApplied;
+
     @Column(name = "created_by_user_id", nullable = false)
     private UUID createdByUserId;
 
@@ -74,6 +77,11 @@ public class SharedAlbum {
         this.description = description;
         this.visibility = visibility;
         this.coverPhotoId = coverPhotoId;
+        this.updatedAt = now;
+    }
+
+    public void updateEventSelectionApplied(boolean eventSelectionApplied, Instant now) {
+        this.eventSelectionApplied = eventSelectionApplied;
         this.updatedAt = now;
     }
 }

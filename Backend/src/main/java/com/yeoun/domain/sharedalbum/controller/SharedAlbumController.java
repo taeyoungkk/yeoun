@@ -1,8 +1,10 @@
 package com.yeoun.domain.sharedalbum.controller;
 
+import com.yeoun.domain.sharedalbum.dto.request.SharedAlbumEventReplaceRequest;
 import com.yeoun.domain.sharedalbum.dto.request.SharedAlbumMemberReplaceRequest;
 import com.yeoun.domain.sharedalbum.dto.request.SharedAlbumUpdateRequest;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumCreateResponse;
+import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumEventSelectionResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumMemberListResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumTripResponse;
 import com.yeoun.domain.sharedalbum.service.SharedAlbumService;
@@ -53,7 +55,7 @@ public class SharedAlbumController {
     }
 
     @GetMapping("/trips/{tripId}/shared-album")
-    @Operation(summary = "공유 앨범 조회", description = "이 여행의 공유 앨범 존재 여부와 첫 화면에 필요한 요약 정보를 조회합니다.")
+    @Operation(summary = "공유 앨범 조회", description = "이 여행에 공유 앨범이 있는지 확인하고 첫 화면 요약 정보를 조회합니다.")
     public ApiResponse<SharedAlbumTripResponse> getSharedAlbum(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @PathVariable("tripId") UUID tripId
@@ -105,8 +107,20 @@ public class SharedAlbumController {
         return ApiResponse.ok(response);
     }
 
+    @PutMapping("/shared-albums/{sharedAlbumId}/events")
+    @Operation(summary = "공유 앨범 이벤트 전체 설정", description = "공유 앨범에 노출할 이벤트 목록을 순서대로 통째로 저장합니다.")
+    public ApiResponse<SharedAlbumEventSelectionResponse> replaceSharedAlbumEvents(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("sharedAlbumId") UUID sharedAlbumId,
+            @Valid @RequestBody SharedAlbumEventReplaceRequest request
+    ) {
+        SharedAlbumEventSelectionResponse response =
+                sharedAlbumService.replaceSharedAlbumEvents(principal.userId(), sharedAlbumId, request);
+        return ApiResponse.ok(response);
+    }
+
     @GetMapping("/shared-albums/{sharedAlbumId}/timeline-days")
-    @Operation(summary = "공유 앨범 타임라인 일자 목록 조회", description = "공유 앨범에서 펼칠 수 있는 타임라인 일자 목록을 조회합니다.")
+    @Operation(summary = "공유 앨범 타임라인 일자 목록 조회", description = "공유 앨범에서 펼쳐 볼 수 있는 타임라인 일자 목록을 조회합니다.")
     public ApiResponse<TimelineDayListResponse> getSharedAlbumTimelineDays(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @PathVariable("sharedAlbumId") UUID sharedAlbumId
@@ -141,7 +155,7 @@ public class SharedAlbumController {
     }
 
     @GetMapping("/shared-albums/{sharedAlbumId}/settlements")
-    @Operation(summary = "공유 앨범 정산 목록 조회", description = "공유 앨범에서 펼칠 수 있는 정산 목록을 조회합니다.")
+    @Operation(summary = "공유 앨범 정산 목록 조회", description = "공유 앨범에서 펼쳐 볼 수 있는 정산 목록을 조회합니다.")
     public ApiResponse<SettlementListResponse> getSharedAlbumSettlements(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @PathVariable("sharedAlbumId") UUID sharedAlbumId

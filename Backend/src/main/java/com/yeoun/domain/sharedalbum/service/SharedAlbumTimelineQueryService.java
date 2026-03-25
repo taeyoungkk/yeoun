@@ -2,6 +2,8 @@ package com.yeoun.domain.sharedalbum.service;
 
 import com.yeoun.domain.photo.entity.Photo;
 import com.yeoun.domain.photo.repository.PhotoRepository;
+import com.yeoun.domain.locationlog.entity.LocationRouteDay;
+import com.yeoun.domain.locationlog.repository.LocationRouteDayRepository;
 import com.yeoun.domain.sharedalbum.entity.SharedAlbum;
 import com.yeoun.domain.timeline.dto.response.EventDetailResponse;
 import com.yeoun.domain.timeline.dto.response.EventMemoSummaryResponse;
@@ -16,7 +18,6 @@ import com.yeoun.domain.timeline.entity.EventPhoto;
 import com.yeoun.domain.timeline.entity.TimelineDay;
 import com.yeoun.domain.timeline.repository.EventMemoRepository;
 import com.yeoun.domain.timeline.repository.EventPhotoRepository;
-import com.yeoun.domain.timeline.repository.EventRepository;
 import com.yeoun.domain.timeline.repository.TimelineDayRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
@@ -24,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,23 +39,26 @@ import java.util.stream.Collectors;
 public class SharedAlbumTimelineQueryService {
 
     private final SharedAlbumAccessService sharedAlbumAccessService;
+    private final SharedAlbumEventSelectionService sharedAlbumEventSelectionService;
     private final TimelineDayRepository timelineDayRepository;
-    private final EventRepository eventRepository;
+    private final LocationRouteDayRepository locationRouteDayRepository;
     private final EventPhotoRepository eventPhotoRepository;
     private final EventMemoRepository eventMemoRepository;
     private final PhotoRepository photoRepository;
 
     public SharedAlbumTimelineQueryService(
             SharedAlbumAccessService sharedAlbumAccessService,
+            SharedAlbumEventSelectionService sharedAlbumEventSelectionService,
             TimelineDayRepository timelineDayRepository,
-            EventRepository eventRepository,
+            LocationRouteDayRepository locationRouteDayRepository,
             EventPhotoRepository eventPhotoRepository,
             EventMemoRepository eventMemoRepository,
             PhotoRepository photoRepository
     ) {
         this.sharedAlbumAccessService = sharedAlbumAccessService;
+        this.sharedAlbumEventSelectionService = sharedAlbumEventSelectionService;
         this.timelineDayRepository = timelineDayRepository;
-        this.eventRepository = eventRepository;
+        this.locationRouteDayRepository = locationRouteDayRepository;
         this.eventPhotoRepository = eventPhotoRepository;
         this.eventMemoRepository = eventMemoRepository;
         this.photoRepository = photoRepository;
@@ -90,16 +95,20 @@ public class SharedAlbumTimelineQueryService {
     }
 
     private TimelineDayListResponse buildTimelineDays(SharedAlbum sharedAlbum) {
-        List<TimelineDayListItemResponse> items = timelineDayRepository.findByTripIdOrderByDayDateAsc(sharedAlbum.getTripId())
-                .stream()
-                .filter(timelineDay -> timelineDay.getEventCount() > 0 || timelineDay.getPhotoCount() > 0)
+        List<TimelineDay> timelineDays = timelineDayRepository.findByTripIdOrderByDayDateAsc(sharedAlbum.getTripId());
+        Map<UUID, Integer> eventCountByDayId = buildEventCountByDayId(sharedAlbum);
+        Map<UUID, BigDecimal> distanceByDayId = buildDistanceByDayId(sharedAlbum, timelineDays);
+
+        List<TimelineDayListItemResponse> items = timelineDays.stream()
+                .filter(timelineDay -> eventCountByDayId.getOrDefault(timelineDay.getTimelineDayId(), 0) > 0
+                        || timelineDay.getPhotoCount() > 0)
                 .map(timelineDay -> new TimelineDayListItemResponse(
                         timelineDay.getTimelineDayId(),
                         timelineDay.getDayDate(),
                         timelineDay.getSummaryText(),
-                        timelineDay.getDistanceM(),
+                        distanceByDayId.getOrDefault(timelineDay.getTimelineDayId(), zeroDistance()),
                         timelineDay.getPhotoCount(),
-                        timelineDay.getEventCount(),
+                        eventCountByDayId.getOrDefault(timelineDay.getTimelineDayId(), 0),
                         timelineDay.getUpdatedAt()
                 ))
                 .toList();
@@ -113,7 +122,8 @@ public class SharedAlbumTimelineQueryService {
             throw new BaseException(ErrorCode.TIMELINE_DAY_NOT_FOUND);
         }
 
-        List<Event> events = eventRepository.findByTimelineDayIdAndHiddenFalseOrderByStartAtAscEndAtAscCreatedAtAsc(timelineDayId);
+        List<Event> events = resolveTimelineDayEvents(sharedAlbum, timelineDayId);
+        BigDecimal distance = resolveTimelineDayDistance(sharedAlbum, timelineDay);
         Map<UUID, List<EventPhotoResponse>> photoResponsesByEventId = buildEventPhotoResponses(
                 events.stream().map(Event::getEventId).toList()
         );
@@ -145,9 +155,9 @@ public class SharedAlbumTimelineQueryService {
                 timelineDay.getTripId(),
                 timelineDay.getDayDate(),
                 timelineDay.getSummaryText(),
-                timelineDay.getDistanceM(),
+                distance,
                 timelineDay.getPhotoCount(),
-                timelineDay.getEventCount(),
+                eventResponses.size(),
                 timelineDay.getCreatedAt(),
                 timelineDay.getUpdatedAt(),
                 eventResponses
@@ -155,11 +165,7 @@ public class SharedAlbumTimelineQueryService {
     }
 
     private EventDetailResponse buildEventDetail(SharedAlbum sharedAlbum, UUID eventId, UUID requesterUserId) {
-        Event event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new BaseException(ErrorCode.EVENT_NOT_FOUND));
-        if (!event.getTripId().equals(sharedAlbum.getTripId())) {
-            throw new BaseException(ErrorCode.EVENT_NOT_FOUND);
-        }
+        Event event = resolveAlbumEvent(sharedAlbum, eventId);
 
         List<EventPhotoResponse> photoResponses = buildEventPhotoResponses(List.of(eventId))
                 .getOrDefault(eventId, List.of());
@@ -189,6 +195,64 @@ public class SharedAlbumTimelineQueryService {
                 photoResponses,
                 myMemo
         );
+    }
+
+    private Map<UUID, Integer> buildEventCountByDayId(SharedAlbum sharedAlbum) {
+        Map<UUID, Integer> eventCountByDayId = new LinkedHashMap<>();
+        for (Event event : sharedAlbumEventSelectionService.resolveVisibleEvents(sharedAlbum)) {
+            eventCountByDayId.merge(event.getTimelineDayId(), 1, Integer::sum);
+        }
+        return eventCountByDayId;
+    }
+
+    private Map<UUID, BigDecimal> buildDistanceByDayId(SharedAlbum sharedAlbum, List<TimelineDay> timelineDays) {
+        Map<java.time.LocalDate, UUID> timelineDayIdByDate = new LinkedHashMap<>();
+        for (TimelineDay timelineDay : timelineDays) {
+            timelineDayIdByDate.put(timelineDay.getDayDate(), timelineDay.getTimelineDayId());
+        }
+
+        Map<UUID, BigDecimal> distances = new LinkedHashMap<>();
+        for (LocationRouteDay routeDay : locationRouteDayRepository.findByTripIdOrderByDayAscUserIdAsc(sharedAlbum.getTripId())) {
+            if (!sharedAlbum.getCreatedByUserId().equals(routeDay.getUserId())) {
+                continue;
+            }
+            UUID timelineDayId = timelineDayIdByDate.get(routeDay.getDay());
+            if (timelineDayId == null || routeDay.getDistanceM() == null) {
+                continue;
+            }
+            distances.put(timelineDayId, normalizeDistance(routeDay.getDistanceM()));
+        }
+        return distances;
+    }
+
+    private BigDecimal resolveTimelineDayDistance(SharedAlbum sharedAlbum, TimelineDay timelineDay) {
+        for (LocationRouteDay routeDay : locationRouteDayRepository.findByTripIdAndDayOrderByUserIdAsc(
+                sharedAlbum.getTripId(),
+                timelineDay.getDayDate()
+        )) {
+            if (sharedAlbum.getCreatedByUserId().equals(routeDay.getUserId()) && routeDay.getDistanceM() != null) {
+                return normalizeDistance(routeDay.getDistanceM());
+            }
+        }
+        return zeroDistance();
+    }
+
+    private List<Event> resolveTimelineDayEvents(SharedAlbum sharedAlbum, UUID timelineDayId) {
+        List<Event> results = new ArrayList<>();
+        for (Event event : sharedAlbumEventSelectionService.resolveVisibleEvents(sharedAlbum)) {
+            if (timelineDayId.equals(event.getTimelineDayId())) {
+                results.add(event);
+            }
+        }
+        return results;
+    }
+
+    private Event resolveAlbumEvent(SharedAlbum sharedAlbum, UUID eventId) {
+        return sharedAlbumEventSelectionService.resolveVisibleEvents(sharedAlbum)
+                .stream()
+                .filter(event -> event.getEventId().equals(eventId))
+                .findFirst()
+                .orElseThrow(() -> new BaseException(ErrorCode.EVENT_NOT_FOUND));
     }
 
     private Map<UUID, List<EventPhotoResponse>> buildEventPhotoResponses(List<UUID> eventIds) {
@@ -245,5 +309,13 @@ public class SharedAlbumTimelineQueryService {
                 eventMemo.getCreatedAt(),
                 eventMemo.getUpdatedAt()
         );
+    }
+
+    private BigDecimal normalizeDistance(BigDecimal value) {
+        return value.setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal zeroDistance() {
+        return BigDecimal.ZERO.setScale(2, java.math.RoundingMode.HALF_UP);
     }
 }

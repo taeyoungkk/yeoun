@@ -2,13 +2,17 @@ package com.yeoun.domain.sharedalbum.service;
 
 import com.yeoun.domain.expense.entity.ExpenseStatus;
 import com.yeoun.domain.expense.repository.ExpenseRepository;
+import com.yeoun.domain.locationlog.entity.LocationRouteDay;
+import com.yeoun.domain.locationlog.repository.LocationRouteDayRepository;
 import com.yeoun.domain.photo.entity.Photo;
 import com.yeoun.domain.photo.repository.PhotoRepository;
 import com.yeoun.domain.photo.service.PhotoProcessingImageUrlService;
+import com.yeoun.domain.sharedalbum.dto.request.SharedAlbumEventReplaceRequest;
 import com.yeoun.domain.sharedalbum.dto.request.SharedAlbumMemberReplaceRequest;
 import com.yeoun.domain.sharedalbum.dto.request.SharedAlbumUpdateRequest;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumCreateResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumDaySummaryResponse;
+import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumEventSelectionResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumMemberItemResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumMemberListResponse;
 import com.yeoun.domain.sharedalbum.dto.response.SharedAlbumSectionAvailabilityResponse;
@@ -20,6 +24,7 @@ import com.yeoun.domain.sharedalbum.entity.SharedAlbumMember;
 import com.yeoun.domain.sharedalbum.entity.SharedAlbumVisibility;
 import com.yeoun.domain.sharedalbum.repository.SharedAlbumMemberRepository;
 import com.yeoun.domain.sharedalbum.repository.SharedAlbumRepository;
+import com.yeoun.domain.timeline.entity.Event;
 import com.yeoun.domain.timeline.entity.TimelineDay;
 import com.yeoun.domain.timeline.repository.TimelineDayRepository;
 import com.yeoun.domain.trip.entity.Trip;
@@ -57,9 +62,11 @@ public class SharedAlbumService {
     private final SharedAlbumRepository sharedAlbumRepository;
     private final SharedAlbumMemberRepository sharedAlbumMemberRepository;
     private final SharedAlbumAccessService sharedAlbumAccessService;
+    private final SharedAlbumEventSelectionService sharedAlbumEventSelectionService;
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
     private final TimelineDayRepository timelineDayRepository;
+    private final LocationRouteDayRepository locationRouteDayRepository;
     private final PhotoRepository photoRepository;
     private final ExpenseRepository expenseRepository;
     private final TripProcessingStatusRepository tripProcessingStatusRepository;
@@ -70,9 +77,11 @@ public class SharedAlbumService {
             SharedAlbumRepository sharedAlbumRepository,
             SharedAlbumMemberRepository sharedAlbumMemberRepository,
             SharedAlbumAccessService sharedAlbumAccessService,
+            SharedAlbumEventSelectionService sharedAlbumEventSelectionService,
             TripRepository tripRepository,
             TripMemberRepository tripMemberRepository,
             TimelineDayRepository timelineDayRepository,
+            LocationRouteDayRepository locationRouteDayRepository,
             PhotoRepository photoRepository,
             ExpenseRepository expenseRepository,
             TripProcessingStatusRepository tripProcessingStatusRepository,
@@ -82,9 +91,11 @@ public class SharedAlbumService {
         this.sharedAlbumRepository = sharedAlbumRepository;
         this.sharedAlbumMemberRepository = sharedAlbumMemberRepository;
         this.sharedAlbumAccessService = sharedAlbumAccessService;
+        this.sharedAlbumEventSelectionService = sharedAlbumEventSelectionService;
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
         this.timelineDayRepository = timelineDayRepository;
+        this.locationRouteDayRepository = locationRouteDayRepository;
         this.photoRepository = photoRepository;
         this.expenseRepository = expenseRepository;
         this.tripProcessingStatusRepository = tripProcessingStatusRepository;
@@ -132,6 +143,7 @@ public class SharedAlbumService {
                 .description(null)
                 .visibility(SharedAlbumVisibility.MEMBERS)
                 .coverPhotoId(coverPhotoId)
+                .eventSelectionApplied(false)
                 .createdByUserId(requesterUserId)
                 .createdAt(now)
                 .updatedAt(now)
@@ -213,8 +225,35 @@ public class SharedAlbumService {
         return buildMemberListResponse(sharedAlbumId);
     }
 
+    @Transactional
+    public SharedAlbumEventSelectionResponse replaceSharedAlbumEvents(
+            UUID requesterUserId,
+            UUID sharedAlbumId,
+            SharedAlbumEventReplaceRequest request
+    ) {
+        SharedAlbum sharedAlbum = sharedAlbumRepository.findById(sharedAlbumId)
+                .orElseThrow(() -> new BaseException(ErrorCode.SHARED_ALBUM_NOT_FOUND));
+        Trip trip = findAccessibleTrip(requesterUserId, sharedAlbum.getTripId());
+        validateTripOwner(requesterUserId, trip);
+
+        List<UUID> selectedEventIds =
+                sharedAlbumEventSelectionService.replaceSelections(sharedAlbumId, trip.getTripId(), request.eventIds());
+        sharedAlbum.updateEventSelectionApplied(true, Instant.now());
+        return new SharedAlbumEventSelectionResponse(sharedAlbumId, selectedEventIds);
+    }
+
     private SharedAlbumSummaryResponse buildSummary(SharedAlbum sharedAlbum, Trip trip) {
         List<TimelineDay> timelineDays = timelineDayRepository.findByTripIdOrderByDayDateAsc(trip.getTripId());
+        Map<UUID, TimelineDay> timelineDayById = new LinkedHashMap<>();
+        Map<LocalDate, TimelineDay> timelineDayByDate = new LinkedHashMap<>();
+        for (TimelineDay timelineDay : timelineDays) {
+            timelineDayById.put(timelineDay.getTimelineDayId(), timelineDay);
+            timelineDayByDate.put(timelineDay.getDayDate(), timelineDay);
+        }
+
+        List<Event> sharedAlbumEvents = sharedAlbumEventSelectionService.resolveVisibleEvents(sharedAlbum);
+        Map<LocalDate, Integer> recordCountByDay = buildRecordCountByDay(sharedAlbumEvents, timelineDayById);
+        Map<LocalDate, BigDecimal> distanceByDay = buildDistanceByDay(trip.getTripId(), sharedAlbum.getCreatedByUserId());
 
         long travelerCount = tripMemberRepository.countByTripIdAndInviteStatusAndLeftAtIsNull(
                 trip.getTripId(),
@@ -226,16 +265,17 @@ public class SharedAlbumService {
         );
 
         SharedAlbumTripSummaryResponse tripSummary = new SharedAlbumTripSummaryResponse(
-                sumTimelineDistance(timelineDays),
-                timelineDays.stream().mapToInt(TimelineDay::getPhotoCount).sum(),
-                timelineDays.stream().mapToInt(TimelineDay::getEventCount).sum(),
+                sumDistances(distanceByDay.values()),
+                Math.toIntExact(photoRepository.countByTripIdAndExcludedFalse(trip.getTripId())),
+                sharedAlbumEvents.size(),
                 travelerCount,
                 calculateTripDayCount(trip),
                 totalCost,
                 calculateCostPerTraveler(totalCost, travelerCount)
         );
 
-        List<SharedAlbumDaySummaryResponse> daySummaries = buildDaySummaries(trip, timelineDays);
+        List<SharedAlbumDaySummaryResponse> daySummaries =
+                buildDaySummaries(trip, timelineDayByDate, distanceByDay, recordCountByDay);
 
         String coverPhotoUrl = null;
         if (sharedAlbum.getCoverPhotoId() != null) {
@@ -246,7 +286,7 @@ public class SharedAlbumService {
         }
 
         SharedAlbumSectionAvailabilityResponse sections = new SharedAlbumSectionAvailabilityResponse(
-                !timelineDays.isEmpty(),
+                !sharedAlbumEvents.isEmpty(),
                 tripSummary.totalDistanceM().compareTo(BigDecimal.ZERO) > 0,
                 totalCost.compareTo(BigDecimal.ZERO) > 0
         );
@@ -275,12 +315,12 @@ public class SharedAlbumService {
         );
     }
 
-    private List<SharedAlbumDaySummaryResponse> buildDaySummaries(Trip trip, List<TimelineDay> timelineDays) {
-        Map<LocalDate, TimelineDay> timelineDayByDate = new LinkedHashMap<>();
-        for (TimelineDay timelineDay : timelineDays) {
-            timelineDayByDate.put(timelineDay.getDayDate(), timelineDay);
-        }
-
+    private List<SharedAlbumDaySummaryResponse> buildDaySummaries(
+            Trip trip,
+            Map<LocalDate, TimelineDay> timelineDayByDate,
+            Map<LocalDate, BigDecimal> distanceByDay,
+            Map<LocalDate, Integer> recordCountByDay
+    ) {
         List<SharedAlbumDaySummaryResponse> results = new ArrayList<>();
         LocalDate cursor = trip.getStartDate();
         int dayNumber = 1;
@@ -290,11 +330,9 @@ public class SharedAlbumService {
                     cursor,
                     dayNumber,
                     dayNumber + "일차",
-                    timelineDay == null || timelineDay.getDistanceM() == null
-                            ? zeroDistance()
-                            : normalizeDistance(timelineDay.getDistanceM()),
+                    distanceByDay.getOrDefault(cursor, zeroDistance()),
                     timelineDay == null ? 0 : timelineDay.getPhotoCount(),
-                    timelineDay == null ? 0 : timelineDay.getEventCount()
+                    recordCountByDay.getOrDefault(cursor, 0)
             ));
             cursor = cursor.plusDays(1);
             dayNumber++;
@@ -302,13 +340,41 @@ public class SharedAlbumService {
         return results;
     }
 
-    private BigDecimal sumTimelineDistance(List<TimelineDay> timelineDays) {
-        return normalizeDistance(
-                timelineDays.stream()
-                        .map(TimelineDay::getDistanceM)
-                        .filter(distance -> distance != null)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add)
-        );
+    private Map<LocalDate, BigDecimal> buildDistanceByDay(UUID tripId, UUID userId) {
+        Map<LocalDate, BigDecimal> distanceByDay = new LinkedHashMap<>();
+        for (LocationRouteDay routeDay : locationRouteDayRepository.findByTripIdOrderByDayAscUserIdAsc(tripId)) {
+            if (!userId.equals(routeDay.getUserId())) {
+                continue;
+            }
+            if (routeDay.getDistanceM() == null) {
+                continue;
+            }
+            distanceByDay.merge(routeDay.getDay(), routeDay.getDistanceM(), BigDecimal::add);
+        }
+        distanceByDay.replaceAll((day, distance) -> normalizeDistance(distance));
+        return distanceByDay;
+    }
+
+    private Map<LocalDate, Integer> buildRecordCountByDay(List<Event> events, Map<UUID, TimelineDay> timelineDayById) {
+        Map<LocalDate, Integer> recordCountByDay = new LinkedHashMap<>();
+        for (Event event : events) {
+            TimelineDay timelineDay = timelineDayById.get(event.getTimelineDayId());
+            if (timelineDay == null) {
+                continue;
+            }
+            recordCountByDay.merge(timelineDay.getDayDate(), 1, Integer::sum);
+        }
+        return recordCountByDay;
+    }
+
+    private BigDecimal sumDistances(Iterable<BigDecimal> distances) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (BigDecimal distance : distances) {
+            if (distance != null) {
+                total = total.add(distance);
+            }
+        }
+        return normalizeDistance(total);
     }
 
     private BigDecimal calculateCostPerTraveler(BigDecimal totalCost, long travelerCount) {
