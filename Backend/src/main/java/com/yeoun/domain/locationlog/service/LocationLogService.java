@@ -10,6 +10,7 @@ import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripStatus;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.domain.tripprocessing.service.TripProcessingStatusService;
+import com.yeoun.domain.tripsync.service.TripSyncStatusService;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.slf4j.Logger;
@@ -31,15 +32,18 @@ public class LocationLogService {
     private final TripRepository tripRepository;
     private final LocationLogBatchStoredEventPublisher locationLogBatchStoredEventPublisher;
     private final TripProcessingStatusService tripProcessingStatusService;
+    private final TripSyncStatusService tripSyncStatusService;
 
     public LocationLogService(
             TripRepository tripRepository,
             LocationLogBatchStoredEventPublisher locationLogBatchStoredEventPublisher,
-            TripProcessingStatusService tripProcessingStatusService
+            TripProcessingStatusService tripProcessingStatusService,
+            TripSyncStatusService tripSyncStatusService
     ) {
         this.tripRepository = tripRepository;
         this.locationLogBatchStoredEventPublisher = locationLogBatchStoredEventPublisher;
         this.tripProcessingStatusService = tripProcessingStatusService;
+        this.tripSyncStatusService = tripSyncStatusService;
     }
 
     @Transactional
@@ -88,6 +92,7 @@ public class LocationLogService {
                 lastLog.clientLogUuid().trim(),
                 lastLog.recordedAt()
         );
+        tripSyncStatusService.markProcessing(tripId, now);
         tripProcessingStatusService.markPending(tripId, now);
 
         // raw 저장은 더 이상 API 서버가 하지 않고, 컨슈머가 저장할 수 있도록 GPS batch 본문을 Kafka에 싣는다.
