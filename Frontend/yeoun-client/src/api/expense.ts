@@ -84,6 +84,22 @@ const mapExpenseItem = (item: any): TripExpenseItem => ({
   status: item.status,
 });
 
+const mapExpenseDetail = (item: any): ExpenseDetail => ({
+  ...mapExpenseItem(item),
+  memo: item.memo ?? '',
+  participantUserIds: Array.isArray(item.splits)
+    ? item.splits.map((split: any) => String(split.userId))
+    : [],
+  splits: Array.isArray(item.splits)
+    ? item.splits.map((split: any) => ({
+        userId: String(split.userId),
+        amount: typeof split.amount === 'number' ? split.amount : Number(split.amount ?? 0),
+      }))
+    : [],
+  createdAt: item.createdAt,
+  updatedAt: item.updatedAt,
+});
+
 export const getTripExpensesApi = async (tripId: string): Promise<ApiResponse<{ items: TripExpenseItem[] }>> => {
   if (isMockTripId(tripId)) {
     return {
@@ -115,8 +131,11 @@ export const getTripExpensesApi = async (tripId: string): Promise<ApiResponse<{ 
 
 export const getExpenseDetailApi = async (expenseId: string): Promise<ApiResponse<ExpenseDetail>> => {
   try {
-    const response = await apiClient.get<ApiResponse<ExpenseDetail>>(`/expenses/${expenseId}`);
-    return response.data;
+    const response = await apiClient.get<ApiResponse<any>>(`/expenses/${expenseId}`);
+    return {
+      ...response.data,
+      data: mapExpenseDetail(response.data.data),
+    };
   } catch (error) {
     if (shouldMockInDev(error)) {
       return {
