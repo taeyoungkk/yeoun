@@ -46,7 +46,7 @@ class LocationPipelineService:
                     connection=connection,
                 )
                 summary = preprocess_result.summary.model_copy(
-                    update={"cleanPersistedCount": clean_persisted_count},
+                    update={"clean_persisted_count": clean_persisted_count},
                 )
                 summary = await self.followup_pipeline.run(
                     payload,
