@@ -655,8 +655,9 @@ export default function TripRecordingScreen({
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
   const panelLift = -145 * collapseProgress;
-  const routeTripId = typeof params.tripId === 'string' ? params.tripId : '';
-  const activeTripId = routeTripId || (isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '');
+  const routeTripId = typeof params.tripId === 'string' ? params.tripId.trim() : '';
+  const storeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
+  const activeTripId = (routeTripId || storeTripId || '').trim();
   const tripTitle = (displayTrip as { title?: string; tripName?: string } | null)?.title || displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
@@ -1118,6 +1119,11 @@ export default function TripRecordingScreen({
   };
 
   const handleEndTrip = () => {
+    if (!activeTripId) {
+      Alert.alert('No active trip', 'Could not find the trip to end.');
+      return;
+    }
+
     setActionConfirm({
       kind: 'end',
       title: '여행을 종료할까요?',
@@ -1127,6 +1133,11 @@ export default function TripRecordingScreen({
   };
 
   const handleLeaveTrip = () => {
+    if (!activeTripId) {
+      Alert.alert('No active trip', 'Could not find the trip to leave.');
+      return;
+    }
+
     if (isTripOwner) {
       Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
       return;
@@ -1141,6 +1152,11 @@ export default function TripRecordingScreen({
   };
 
   const handleDeleteTrip = () => {
+    if (!activeTripId) {
+      Alert.alert('No active trip', 'Could not find the trip to delete.');
+      return;
+    }
+
     setActionConfirm({
       kind: 'delete',
       title: '여행을 삭제할까요?',
@@ -1155,6 +1171,11 @@ export default function TripRecordingScreen({
     setIsMenuOpen(false);
 
     if (!currentAction || isSubmittingAction) {
+      return;
+    }
+
+    if (!activeTripId) {
+      Alert.alert('No active trip', 'Could not find the trip for this action.');
       return;
     }
 
