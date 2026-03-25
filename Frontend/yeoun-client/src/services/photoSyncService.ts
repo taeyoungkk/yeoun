@@ -27,6 +27,15 @@ export interface TripPhotoSyncResult {
   message?: string;
 }
 
+const logPhotoSync = (message: string, payload?: Record<string, unknown>) => {
+  if (payload) {
+    console.log(`[PhotoSync] ${message}`, payload);
+    return;
+  }
+
+  console.log(`[PhotoSync] ${message}`);
+};
+
 const isValidDate = (value: Date) => !Number.isNaN(value.getTime());
 
 const getStartOfDay = (value: string) => {
@@ -101,7 +110,18 @@ const collectSyncCandidates = async (
   const createdAfter = getStartOfDay(startDate);
   const createdBefore = getEndOfDay(endDate);
 
+  logPhotoSync('Collecting sync candidates.', {
+    startDate,
+    endDate,
+    createdAfter: createdAfter.toISOString(),
+    createdBefore: createdBefore.toISOString(),
+  });
+
   if (!isValidDate(createdAfter) || !isValidDate(createdBefore)) {
+    logPhotoSync('Invalid date range supplied.', {
+      startDate,
+      endDate,
+    });
     return [];
   }
 
@@ -120,8 +140,17 @@ const collectSyncCandidates = async (
     });
 
     if (page.assets.length === 0) {
+      logPhotoSync('No more assets returned for date range.', {
+        after: after ?? null,
+      });
       break;
     }
+
+    logPhotoSync('Fetched media page.', {
+      pageAssetCount: page.assets.length,
+      hasNextPage: page.hasNextPage,
+      endCursor: page.endCursor ?? null,
+    });
 
     const pageCandidates = await Promise.all(
       page.assets.map(async (asset) => {
@@ -148,11 +177,23 @@ const collectSyncCandidates = async (
 export const requestTripPhotoPermission = async (): Promise<TripPhotoPermissionResult> => {
   const currentPermission = await MediaLibrary.getPermissionsAsync(false, PHOTO_PERMISSIONS);
 
+  logPhotoSync('Current photo permission checked.', {
+    status: currentPermission.status,
+    granted: currentPermission.granted,
+    canAskAgain: currentPermission.canAskAgain,
+  });
+
   if (currentPermission.granted) {
     return currentPermission;
   }
 
-  return MediaLibrary.requestPermissionsAsync(false, PHOTO_PERMISSIONS);
+  const nextPermission = await MediaLibrary.requestPermissionsAsync(false, PHOTO_PERMISSIONS);
+  logPhotoSync('Requested photo permission.', {
+    status: nextPermission.status,
+    granted: nextPermission.granted,
+    canAskAgain: nextPermission.canAskAgain,
+  });
+  return nextPermission;
 };
 
 export const syncTripPhotosForDateRange = async ({
@@ -165,6 +206,11 @@ export const syncTripPhotosForDateRange = async ({
   endDate: string;
 }): Promise<TripPhotoSyncResult> => {
   const candidates = await collectSyncCandidates(startDate, endDate);
+
+  logPhotoSync('Photo sync candidates collected.', {
+    tripId,
+    candidateCount: candidates.length,
+  });
 
   if (candidates.length === 0) {
     return {
@@ -181,6 +227,14 @@ export const syncTripPhotosForDateRange = async ({
     },
     candidates.map((candidate) => candidate.file),
   );
+
+  logPhotoSync('Photo sync request completed.', {
+    tripId,
+    success: response.success,
+    candidateCount: candidates.length,
+    syncedCount: response.data?.syncedCount ?? 0,
+    message: response.message ?? null,
+  });
 
   return {
     success: response.success,

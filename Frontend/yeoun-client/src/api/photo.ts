@@ -367,6 +367,12 @@ export const syncTripPhotosApi = async (
   });
 
   try {
+    console.log('[PhotoAPI] Sync trip photos request.', {
+      tripId,
+      metadataItemCount: metadata.items.length,
+      fileCount: files.length,
+      firstFileName: files[0]?.name ?? null,
+    });
     const response = await apiClient.post<PhotoApiResponse<PhotoSyncData>>(
       `/trips/${tripId}/photos/sync`,
       formData,
@@ -376,9 +382,25 @@ export const syncTripPhotosApi = async (
         },
       },
     );
+    console.log('[PhotoAPI] Sync trip photos response.', {
+      tripId,
+      success: response.data.success,
+      syncedCount: response.data.data?.syncedCount ?? 0,
+      code: response.data.code ?? null,
+      message: response.data.message ?? null,
+    });
     return response.data;
   } catch (error: any) {
     console.error('Sync Trip Photos API Error:', error);
+    console.error('[PhotoAPI] Sync trip photos failed.', {
+      tripId,
+      metadataItemCount: metadata.items.length,
+      fileCount: files.length,
+      status: error?.response?.status ?? null,
+      code: error?.code ?? null,
+      message: error?.message ?? null,
+      responseData: error?.response?.data ?? null,
+    });
     return {
       success: false,
       code: getErrorCode(error),

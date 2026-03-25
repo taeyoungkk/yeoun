@@ -121,6 +121,15 @@ let lastQueuedLogSnapshot:
 const LOCATION_STATUS_POLL_INTERVAL_MS = 1500;
 const LOCATION_STATUS_POLL_TIMEOUT_MS = 20000;
 
+const logLocationDebug = (message: string, payload?: Record<string, unknown>) => {
+  if (payload) {
+    console.log(`[LocationService] ${message}`, payload);
+    return;
+  }
+
+  console.log(`[LocationService] ${message}`);
+};
+
 const setLocationSyncState = (
   status: 'idle' | 'uploading' | 'processing' | 'completed' | 'failed',
   message?: string | null,
@@ -182,8 +191,17 @@ const rememberQueuedLog = (log: LocationLog) => {
 
 const startForegroundWatcher = async () => {
   if (foregroundSubscription) {
+    logLocationDebug('Foreground watcher already active.', {
+      activeCollectorMode,
+      appState: AppState.currentState,
+    });
     return;
   }
+
+  logLocationDebug('Starting foreground watcher.', {
+    activeCollectorMode,
+    appState: AppState.currentState,
+  });
 
   foregroundSubscription = await Location.watchPositionAsync(
     {
@@ -206,6 +224,10 @@ const startForegroundWatcher = async () => {
 
 const stopForegroundWatcher = async () => {
   if (!foregroundSubscription) {
+    logLocationDebug('Foreground watcher already stopped.', {
+      activeCollectorMode,
+      appState: AppState.currentState,
+    });
     return;
   }
 
@@ -216,6 +238,11 @@ const stopForegroundWatcher = async () => {
 
 const startBackgroundWatcher = async () => {
   const isStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
+  logLocationDebug('Starting background watcher check.', {
+    isStarted,
+    activeCollectorMode,
+    appState: AppState.currentState,
+  });
   if (isStarted) {
     return;
   }
@@ -236,6 +263,11 @@ const startBackgroundWatcher = async () => {
 
 const stopBackgroundWatcher = async () => {
   const isStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
+  logLocationDebug('Stopping background watcher check.', {
+    isStarted,
+    activeCollectorMode,
+    appState: AppState.currentState,
+  });
   if (!isStarted) {
     return;
   }
@@ -245,6 +277,12 @@ const stopBackgroundWatcher = async () => {
 };
 
 const syncCollectorsForAppState = async (nextAppState: AppStateStatus) => {
+  logLocationDebug('Switching collectors for app state.', {
+    nextAppState,
+    trackingEnabled,
+    backgroundGranted: trackingSessionConfig?.backgroundGranted ?? false,
+    activeCollectorMode,
+  });
   if (!trackingEnabled) {
     activeCollectorMode = 'idle';
     return;
@@ -269,6 +307,11 @@ const syncCollectorsForAppState = async (nextAppState: AppStateStatus) => {
 };
 
 const runCollectorTransition = async (nextAppState: AppStateStatus) => {
+  logLocationDebug('Queueing collector transition.', {
+    nextAppState,
+    previousAppState: lastKnownAppState,
+    activeCollectorMode,
+  });
   const transition = collectorTransitionQueue.catch(() => undefined).then(async () => {
     lastKnownAppState = nextAppState;
     await syncCollectorsForAppState(nextAppState);
@@ -333,8 +376,26 @@ const pollTripSyncStatus = async (tripId: string, baseline: TripSyncStatusData |
   const startedAt = Date.now();
   let observedProcessing = false;
 
+  logLocationDebug('Polling trip sync status started.', {
+    tripId,
+    baselineSyncStatus: baseline?.syncStatus ?? null,
+    baselineRouteVersion: baseline?.routeVersion ?? null,
+    baselineTimelineVersion: baseline?.timelineVersion ?? null,
+    baselinePhotoVersion: baseline?.photoVersion ?? null,
+    timeoutMs: LOCATION_STATUS_POLL_TIMEOUT_MS,
+  });
+
   while (Date.now() - startedAt < LOCATION_STATUS_POLL_TIMEOUT_MS) {
     const response = await getTripSyncStatusApi(tripId);
+    logLocationDebug('Trip sync status polled.', {
+      tripId,
+      success: response.success,
+      syncStatus: response.data?.syncStatus ?? null,
+      routeVersion: response.data?.routeVersion ?? null,
+      timelineVersion: response.data?.timelineVersion ?? null,
+      photoVersion: response.data?.photoVersion ?? null,
+      elapsedMs: Date.now() - startedAt,
+    });
 
     if (!response.success) {
       console.warn('Failed to poll trip sync status:', response.message);
@@ -384,6 +445,10 @@ export const locationService = {
 
   startTracking: async (): Promise<StartTrackingResult> => {
     try {
+      logLocationDebug('startTracking called.', {
+        appState: AppState.currentState,
+        activeCollectorMode,
+      });
       const currentForeground = await Location.getForegroundPermissionsAsync();
       const foregroundPermission =
         currentForeground.status === 'granted'
@@ -406,6 +471,12 @@ export const locationService = {
           : await Location.requestBackgroundPermissionsAsync();
 
       const backgroundGranted = backgroundPermission.status === 'granted';
+
+      logLocationDebug('Location permissions resolved.', {
+        foregroundStatus: foregroundPermission.status,
+        backgroundStatus: backgroundPermission.status,
+        backgroundGranted,
+      });
 
       if (!backgroundGranted) {
         console.warn('Background location permission denied. Falling back to foreground tracking only.');
@@ -446,6 +517,10 @@ export const locationService = {
 
   stopTracking: async () => {
     try {
+      logLocationDebug('stopTracking called.', {
+        appState: AppState.currentState,
+        activeCollectorMode,
+      });
       trackingEnabled = false;
       trackingSessionConfig = null;
       removeAppStateSubscription();
@@ -494,6 +569,10 @@ export const locationService = {
   syncLocations: async (tripId: string) => {
     try {
       const logs = await locationService.flushLogs();
+      logLocationDebug('syncLocations called.', {
+        tripId,
+        flushedLogCount: logs.length,
+      });
       if (logs.length === 0) {
         console.log('No logs to sync');
         setLocationSyncState('completed', '새로 동기화할 GPS 기록이 없습니다.');
@@ -504,6 +583,14 @@ export const locationService = {
       console.log(`Syncing ${logs.length} location logs for trip ${tripId}...`);
       const baselineSyncStatusResponse = await getTripSyncStatusApi(tripId);
       const baselineSyncStatus = baselineSyncStatusResponse.success ? baselineSyncStatusResponse.data : null;
+      logLocationDebug('Baseline sync status fetched before upload.', {
+        tripId,
+        success: baselineSyncStatusResponse.success,
+        syncStatus: baselineSyncStatus?.syncStatus ?? null,
+        routeVersion: baselineSyncStatus?.routeVersion ?? null,
+        timelineVersion: baselineSyncStatus?.timelineVersion ?? null,
+        photoVersion: baselineSyncStatus?.photoVersion ?? null,
+      });
       const response = await uploadLocationsApi(tripId, logs);
 
       if (!response.success) {
