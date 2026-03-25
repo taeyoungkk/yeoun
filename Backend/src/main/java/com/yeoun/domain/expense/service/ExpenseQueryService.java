@@ -48,7 +48,7 @@ public class ExpenseQueryService {
     }
 
     public ExpenseListResponse getTripExpenses(UUID requesterUserId, UUID tripId) {
-        log.info("Loading trip expenses. requesterUserId={}, tripId={}", requesterUserId, tripId);
+        log.info("여행 비용 목록 조회 시작. requesterUserId={} tripId={}", requesterUserId, tripId);
         Trip trip = findNonDeletedTripOrThrow(tripId);
         validateTripAccessible(requesterUserId, trip);
 
@@ -70,12 +70,12 @@ public class ExpenseQueryService {
                 ))
                 .toList();
 
-        log.info("Loaded trip expenses. requesterUserId={}, tripId={}, expenseCount={}", requesterUserId, tripId, items.size());
+        log.info("여행 비용 목록 조회 완료. requesterUserId={} tripId={} expenseCount={}", requesterUserId, tripId, items.size());
         return new ExpenseListResponse(items);
     }
 
     public ExpenseDetailResponse getExpenseDetail(UUID requesterUserId, UUID expenseId) {
-        log.info("Loading expense detail. requesterUserId={}, expenseId={}", requesterUserId, expenseId);
+        log.info("여행 비용 상세 조회 시작. requesterUserId={} expenseId={}", requesterUserId, expenseId);
         Expense expense = expenseRepository.findByExpenseIdAndStatusNot(expenseId, ExpenseStatus.DELETED)
                 .orElseThrow(() -> new BaseException(ErrorCode.EXPENSE_NOT_FOUND));
 
@@ -87,7 +87,7 @@ public class ExpenseQueryService {
                 .map(this::toSplitItem)
                 .toList();
 
-        return new ExpenseDetailResponse(
+        ExpenseDetailResponse response = new ExpenseDetailResponse(
                 expense.getExpenseId(),
                 expense.getTripId(),
                 expense.getCreatedByUserId(),
@@ -105,6 +105,8 @@ public class ExpenseQueryService {
                 expense.getCreatedAt(),
                 expense.getUpdatedAt()
         );
+        log.info("여행 비용 상세 조회 완료. requesterUserId={} expenseId={} splitCount={}", requesterUserId, expenseId, splitItems.size());
+        return response;
     }
 
     private ExpenseSplitItemResponse toSplitItem(ExpenseSplit split) {
