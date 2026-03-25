@@ -6,14 +6,14 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record EventPhotoResponse(
-        @Schema(description = "이벤트-사진 연결 ID")
+        @Schema(description = "이벤트 사진 연결 ID")
         UUID eventPhotoId,
         @Schema(description = "사진 ID")
         UUID photoId,
-        @Schema(description = "원본 사진 key")
-        String storageKey,
-        @Schema(description = "썸네일 key")
-        String thumbnailKey,
+        @Schema(description = "원본 사진 URL")
+        String originalUrl,
+        @Schema(description = "썸네일 URL")
+        String thumbnailUrl,
         @Schema(description = "파일명")
         String fileName,
         @Schema(description = "촬영 시각")
