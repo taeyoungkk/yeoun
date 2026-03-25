@@ -97,7 +97,7 @@ public class PhotoSyncService {
 
         List<PhotoSyncItemResponse> syncedItems = new ArrayList<>();
         Instant now = Instant.now();
-        boolean processingMarked = false;
+        int queuedPhotoCount = 0;
 
         for (int i = 0; i < files.size(); i++) {
             MultipartFile file = files.get(i);
@@ -142,11 +142,6 @@ public class PhotoSyncService {
                     .build();
             photoRepository.save(photo);
 
-            if (!processingMarked) {
-                tripSyncStatusService.markProcessing(tripId, now);
-                processingMarked = true;
-            }
-
             PhotoProcessingRequestEvent processingRequestEvent = new PhotoProcessingRequestEvent(
                     photo.getPhotoId(),
                     photo.getTripId(),
@@ -162,6 +157,7 @@ public class PhotoSyncService {
                     0
             );
             publishAfterCommit(processingRequestEvent);
+            queuedPhotoCount += 1;
 
             syncedItems.add(new PhotoSyncItemResponse(
                     photo.getPhotoId(),
@@ -170,6 +166,7 @@ public class PhotoSyncService {
                     photo.isExcluded()
             ));
         }
+        tripSyncStatusService.startPhotoProcessing(tripId, now, queuedPhotoCount);
 
         member.markPhotoSynced(now);
 
