@@ -1901,15 +1901,17 @@ function RealTripRecordingScreen({
         </View>
         <View style={styles.headerActions}>
           <View style={styles.headerActionsTopRow}>
-          <TouchableOpacity 
-            style={[styles.syncHeaderButton, syncActionInFlight && styles.syncHeaderButtonDisabled]} 
-            activeOpacity={0.88}
-            onPress={handleManualSync}
-            disabled={syncActionInFlight}
-          >
-            <MaterialIcons name={syncActionInFlight ? 'hourglass-top' : 'sync'} size={16} color="#274232" />
-            <Text style={styles.syncHeaderButtonText}>{syncActionInFlight ? '동기화 중' : '동기화'}</Text>
-          </TouchableOpacity>
+          {!isReviewMode ? (
+            <TouchableOpacity 
+              style={[styles.syncHeaderButton, syncActionInFlight && styles.syncHeaderButtonDisabled]} 
+              activeOpacity={0.88}
+              onPress={handleManualSync}
+              disabled={syncActionInFlight}
+            >
+              <MaterialIcons name={syncActionInFlight ? 'hourglass-top' : 'sync'} size={16} color="#274232" />
+              <Text style={styles.syncHeaderButtonText}>{syncActionInFlight ? '동기화 중' : '동기화'}</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev) => !prev)} activeOpacity={0.85}>
             <MaterialIcons name="more-horiz" size={22} color="#274232" />
           </TouchableOpacity>
