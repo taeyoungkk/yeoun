@@ -10,6 +10,8 @@ import {
   Animated,
   InteractionManager,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -500,6 +502,7 @@ function RealTripRecordingScreen({
   const router = useRouter();
   const cameraRef = useRef<Mapbox.Camera>(null);
   const scrollRef = useRef<ScrollView | null>(null);
+  const photoPagerRef = useRef<ScrollView | null>(null);
   const cardPositionsRef = useRef<Record<string, number>>({});
   const [scrollOffset, setScrollOffset] = useState(0);
   const [tripEvents, setTripEvents] = useState<TimelineEvent[]>([]);
@@ -531,6 +534,7 @@ function RealTripRecordingScreen({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [photoViewer, setPhotoViewer] = useState<{ eventId: string; photoIndex: number } | null>(null);
+  const [photoViewerWidth, setPhotoViewerWidth] = useState(0);
   const [eventEditor, setEventEditor] = useState<{ eventId: string; title: string; placeName: string; body: string } | null>(null);
   const [photoEditor, setPhotoEditor] = useState<{ eventId: string; photoId: string; memo: string } | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<
@@ -665,12 +669,7 @@ function RealTripRecordingScreen({
     [filteredEvents, photoViewer]
   );
   const selectedPhotoItem = selectedPhotoEvent?.photoItems?.[photoViewer?.photoIndex ?? -1] ?? null;
-  const selectedPhotoContributor = useMemo(
-    () =>
-      selectedPhotoEvent?.photoContributors?.find((contributor) => contributor.id === selectedPhotoItem?.contributorId) ?? null,
-    [selectedPhotoEvent, selectedPhotoItem]
-  );
-  const selectedPhotoIsOwner = selectedPhotoItem?.contributorId === currentUserId;
+  const selectedPhotoItems = selectedPhotoEvent?.photoItems ?? [];
   const selectedPhotoEmotion =
     selectedPhotoEvent?.emotionOwnerId === currentUserId && selectedPhotoEvent?.emotionEmoji && selectedPhotoEvent?.emotionLabel
       ? `${selectedPhotoEvent.emotionEmoji} ${selectedPhotoEvent.emotionLabel}`
@@ -983,6 +982,37 @@ function RealTripRecordingScreen({
       setPhotoViewer(null);
     }
   }, [photoViewer, selectedPhotoEvent, selectedPhotoItem]);
+
+  useEffect(() => {
+    if (!photoViewer || !photoPagerRef.current || photoViewerWidth <= 0) {
+      return;
+    }
+
+    photoPagerRef.current.scrollTo({
+      x: photoViewer.photoIndex * photoViewerWidth,
+      animated: false,
+    });
+  }, [photoViewer, photoViewerWidth]);
+
+  const handlePhotoPagerMomentumEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!photoViewer || photoViewerWidth <= 0) {
+        return;
+      }
+
+      const nextIndex = Math.round(event.nativeEvent.contentOffset.x / photoViewerWidth);
+      if (nextIndex === photoViewer.photoIndex) {
+        return;
+      }
+
+      const maxIndex = Math.max(0, selectedPhotoItems.length - 1);
+      setPhotoViewer({
+        eventId: photoViewer.eventId,
+        photoIndex: Math.min(Math.max(nextIndex, 0), maxIndex),
+      });
+    },
+    [photoViewer, photoViewerWidth, selectedPhotoItems.length],
+  );
 
   useEffect(() => {
     return () => {
@@ -1997,77 +2027,123 @@ function RealTripRecordingScreen({
 
       <Modal visible={Boolean(photoViewer && selectedPhotoEvent && selectedPhotoItem)} transparent animationType="fade" onRequestClose={() => setPhotoViewer(null)}>
         <Pressable style={styles.photoModalBackdrop} onPress={() => setPhotoViewer(null)}>
-          <Pressable style={styles.photoModalCard} onPress={() => undefined}>
-            <View style={styles.photoModalHeader}>
-              <View style={styles.photoModalHeaderCopy}>
-                <Text style={styles.photoModalTitle}>{selectedPhotoEvent?.title}</Text>
-                {selectedPhotoContributor ? (
-                  <View style={styles.photoModalMetaRow}>
-                    <View style={[styles.photoModalAvatar, { backgroundColor: selectedPhotoContributor.color }]}>
-                      <Text style={styles.photoModalAvatarText}>{selectedPhotoContributor.name.slice(0, 1)}</Text>
-                    </View>
-                    <Text style={styles.photoModalMeta}>{`photo by ${selectedPhotoContributor.name}`}</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.photoModalMeta}>사진 상세</Text>
-                )}
-              </View>
-              <View style={styles.photoModalHeaderActions}>
-                <View style={styles.photoModalTextActionRow}>
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      if (!selectedPhotoItem) {
-                        return;
-                      }
-                      openPhotoEditor(selectedPhotoEvent!.id, selectedPhotoItem.id, selectedPhotoItem.memo);
-                    }}
-                  >
-                    <Text style={[styles.photoModalTextAction, !selectedPhotoIsOwner && styles.photoModalDisabledAction]}>수정</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      if (!selectedPhotoItem) {
-                        return;
-                      }
-                      confirmDeletePhoto(selectedPhotoEvent!.id, selectedPhotoItem.id, Boolean(selectedPhotoIsOwner));
-                    }}
-                  >
-                    <Text
+          <Pressable style={styles.photoModalViewport} onPress={() => undefined}>
+            <View
+              onLayout={(event) => {
+                const nextWidth = Math.round(event.nativeEvent.layout.width);
+                if (nextWidth > 0 && nextWidth !== photoViewerWidth) {
+                  setPhotoViewerWidth(nextWidth);
+                }
+              }}
+            >
+              <ScrollView
+                ref={photoPagerRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={handlePhotoPagerMomentumEnd}
+                scrollEventThrottle={16}
+              >
+                {selectedPhotoItems.map((photoItem) => {
+                  const photoContributor =
+                    selectedPhotoEvent?.photoContributors?.find(
+                      (contributor) => contributor.id === photoItem.contributorId,
+                    ) ?? null;
+                  const photoIsOwner = currentUserId != null && photoItem.contributorId === currentUserId;
+
+                  return (
+                    <View
+                      key={photoItem.id}
                       style={[
-                        styles.photoModalTextAction,
-                        styles.photoModalDeleteAction,
-                        !selectedPhotoIsOwner && styles.photoModalDisabledAction,
+                        styles.photoModalSlide,
+                        photoViewerWidth > 0 ? { width: photoViewerWidth } : null,
                       ]}
                     >
-                      삭제
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <TouchableOpacity onPress={() => setPhotoViewer(null)} activeOpacity={0.85}>
-                  <MaterialIcons name="close" size={22} color="#223428" />
-                </TouchableOpacity>
-              </View>
+                      <View style={styles.photoModalCard}>
+                        <View style={styles.photoModalHeader}>
+                          <View style={styles.photoModalHeaderCopy}>
+                            <Text style={styles.photoModalTitle}>{selectedPhotoEvent?.title}</Text>
+                            {photoContributor ? (
+                              <View style={styles.photoModalMetaRow}>
+                                <View style={[styles.photoModalAvatar, { backgroundColor: photoContributor.color }]}>
+                                  <Text style={styles.photoModalAvatarText}>{photoContributor.name.slice(0, 1)}</Text>
+                                </View>
+                                <Text style={styles.photoModalMeta}>{`photo by ${photoContributor.name}`}</Text>
+                              </View>
+                            ) : (
+                              <Text style={styles.photoModalMeta}>사진 상세</Text>
+                            )}
+                          </View>
+                          <View style={styles.photoModalHeaderActions}>
+                            <View style={styles.photoModalTextActionRow}>
+                              <TouchableOpacity
+                                activeOpacity={0.85}
+                                onPress={() => {
+                                  openPhotoEditor(selectedPhotoEvent!.id, photoItem.id, photoItem.memo);
+                                }}
+                              >
+                                <Text style={[styles.photoModalTextAction, !photoIsOwner && styles.photoModalDisabledAction]}>
+                                  수정
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                activeOpacity={0.85}
+                                onPress={() => {
+                                  confirmDeletePhoto(selectedPhotoEvent!.id, photoItem.id, Boolean(photoIsOwner));
+                                }}
+                              >
+                                <Text
+                                  style={[
+                                    styles.photoModalTextAction,
+                                    styles.photoModalDeleteAction,
+                                    !photoIsOwner && styles.photoModalDisabledAction,
+                                  ]}
+                                >
+                                  삭제
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                            <TouchableOpacity onPress={() => setPhotoViewer(null)} activeOpacity={0.85}>
+                              <MaterialIcons name="close" size={22} color="#223428" />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+
+                        <Image source={photoItem.source} style={styles.photoModalImage} contentFit="cover" />
+
+                        {selectedPhotoItems.length > 1 ? (
+                          <Text style={styles.photoModalPagerText}>
+                            {`${selectedPhotoItems.findIndex((item) => item.id === photoItem.id) + 1} / ${selectedPhotoItems.length}`}
+                          </Text>
+                        ) : null}
+
+                        {selectedPhotoEvent?.placeName ? (
+                          <Text style={styles.photoModalSectionLabel}>장소</Text>
+                        ) : null}
+                        {selectedPhotoEvent?.placeName ? (
+                          <Text style={styles.photoModalSectionBody}>{selectedPhotoEvent.placeName}</Text>
+                        ) : null}
+
+                        <Text style={styles.photoModalSectionLabel}>이벤트 메모</Text>
+                        <Text style={styles.photoModalSectionBody}>
+                          {selectedPhotoEvent?.eventMemo ?? selectedPhotoEvent?.subtitle}
+                        </Text>
+
+                        {selectedPhotoEmotion ? <Text style={styles.photoModalSectionLabel}>내 감정 기록</Text> : null}
+                        {selectedPhotoEmotion ? (
+                          <Text style={styles.photoModalSectionBody}>{selectedPhotoEmotion}</Text>
+                        ) : null}
+
+                        <Text style={styles.photoModalSectionLabel}>사진 메모</Text>
+                        <Text style={styles.photoModalSectionBody}>
+                          {photoItem.memo ?? '이 사진에 대한 메모가 아직 없어요.'}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
             </View>
-
-            {selectedPhotoItem ? (
-              <Image source={selectedPhotoItem.source} style={styles.photoModalImage} contentFit="cover" />
-            ) : null}
-
-            {selectedPhotoEvent?.placeName ? (
-              <Text style={styles.photoModalSectionLabel}>장소</Text>
-            ) : null}
-            {selectedPhotoEvent?.placeName ? <Text style={styles.photoModalSectionBody}>{selectedPhotoEvent.placeName}</Text> : null}
-
-            <Text style={styles.photoModalSectionLabel}>이벤트 메모</Text>
-            <Text style={styles.photoModalSectionBody}>{selectedPhotoEvent?.eventMemo ?? selectedPhotoEvent?.subtitle}</Text>
-
-            {selectedPhotoEmotion ? <Text style={styles.photoModalSectionLabel}>내 감정 기록</Text> : null}
-            {selectedPhotoEmotion ? <Text style={styles.photoModalSectionBody}>{selectedPhotoEmotion}</Text> : null}
-
-            <Text style={styles.photoModalSectionLabel}>사진 메모</Text>
-            <Text style={styles.photoModalSectionBody}>{selectedPhotoItem?.memo ?? '이 사진에 대한 메모가 아직 없어요.'}</Text>
           </Pressable>
         </Pressable>
       </Modal>
@@ -2754,6 +2830,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontFamily: 'Pretendard-Bold', fontSize: 20, color: '#182119' },
   modalBody: { marginTop: 12, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 22, color: '#66756C' },
   photoModalBackdrop: { flex: 1, backgroundColor: 'rgba(12, 18, 14, 0.45)', justifyContent: 'center', paddingHorizontal: 18 },
+  photoModalViewport: { width: '100%' },
   photoModalCard: { borderRadius: 28, backgroundColor: '#FCFEFB', paddingHorizontal: 18, paddingTop: 18, paddingBottom: 20 },
   photoModalHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   photoModalHeaderCopy: { flex: 1 },
@@ -2774,6 +2851,8 @@ const styles = StyleSheet.create({
   photoModalDeleteAction: { color: '#A45A49' },
   photoModalDisabledAction: { color: '#A3B0A8' },
   photoModalImage: { width: '100%', aspectRatio: 1, borderRadius: 22, marginTop: 16, backgroundColor: '#E7ECE5' },
+  photoModalSlide: { paddingHorizontal: 4 },
+  photoModalPagerText: { marginTop: 10, fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#738078', textAlign: 'center' },
   photoModalSectionLabel: { marginTop: 16, fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#7A867F' },
   photoModalSectionBody: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 21, color: '#243028' },
   deleteDialogBackdrop: {
