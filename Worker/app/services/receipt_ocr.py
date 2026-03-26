@@ -88,8 +88,9 @@ class ReceiptOcrService:
         async with httpx.AsyncClient(timeout=self.settings.gemini_timeout_seconds) as client:
             last_error: Exception | None = None
             for index, payload in enumerate(payloads, start=1):
+                serialized_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
                 logger.info(
-                    "Gemini request payloadAttempt=%s keys=%s contentsCount=%s partKeys=%s",
+                    "Gemini request payloadAttempt=%s keys=%s contentsCount=%s partKeys=%s bodyPreview=%s",
                     index,
                     sorted(payload.keys()),
                     len(payload.get("contents", [])),
@@ -98,8 +99,9 @@ class ReceiptOcrService:
                         for content in payload.get("contents", [])
                         for part in content.get("parts", [])
                     ],
+                    serialized_payload[:500],
                 )
-                response = await client.post(url, json=payload, headers=headers)
+                response = await client.post(url, content=serialized_payload.encode("utf-8"), headers=headers)
                 if response.status_code >= 400:
                     logger.error(
                         "Gemini error payloadAttempt=%s status=%s body=%s",
