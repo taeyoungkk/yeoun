@@ -48,6 +48,16 @@ public class Event {
     @Column(name = "place_name", length = 255)
     private String placeName;
 
+    @Builder.Default
+    @Column(name = "is_place_name_locked", nullable = false)
+    private boolean placeNameLocked = false;
+
+    @Column(name = "place_provider", length = 20)
+    private String placeProvider;
+
+    @Column(name = "provider_place_id", length = 100)
+    private String providerPlaceId;
+
     @Column(name = "place_external_id", length = 255)
     private String placeExternalId;
 
@@ -106,6 +116,23 @@ public class Event {
 
     public void changeEventType(EventType eventType, Instant now) {
         this.eventType = eventType;
+        this.updatedAt = now;
+    }
+
+    public void lockPlaceName(Instant now) {
+        this.placeNameLocked = true;
+        this.updatedAt = now;
+    }
+
+    public void updatePlaceReference(String placeProvider, String providerPlaceId, Instant now) {
+        this.placeProvider = placeProvider;
+        this.providerPlaceId = providerPlaceId;
+        this.updatedAt = now;
+    }
+
+    public void clearPlaceReference(Instant now) {
+        this.placeProvider = null;
+        this.providerPlaceId = null;
         this.updatedAt = now;
     }
 }

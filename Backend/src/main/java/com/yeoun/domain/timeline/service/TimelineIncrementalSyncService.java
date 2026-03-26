@@ -18,17 +18,23 @@ import com.yeoun.domain.trip.entity.TripStatus;
 import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -36,6 +42,7 @@ import java.util.UUID;
 @Transactional
 public class TimelineIncrementalSyncService {
 
+    private static final Logger log = LoggerFactory.getLogger(TimelineIncrementalSyncService.class);
     private static final ZoneId DEFAULT_ZONE_ID = ZoneId.of("Asia/Seoul");
     private static final long MATCH_DISTANCE_M = 100L;
     private static final long MATCH_TIME_GAP_SECONDS = 15 * 60L;
@@ -48,6 +55,7 @@ public class TimelineIncrementalSyncService {
     private final EventPhotoRepository eventPhotoRepository;
     private final EventMemoRepository eventMemoRepository;
     private final TimelineDayRepository timelineDayRepository;
+    private final EventPlaceResolverService eventPlaceResolverService;
 
     public TimelineIncrementalSyncService(
             TripRepository tripRepository,
@@ -56,7 +64,8 @@ public class TimelineIncrementalSyncService {
             EventRepository eventRepository,
             EventPhotoRepository eventPhotoRepository,
             EventMemoRepository eventMemoRepository,
-            TimelineDayRepository timelineDayRepository
+            TimelineDayRepository timelineDayRepository,
+            EventPlaceResolverService eventPlaceResolverService
     ) {
         this.tripRepository = tripRepository;
         this.locationPlaceRepository = locationPlaceRepository;
@@ -65,12 +74,16 @@ public class TimelineIncrementalSyncService {
         this.eventPhotoRepository = eventPhotoRepository;
         this.eventMemoRepository = eventMemoRepository;
         this.timelineDayRepository = timelineDayRepository;
+        this.eventPlaceResolverService = eventPlaceResolverService;
     }
 
     public void syncTrip(UUID tripId) {
+        log.info("타임라인 증분 동기화를 시작합니다. tripId={}", tripId);
         Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
         if (trip.getStatus() != TripStatus.ACTIVE && trip.getStatus() != TripStatus.ENDED) {
+            log.info("타임라인 증분 동기화를 건너뜁니다. 동기화 가능한 여행 상태가 아닙니다. tripId={}, status={}",
+                    tripId, trip.getStatus());
             return;
         }
 
@@ -81,7 +94,10 @@ public class TimelineIncrementalSyncService {
         List<Photo> photos = photoRepository.findByTripIdOrderByTakenAtAscCreatedAtAsc(tripId).stream()
                 .filter(photo -> !photo.isExcluded())
                 .toList();
+        log.info("증분 동기화용 원본 데이터를 불러왔습니다. tripId={}, placeCount={}, placeEventCount={}, otherEventCount={}, photoCount={}",
+                tripId, places.size(), placeEvents.size(), otherEvents.size(), photos.size());
         if (places.isEmpty() && photos.isEmpty()) {
+            log.info("타임라인 증분 동기화를 건너뜁니다. 위치 로그와 사진이 모두 없습니다. tripId={}", tripId);
             return;
         }
         Set<UUID> linkedPhotoIds = new HashSet<>(eventPhotoRepository.findByPhotoIdIn(photos.stream().map(Photo::getPhotoId).toList())
@@ -89,6 +105,8 @@ public class TimelineIncrementalSyncService {
                 .map(EventPhoto::getPhotoId)
                 .toList());
         Set<UUID> affectedTimelineDayIds = new HashSet<>();
+        Map<UUID, List<LocationPlace>> matchedPlacesByEventId = new HashMap<>();
+        Set<UUID> otherEventIdsToRecalculate = new HashSet<>();
 
         for (LocationPlace place : places) {
             Event matchedEvent = findMatchedEvent(tripId, place, placeEvents);
@@ -97,6 +115,8 @@ public class TimelineIncrementalSyncService {
                 if (promotedOtherEvent != null) {
                     UUID originalTimelineDayId = promotedOtherEvent.getTimelineDayId();
                     matchedEvent = promoteOtherEventToPlaceVisit(promotedOtherEvent, tripId, place, now);
+                    log.info("증분 동기화 중 OTHER 이벤트를 PLACE_VISIT로 승격했습니다. tripId={}, eventId={}, placeExternalId={}",
+                            tripId, matchedEvent.getEventId(), place.getPlaceId());
                     otherEvents.remove(promotedOtherEvent);
                     placeEvents.add(promotedOtherEvent);
                     affectedTimelineDayIds.add(originalTimelineDayId);
@@ -105,6 +125,8 @@ public class TimelineIncrementalSyncService {
                     TimelineDay timelineDay = getOrCreateTimelineDay(tripId, resolveDayDate(place.getStartedAt()), now);
                     Event createdEvent = createPlaceVisitEvent(tripId, timelineDay.getTimelineDayId(), place, now);
                     eventRepository.save(createdEvent);
+                    log.info("증분 동기화 중 PLACE_VISIT 이벤트를 새로 생성했습니다. tripId={}, eventId={}, timelineDayId={}, placeExternalId={}, placeName={}",
+                            tripId, createdEvent.getEventId(), timelineDay.getTimelineDayId(), place.getPlaceId(), createdEvent.getPlaceName());
                     placeEvents.add(createdEvent);
                     matchedEvent = createdEvent;
                     affectedTimelineDayIds.add(timelineDay.getTimelineDayId());
@@ -113,7 +135,7 @@ public class TimelineIncrementalSyncService {
                 UUID originalTimelineDayId = matchedEvent.getTimelineDayId();
                 matchedEvent.updateBasicInfo(
                         matchedEvent.getTitle(),
-                        matchedEvent.getPlaceName(),
+                        resolvePlaceNameIfMissing(matchedEvent.getPlaceName(), place),
                         matchedEvent.getPlaceExternalId() != null ? matchedEvent.getPlaceExternalId() : place.getPlaceId().toString(),
                         mergeStartAt(matchedEvent.getStartAt(), place.getStartedAt()),
                         mergeEndAt(matchedEvent.getEndAt(), place.getEndedAt()),
@@ -123,20 +145,28 @@ public class TimelineIncrementalSyncService {
                         matchedEvent.isHidden(),
                         now
                 );
+                applyResolvedPlaceIfAllowed(matchedEvent, place.getCenterLatitude(), place.getCenterLongitude(), now);
                 UUID newTimelineDayId = moveEventIfDayChanged(matchedEvent, tripId, originalTimelineDayId, now);
+                log.info("기존 PLACE_VISIT 이벤트에 위치 로그를 병합했습니다. tripId={}, eventId={}, placeExternalId={}, timelineDayId={}",
+                        tripId, matchedEvent.getEventId(), place.getPlaceId(), newTimelineDayId);
                 affectedTimelineDayIds.add(originalTimelineDayId);
                 affectedTimelineDayIds.add(newTimelineDayId);
             }
 
+            matchedPlacesByEventId.computeIfAbsent(matchedEvent.getEventId(), ignored -> new ArrayList<>()).add(place);
             absorbOtherEventsIntoPlaceEvent(matchedEvent, place, otherEvents, linkedPhotoIds, affectedTimelineDayIds, now);
             attachNewPhotos(matchedEvent, place, photos, linkedPhotoIds, now);
         }
 
-        createPhotoOnlyEvents(tripId, photos, linkedPhotoIds, otherEvents, affectedTimelineDayIds, now);
+        createPhotoOnlyEvents(tripId, photos, linkedPhotoIds, otherEvents, affectedTimelineDayIds, otherEventIdsToRecalculate, now);
+
+        refreshPlaceVisitEventCenters(placeEvents, matchedPlacesByEventId, now);
+        refreshOtherEventCenters(otherEvents, otherEventIdsToRecalculate, now);
 
         for (UUID timelineDayId : affectedTimelineDayIds) {
             recalculateTimelineDayCounts(timelineDayId, now);
         }
+        log.info("타임라인 증분 동기화를 완료했습니다. tripId={}, affectedTimelineDayCount={}", tripId, affectedTimelineDayIds.size());
     }
 
     private Event findMatchedEvent(UUID tripId, LocationPlace place, List<Event> placeEvents) {
@@ -169,7 +199,7 @@ public class TimelineIncrementalSyncService {
         event.changeEventType(EventType.PLACE_VISIT, now);
         event.updateBasicInfo(
                 event.getTitle(),
-                event.getPlaceName(),
+                resolvePlaceNameIfMissing(event.getPlaceName(), place),
                 place.getPlaceId().toString(),
                 mergeStartAt(event.getStartAt(), place.getStartedAt()),
                 mergeEndAt(event.getEndAt(), place.getEndedAt()),
@@ -179,6 +209,7 @@ public class TimelineIncrementalSyncService {
                 event.isHidden(),
                 now
         );
+        applyResolvedPlaceIfAllowed(event, place.getCenterLatitude(), place.getCenterLongitude(), now);
         moveEventIfDayChanged(event, tripId, originalTimelineDayId, now);
         return event;
     }
@@ -237,6 +268,8 @@ public class TimelineIncrementalSyncService {
     }
 
     private Event createPlaceVisitEvent(UUID tripId, UUID timelineDayId, LocationPlace place, Instant now) {
+        KakaoLocalClient.ResolvedPlace resolvedPlace = resolveResolvedPlace(place.getCenterLatitude(), place.getCenterLongitude())
+                .orElse(null);
         return Event.builder()
                 .eventId(UUID.randomUUID())
                 .tripId(tripId)
@@ -244,7 +277,9 @@ public class TimelineIncrementalSyncService {
                 .createdBy(EventCreatedBy.SYSTEM)
                 .eventType(EventType.PLACE_VISIT)
                 .title(null)
-                .placeName(null)
+                .placeName(resolvedPlace == null ? null : resolvedPlace.name())
+                .placeProvider(resolvedPlace == null ? null : resolvedPlace.provider())
+                .providerPlaceId(resolvedPlace == null ? null : resolvedPlace.providerPlaceId())
                 .placeExternalId(place.getPlaceId().toString())
                 .startAt(place.getStartedAt())
                 .endAt(place.getEndedAt())
@@ -263,6 +298,7 @@ public class TimelineIncrementalSyncService {
             Set<UUID> linkedPhotoIds,
             List<Event> otherEvents,
             Set<UUID> affectedTimelineDayIds,
+            Set<UUID> otherEventIdsToRecalculate,
             Instant now
     ) {
         List<Photo> unlinkedPhotos = photos.stream()
@@ -280,9 +316,12 @@ public class TimelineIncrementalSyncService {
             }
             Photo firstPhoto = group.get(0);
             Photo lastPhoto = group.get(group.size() - 1);
+            BigDecimal centerLatitude = medianCoordinate(group.stream().map(Photo::getExifLatitude).toList());
+            BigDecimal centerLongitude = medianCoordinate(group.stream().map(Photo::getExifLongitude).toList());
             Event event = findMatchedOtherEvent(otherEvents, firstPhoto, lastPhoto);
             if (event == null) {
                 TimelineDay timelineDay = getOrCreateTimelineDay(tripId, resolveDayDate(effectivePhotoTime(firstPhoto)), now);
+                KakaoLocalClient.ResolvedPlace resolvedPlace = resolveResolvedPlace(centerLatitude, centerLongitude).orElse(null);
                 event = Event.builder()
                         .eventId(UUID.randomUUID())
                         .tripId(tripId)
@@ -290,12 +329,14 @@ public class TimelineIncrementalSyncService {
                         .createdBy(EventCreatedBy.SYSTEM)
                         .eventType(EventType.OTHER)
                         .title(null)
-                        .placeName(null)
+                        .placeName(resolvedPlace == null ? null : resolvedPlace.name())
+                        .placeProvider(resolvedPlace == null ? null : resolvedPlace.provider())
+                        .providerPlaceId(resolvedPlace == null ? null : resolvedPlace.providerPlaceId())
                         .placeExternalId(null)
                         .startAt(effectivePhotoTime(firstPhoto))
                         .endAt(effectivePhotoTime(lastPhoto))
-                        .centerLatitude(firstPhoto.getExifLatitude())
-                        .centerLongitude(firstPhoto.getExifLongitude())
+                        .centerLatitude(centerLatitude)
+                        .centerLongitude(centerLongitude)
                         .radiusM(null)
                         .hidden(false)
                         .createdAt(now)
@@ -323,6 +364,7 @@ public class TimelineIncrementalSyncService {
                 affectedTimelineDayIds.add(newTimelineDayId);
             }
             attachPhotoGroup(event, group, linkedPhotoIds, now);
+            otherEventIdsToRecalculate.add(event.getEventId());
             affectedTimelineDayIds.add(event.getTimelineDayId());
         }
     }
@@ -529,6 +571,162 @@ public class TimelineIncrementalSyncService {
         return !photoTime.isBefore(place.getStartedAt()) && !photoTime.isAfter(place.getEndedAt());
     }
 
+    private String resolvePlaceName(LocationPlace place) {
+        return resolveResolvedPlace(place.getCenterLatitude(), place.getCenterLongitude())
+                .map(KakaoLocalClient.ResolvedPlace::name)
+                .orElse(null);
+    }
+
+    private String resolvePlaceNameIfMissing(String existingPlaceName, LocationPlace place) {
+        if (hasText(existingPlaceName)) {
+            return existingPlaceName;
+        }
+        return resolvePlaceName(place);
+    }
+
+    private Optional<KakaoLocalClient.ResolvedPlace> resolveResolvedPlace(BigDecimal latitude, BigDecimal longitude) {
+        return eventPlaceResolverService.resolveResolvedPlace(latitude, longitude);
+    }
+
+    private void applyResolvedPlaceIfAllowed(Event event, BigDecimal latitude, BigDecimal longitude, Instant now) {
+        if (event.isPlaceNameLocked()) {
+            log.info("장소명이 수동 잠금 상태라 자동 재추론을 건너뜁니다. eventId={}, eventType={}",
+                    event.getEventId(), event.getEventType());
+            return;
+        }
+        Optional<KakaoLocalClient.ResolvedPlace> resolvedPlace = resolveResolvedPlace(latitude, longitude);
+        if (resolvedPlace.isPresent()) {
+            event.updatePlaceReference(
+                    resolvedPlace.get().provider(),
+                    resolvedPlace.get().providerPlaceId(),
+                    now
+            );
+            log.info("이벤트에 자동 추론된 장소 참조를 반영했습니다. eventId={}, eventType={}, placeName={}, placeProvider={}, providerPlaceId={}, source={}, distanceMeters={}",
+                    event.getEventId(), event.getEventType(), resolvedPlace.get().name(), resolvedPlace.get().provider(),
+                    resolvedPlace.get().providerPlaceId(), resolvedPlace.get().source(), resolvedPlace.get().distanceMeters());
+            return;
+        }
+        log.warn("이벤트에 대한 장소 추론 결과가 없어 provider 참조를 비웁니다. eventId={}, eventType={}, lat={}, lon={}",
+                event.getEventId(), event.getEventType(), latitude, longitude);
+        event.clearPlaceReference(now);
+    }
+
+    private void refreshPlaceVisitEventCenters(List<Event> placeEvents, Map<UUID, List<LocationPlace>> matchedPlacesByEventId, Instant now) {
+        Map<UUID, Event> eventById = new HashMap<>();
+        for (Event event : placeEvents) {
+            eventById.put(event.getEventId(), event);
+        }
+
+        for (Map.Entry<UUID, List<LocationPlace>> entry : matchedPlacesByEventId.entrySet()) {
+            Event event = eventById.get(entry.getKey());
+            if (event == null) {
+                continue;
+            }
+            BigDecimal centerLatitude = medianCoordinate(entry.getValue().stream()
+                    .map(LocationPlace::getCenterLatitude)
+                    .toList());
+            BigDecimal centerLongitude = medianCoordinate(entry.getValue().stream()
+                    .map(LocationPlace::getCenterLongitude)
+                    .toList());
+            String resolvedPlaceName = event.isPlaceNameLocked()
+                    ? event.getPlaceName()
+                    : eventPlaceResolverService.resolvePlaceName(centerLatitude, centerLongitude).orElse(event.getPlaceName());
+            event.updateBasicInfo(
+                    event.getTitle(),
+                    resolvedPlaceName,
+                    event.getPlaceExternalId(),
+                    event.getStartAt(),
+                    event.getEndAt(),
+                    centerLatitude,
+                    centerLongitude,
+                    event.getRadiusM(),
+                    event.isHidden(),
+                    now
+            );
+            log.info("PLACE_VISIT 이벤트 중심 좌표를 재계산했습니다. eventId={}, placeExternalId={}, centerLatitude={}, centerLongitude={}, placeName={}",
+                    event.getEventId(), event.getPlaceExternalId(), centerLatitude, centerLongitude, resolvedPlaceName);
+            applyResolvedPlaceIfAllowed(event, centerLatitude, centerLongitude, now);
+        }
+    }
+
+    private void refreshOtherEventCenters(List<Event> otherEvents, Set<UUID> otherEventIdsToRecalculate, Instant now) {
+        if (otherEventIdsToRecalculate.isEmpty()) {
+            return;
+        }
+        Map<UUID, Event> eventById = new HashMap<>();
+        for (Event event : otherEvents) {
+            eventById.put(event.getEventId(), event);
+        }
+
+        for (UUID eventId : otherEventIdsToRecalculate) {
+            Event event = eventById.get(eventId);
+            if (event == null) {
+                continue;
+            }
+            List<Photo> linkedPhotos = getLinkedPhotos(eventId);
+            BigDecimal centerLatitude = medianCoordinate(linkedPhotos.stream()
+                    .map(Photo::getExifLatitude)
+                    .toList());
+            BigDecimal centerLongitude = medianCoordinate(linkedPhotos.stream()
+                    .map(Photo::getExifLongitude)
+                    .toList());
+            String resolvedPlaceName = event.isPlaceNameLocked()
+                    ? event.getPlaceName()
+                    : eventPlaceResolverService.resolvePlaceName(centerLatitude, centerLongitude).orElse(null);
+            event.updateBasicInfo(
+                    event.getTitle(),
+                    resolvedPlaceName,
+                    event.getPlaceExternalId(),
+                    event.getStartAt(),
+                    event.getEndAt(),
+                    centerLatitude,
+                    centerLongitude,
+                    event.getRadiusM(),
+                    event.isHidden(),
+                    now
+            );
+            log.info("OTHER 이벤트 중심 좌표를 재계산했습니다. eventId={}, centerLatitude={}, centerLongitude={}, placeName={}",
+                    event.getEventId(), centerLatitude, centerLongitude, resolvedPlaceName);
+            applyResolvedPlaceIfAllowed(event, centerLatitude, centerLongitude, now);
+        }
+    }
+
+    private List<Photo> getLinkedPhotos(UUID eventId) {
+        List<EventPhoto> eventPhotos = eventPhotoRepository.findByEventIdOrderBySortOrderAsc(eventId);
+        if (eventPhotos.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, Photo> photoById = new HashMap<>();
+        for (Photo photo : photoRepository.findAllById(eventPhotos.stream().map(EventPhoto::getPhotoId).toList())) {
+            photoById.put(photo.getPhotoId(), photo);
+        }
+        List<Photo> orderedPhotos = new ArrayList<>();
+        for (EventPhoto eventPhoto : eventPhotos) {
+            Photo photo = photoById.get(eventPhoto.getPhotoId());
+            if (photo != null) {
+                orderedPhotos.add(photo);
+            }
+        }
+        return orderedPhotos;
+    }
+
+    private BigDecimal medianCoordinate(List<BigDecimal> values) {
+        List<BigDecimal> filtered = values.stream()
+                .filter(value -> value != null)
+                .sorted(BigDecimal::compareTo)
+                .toList();
+        if (filtered.isEmpty()) {
+            return null;
+        }
+        int mid = filtered.size() / 2;
+        if (filtered.size() % 2 == 1) {
+            return filtered.get(mid);
+        }
+        return filtered.get(mid - 1)
+                .add(filtered.get(mid))
+                .divide(BigDecimal.valueOf(2), 7, RoundingMode.HALF_UP);
+    }
+
     private Instant effectivePhotoTime(Photo photo) {
         return photo.getTakenAt() != null ? photo.getTakenAt() : photo.getCreatedAt();
     }
@@ -546,7 +744,7 @@ public class TimelineIncrementalSyncService {
                 || eventMemoRepository.existsByEventId(event.getEventId())
                 || event.isHidden()
                 || hasText(event.getTitle())
-                || hasText(event.getPlaceName());
+                || event.isPlaceNameLocked();
     }
 
     private long timeDistanceSeconds(Instant startAt, Instant endAt, Instant candidateStartAt, Instant candidateEndAt) {

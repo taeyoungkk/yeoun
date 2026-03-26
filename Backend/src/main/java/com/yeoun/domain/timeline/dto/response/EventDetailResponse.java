@@ -24,7 +24,11 @@ public record EventDetailResponse(
         String title,
         @Schema(description = "장소명")
         String placeName,
-        @Schema(description = "외부 장소 ID")
+        @Schema(description = "장소 제공자")
+        String placeProvider,
+        @Schema(description = "제공자 장소 ID")
+        String providerPlaceId,
+        @Schema(description = "내부 장소 ID")
         String placeExternalId,
         @Schema(description = "시작 시각")
         Instant startAt,
@@ -44,7 +48,7 @@ public record EventDetailResponse(
         Instant updatedAt,
         @Schema(description = "연결 사진 목록")
         List<EventPhotoResponse> photos,
-        @Schema(description = "현재 로그인 사용자 메모")
+        @Schema(description = "현재 로그인 사용자의 메모")
         EventMemoSummaryResponse myMemo
 ) {
 }

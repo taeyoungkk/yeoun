@@ -166,6 +166,8 @@ public class TimelineQueryService {
                 event.getEventType(),
                 event.getTitle(),
                 event.getPlaceName(),
+                event.getPlaceProvider(),
+                event.getProviderPlaceId(),
                 event.getPlaceExternalId(),
                 event.getStartAt(),
                 event.getEndAt(),
