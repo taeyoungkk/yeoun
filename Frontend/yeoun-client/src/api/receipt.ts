@@ -12,7 +12,7 @@ interface ApiResponse<T> {
 }
 
 export type ReceiptExpenseCategory = 'FOOD' | 'CAFE' | 'TRANSPORT' | 'LODGING' | 'SHOPPING' | 'ETC';
-export type ReceiptOcrStatus = 'REQUESTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'DLQ';
+export type ReceiptOcrStatus = 'REQUESTED' | 'PROCESSING' | 'READY' | 'COMPLETED' | 'FAILED' | 'DLQ';
 export type ReceiptExpenseStatus = 'CONFIRMED' | 'DELETED';
 
 export interface ReceiptUploadData {

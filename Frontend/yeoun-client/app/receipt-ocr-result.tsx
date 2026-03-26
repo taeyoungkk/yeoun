@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -23,6 +23,10 @@ import { useUIStore } from '@/src/store/ui.store';
 const POLL_INTERVAL_MS = 2500;
 const POLL_TIMEOUT_MS = 30000;
 
+const isSuccessStatus = (status?: string | null) => status === 'READY' || status === 'COMPLETED';
+const isFailureStatus = (status?: string | null) => status === 'FAILED' || status === 'DLQ';
+const isTerminalStatus = (status?: string | null) => isSuccessStatus(status) || isFailureStatus(status);
+
 export default function ReceiptOcrResultScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ receiptId?: string | string[] }>();
@@ -35,6 +39,7 @@ export default function ReceiptOcrResultScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasShownCompletionToastRef = useRef(false);
+  const hasShownTimeoutWarningRef = useRef(false);
   const pollStartedAtRef = useRef<number | null>(null);
 
   const statusLabel = useMemo(() => {
@@ -43,26 +48,16 @@ export default function ReceiptOcrResultScreen() {
         return '분석 요청됨';
       case 'PROCESSING':
         return '분석 중';
+      case 'READY':
       case 'COMPLETED':
         return '분석 완료';
       case 'FAILED':
-        return '분석 실패';
       case 'DLQ':
-        return '처리 실패';
+        return '분석 실패';
       default:
         return '상태 확인 중';
     }
   }, [statusData?.status]);
-
-  const stopWithTimeoutMessage = () => {
-    const message = 'OCR 처리 시간이 오래 걸리고 있습니다. 워커 또는 Kafka 처리 상태를 확인해 주세요.';
-    console.warn('[ReceiptOCR] Polling timed out.', {
-      receiptId: receiptId ?? null,
-      status: statusData?.status ?? null,
-    });
-    setErrorMessage(message);
-    showToast(message, 'error');
-  };
 
   const fetchResult = async (targetReceiptId: string) => {
     console.log('[ReceiptOCR] Fetch result.', { receiptId: targetReceiptId });
@@ -101,7 +96,7 @@ export default function ReceiptOcrResultScreen() {
 
     setStatusData(statusResponse.data);
 
-    if (statusResponse.data.status === 'COMPLETED') {
+    if (isSuccessStatus(statusResponse.data.status)) {
       await fetchResult(targetReceiptId);
       if (!hasShownCompletionToastRef.current) {
         showToast('영수증 OCR 결과가 준비되었습니다.', 'success');
@@ -109,7 +104,7 @@ export default function ReceiptOcrResultScreen() {
       }
     }
 
-    if (statusResponse.data.status === 'FAILED' || statusResponse.data.status === 'DLQ') {
+    if (isFailureStatus(statusResponse.data.status)) {
       setResultData(null);
       setErrorMessage(statusResponse.data.lastErrorMessage ?? '영수증 OCR 분석에 실패했습니다.');
     }
@@ -131,11 +126,7 @@ export default function ReceiptOcrResultScreen() {
     const startPolling = async () => {
       try {
         const initialStatus = await fetchStatus(receiptId);
-        if (
-          initialStatus.status === 'COMPLETED' ||
-          initialStatus.status === 'FAILED' ||
-          initialStatus.status === 'DLQ'
-        ) {
+        if (isTerminalStatus(initialStatus.status)) {
           return;
         }
       } catch (error) {
@@ -156,24 +147,21 @@ export default function ReceiptOcrResultScreen() {
         }
 
         const elapsedMs = Date.now() - (pollStartedAtRef.current ?? Date.now());
-        if (elapsedMs >= POLL_TIMEOUT_MS) {
-          if (intervalId) {
-            clearInterval(intervalId);
-          }
-          stopWithTimeoutMessage();
-          return;
+        if (elapsedMs >= POLL_TIMEOUT_MS && !hasShownTimeoutWarningRef.current) {
+          const message = 'OCR 처리 시간이 오래 걸리고 있습니다. 결과가 준비될 때까지 계속 확인합니다.';
+          console.warn('[ReceiptOCR] Polling exceeded timeout threshold.', {
+            receiptId: receiptId ?? null,
+            status: statusData?.status ?? null,
+          });
+          setErrorMessage(message);
+          showToast(message, 'info');
+          hasShownTimeoutWarningRef.current = true;
         }
 
         try {
           const nextStatus = await fetchStatus(receiptId, { silent: true });
-          if (
-            nextStatus.status === 'COMPLETED' ||
-            nextStatus.status === 'FAILED' ||
-            nextStatus.status === 'DLQ'
-          ) {
-            if (intervalId) {
-              clearInterval(intervalId);
-            }
+          if (isTerminalStatus(nextStatus.status) && intervalId) {
+            clearInterval(intervalId);
           }
         } catch (error) {
           if (!active) {
@@ -202,6 +190,8 @@ export default function ReceiptOcrResultScreen() {
 
     setIsRefreshing(true);
     pollStartedAtRef.current = Date.now();
+    hasShownTimeoutWarningRef.current = false;
+    setErrorMessage(null);
     try {
       await fetchStatus(receiptId);
     } catch (error) {
@@ -245,9 +235,9 @@ export default function ReceiptOcrResultScreen() {
           <Text style={styles.statusCaption}>현재 상태</Text>
           <Text style={styles.statusTitle}>{statusLabel}</Text>
           <Text style={styles.statusSubtext}>
-            {statusData?.status === 'COMPLETED'
+            {isSuccessStatus(statusData?.status)
               ? '분석이 완료되었습니다.'
-              : statusData?.status === 'FAILED' || statusData?.status === 'DLQ'
+              : isFailureStatus(statusData?.status)
                 ? '분석 중 오류가 발생했습니다.'
                 : '분석 진행 상황을 자동으로 확인하고 있습니다.'}
           </Text>
@@ -299,7 +289,7 @@ export default function ReceiptOcrResultScreen() {
           <View style={styles.resultCard}>
             <Text style={styles.sectionTitle}>결과 대기 중</Text>
             <Text style={styles.emptyText}>
-              {statusData?.status === 'FAILED' || statusData?.status === 'DLQ'
+              {isFailureStatus(statusData?.status)
                 ? '분석 결과를 가져오지 못했습니다.'
                 : '결과가 준비되면 이 화면에 자동으로 표시됩니다.'}
             </Text>
