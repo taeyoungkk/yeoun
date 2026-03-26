@@ -135,7 +135,10 @@ export default function ReceiptOcrScreen() {
       }
 
       showToast('영수증 분석을 요청했습니다. 잠시 후 결과를 확인하세요.', 'success');
-      router.back();
+      router.replace({
+        pathname: '/receipt-ocr-result',
+        params: { receiptId: ocrResponse.data.receiptId },
+      } as never);
     } catch (error) {
       const message = axios.isAxiosError(error)
         ? error.response?.data?.message ?? '영수증 OCR 요청에 실패했습니다.'
