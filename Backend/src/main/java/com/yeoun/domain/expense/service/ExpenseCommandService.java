@@ -71,6 +71,7 @@ public class ExpenseCommandService {
                 .payerUserId(payerUserId)
                 .sourceType(ExpenseSourceType.MANUAL)
                 .paymentImportId(null)
+                .receiptId(null)
                 .merchantName(normalizeRequiredText(request.merchantName()))
                 .category(request.category())
                 .currencyCode(normalizeCurrencyCode(request.currencyCode()))
