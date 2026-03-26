@@ -13,3 +13,5 @@ export type { CurrentTrip } from './trip.store';
 export { useFavoriteStore } from './favorite.store';
 
 export { useNotificationStore, selectHasUnread, selectUnreadCount } from './notification.store';
+export { useStatsStore } from './stats.store';
+export type { StatsState } from './stats.store';

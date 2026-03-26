@@ -50,8 +50,11 @@ export default function MyPageScreen() {
     .filter((trip, index, self) => self.findIndex((item) => item.id === trip.id) === index);
 
   const pastTrips = serverTrips.filter((trip) => trip.status === 'ENDED').map(mapToTripData);
-  const endedTripIds = useMemo(
-    () => serverTrips.filter((trip) => trip.status === 'ENDED').map((trip) => trip.tripId),
+  const monitoredTripIds = useMemo(
+    () =>
+      serverTrips
+        .filter((trip) => trip.status === 'ENDED' || trip.status === 'ACTIVE')
+        .map((trip) => trip.tripId),
     [serverTrips],
   );
 
@@ -199,7 +202,7 @@ export default function MyPageScreen() {
           onToggleFavorite={handleToggleFavorite}
         />
 
-        <TravelMap tripIds={endedTripIds} />
+        <TravelMap tripIds={monitoredTripIds} />
         <TreeRingsChart />
       </ScrollView>
     </SafeAreaView>
