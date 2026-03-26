@@ -1075,6 +1075,25 @@ function RealTripRecordingScreen({
           return { outcome: 'skipped_permission', syncedCount: 0 };
         }
 
+        if (!photoPermission.mediaLocationGranted) {
+          Alert.alert(
+            '사진 위치 권한이 필요해요',
+            '사진의 촬영 위치(EXIF)를 읽을 수 없어 여행 타임라인에 자동으로 반영할 수 없어요. 설정에서 사진 위치 권한을 허용해 주세요.',
+            photoPermission.mediaLocationCanAskAgain
+              ? [{ text: '확인' }]
+              : [
+                  { text: '나중에' },
+                  {
+                    text: '설정 열기',
+                    onPress: () => {
+                      void locationService.openLocationSettings();
+                    },
+                  },
+                ],
+          );
+          return { outcome: 'skipped_permission', syncedCount: 0 };
+        }
+
         if (!displayTrip?.startDate || !displayTrip?.endDate) {
           return { outcome: 'skipped_range', syncedCount: 0 };
         }
