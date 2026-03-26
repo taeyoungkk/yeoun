@@ -107,6 +107,7 @@ public class PhotoSyncService {
 
         List<PhotoSyncItemResponse> syncedItems = new ArrayList<>();
         Instant now = Instant.now();
+        Instant latestAcceptedTakenAt = null;
         int queuedPhotoCount = 0;
 
         for (int i = 0; i < files.size(); i++) {
@@ -206,6 +207,9 @@ public class PhotoSyncService {
                     now
             );
             queuedPhotoCount += 1;
+            if (item.takenAt() != null && (latestAcceptedTakenAt == null || item.takenAt().isAfter(latestAcceptedTakenAt))) {
+                latestAcceptedTakenAt = item.takenAt();
+            }
 
             syncedItems.add(new PhotoSyncItemResponse(
                     photo.getPhotoId(),
@@ -217,7 +221,9 @@ public class PhotoSyncService {
         tripSyncStatusService.startPhotoProcessing(tripId, now, queuedPhotoCount);
         log.info("사진 동기화 상태 갱신 완료. tripId={} queuedPhotoCount={}", tripId, queuedPhotoCount);
 
-        member.markPhotoSynced(now);
+        if (latestAcceptedTakenAt != null) {
+            member.markPhotoSynced(latestAcceptedTakenAt);
+        }
         log.info("사진 마지막 동기화 시각 갱신 완료. requesterUserId={} tripId={} syncedAt={}", requesterUserId, tripId, now);
 
         log.info(

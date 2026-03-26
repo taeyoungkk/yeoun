@@ -289,7 +289,6 @@ const syncCollectorsForAppState = async (nextAppState: AppStateStatus) => {
   }
 
   if (nextAppState === 'active') {
-    await stopBackgroundWatcher();
     activeCollectorMode = 'foreground';
     await startForegroundWatcher();
     return;
@@ -299,7 +298,6 @@ const syncCollectorsForAppState = async (nextAppState: AppStateStatus) => {
 
   if (trackingSessionConfig?.backgroundGranted) {
     activeCollectorMode = 'background';
-    await startBackgroundWatcher();
     return;
   }
 
@@ -486,6 +484,9 @@ export const locationService = {
         backgroundGranted,
       };
       trackingEnabled = true;
+      if (backgroundGranted && AppState.currentState === 'active') {
+        await startBackgroundWatcher();
+      }
       lastKnownAppState = AppState.currentState;
       ensureAppStateSubscription();
       await runCollectorTransition(lastKnownAppState);
