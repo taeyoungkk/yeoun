@@ -84,6 +84,7 @@ public class PaymentImportCommandService {
                 .payerUserId(request.payerUserId())
                 .sourceType(ExpenseSourceType.PAYMENT_IMPORT)
                 .paymentImportId(paymentImport.getPaymentImportId())
+                .receiptId(null)
                 .merchantName(normalizeRequiredText(paymentImport.getMerchantName()))
                 .category(request.category())
                 .currencyCode(currencyCode)

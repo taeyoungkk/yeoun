@@ -44,6 +44,9 @@ public class Expense {
     @Column(name = "payment_import_id")
     private UUID paymentImportId;
 
+    @Column(name = "receipt_id")
+    private String receiptId;
+
     @Column(name = "merchant_name", nullable = false)
     private String merchantName;
 
