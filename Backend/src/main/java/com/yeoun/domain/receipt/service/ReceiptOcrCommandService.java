@@ -2,8 +2,10 @@ package com.yeoun.domain.receipt.service;
 
 import com.yeoun.domain.receipt.dto.request.ReceiptOcrCreateRequest;
 import com.yeoun.domain.receipt.dto.response.ReceiptOcrCreateResponse;
+import com.yeoun.domain.receipt.entity.ReceiptProcessingStatus;
 import com.yeoun.domain.receipt.event.ReceiptOcrRequestEvent;
 import com.yeoun.domain.receipt.event.ReceiptOcrRequestEventPublisher;
+import com.yeoun.domain.receipt.repository.ReceiptProcessingStatusRepository;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripMemberInviteStatus;
 import com.yeoun.domain.trip.entity.TripStatus;
@@ -27,15 +29,18 @@ public class ReceiptOcrCommandService {
 
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
+    private final ReceiptProcessingStatusRepository receiptProcessingStatusRepository;
     private final ReceiptOcrRequestEventPublisher receiptOcrRequestEventPublisher;
 
     public ReceiptOcrCommandService(
             TripRepository tripRepository,
             TripMemberRepository tripMemberRepository,
+            ReceiptProcessingStatusRepository receiptProcessingStatusRepository,
             ReceiptOcrRequestEventPublisher receiptOcrRequestEventPublisher
     ) {
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
+        this.receiptProcessingStatusRepository = receiptProcessingStatusRepository;
         this.receiptOcrRequestEventPublisher = receiptOcrRequestEventPublisher;
     }
 
@@ -52,6 +57,7 @@ public class ReceiptOcrCommandService {
 
         UUID receiptId = UUID.randomUUID();
         Instant requestedAt = Instant.now();
+        saveRequestedStatus(receiptId, tripId, requestedAt);
 
         receiptOcrRequestEventPublisher.publish(new ReceiptOcrRequestEvent(
                 receiptId,
@@ -69,6 +75,21 @@ public class ReceiptOcrCommandService {
                 REQUEST_STATUS,
                 requestedAt
         );
+    }
+
+    private void saveRequestedStatus(UUID receiptId, UUID tripId, Instant requestedAt) {
+        receiptProcessingStatusRepository.save(new ReceiptProcessingStatus(
+                receiptId.toString(),
+                tripId.toString(),
+                REQUEST_STATUS,
+                0,
+                requestedAt,
+                null,
+                null,
+                null,
+                requestedAt,
+                requestedAt
+        ));
     }
 
     private void validateTripAccessible(UUID requesterUserId, Trip trip) {
