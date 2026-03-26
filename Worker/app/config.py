@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     kafka_photo_retry_topic: str = Field(default="photo-processing-retry", alias="KAFKA_PHOTO_RETRY_TOPIC")
     kafka_photo_dlq_topic: str = Field(default="photo-processing-dlq", alias="KAFKA_PHOTO_DLQ_TOPIC")
     kafka_photo_consumer_group: str = Field(default="yeoun-worker-photo", alias="KAFKA_PHOTO_CONSUMER_GROUP")
+    kafka_photo_max_inflight: int = Field(default=4, alias="KAFKA_PHOTO_MAX_INFLIGHT")
     kafka_location_enabled: bool = Field(default=False, alias="KAFKA_LOCATION_ENABLED")
     kafka_location_request_topic: str = Field(default="trip-location-log-batch", alias="KAFKA_LOCATION_REQUEST_TOPIC")
     kafka_location_result_topic: str = Field(default="trip-location-log-result", alias="KAFKA_LOCATION_RESULT_TOPIC")
