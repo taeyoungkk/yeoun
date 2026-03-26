@@ -180,7 +180,7 @@ export default function TripStartScreen() {
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
   const [startDate, setStartDate] = useState<Date | null>(editSourceTrip?.startDate ? new Date(editSourceTrip.startDate) : null);
   const [endDate, setEndDate] = useState<Date | null>(editSourceTrip?.endDate ? new Date(editSourceTrip.endDate) : null);
-  const [memberCount, setMemberCount] = useState(editSourceTrip?.memberCount ?? 2);
+  const [memberCount, setMemberCount] = useState(editSourceTrip?.memberCount ?? 1);
   const [noticeModalType, setNoticeModalType] = useState<NoticeModalType>(null);
 
   const headerNickname = profileNickname?.trim() || '여행자';
@@ -197,7 +197,7 @@ export default function TripStartScreen() {
       setCalendarMonth(today);
       setStartDate(null);
       setEndDate(null);
-      setMemberCount(2);
+      setMemberCount(1);
       return;
     }
 
@@ -205,7 +205,7 @@ export default function TripStartScreen() {
     setCalendarMonth(editSourceTrip?.startDate ? startOfDay(new Date(editSourceTrip.startDate)) : today);
     setStartDate(editSourceTrip?.startDate ? new Date(editSourceTrip.startDate) : null);
     setEndDate(editSourceTrip?.endDate ? new Date(editSourceTrip.endDate) : null);
-    setMemberCount(editSourceTrip?.memberCount ?? 2);
+    setMemberCount(editSourceTrip?.memberCount ?? 1);
   }, [editSourceTrip?.endDate, editSourceTrip?.memberCount, editSourceTrip?.startDate, editSourceTrip?.tripId, editSourceTrip?.tripName, isCreateMode, today]);
 
   const missingLabels = useMemo(() => {
