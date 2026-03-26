@@ -47,6 +47,8 @@ export interface TimelineEventSummary {
   eventType: 'PLACE_VISIT' | 'MOVE' | 'OTHER';
   title: string;
   placeName: string | null;
+  placeProvider?: string | null;
+  providerPlaceId?: string | null;
   startAt: string | null;
   endAt: string | null;
   hidden: boolean;
@@ -95,6 +97,8 @@ export interface EventUpdateData {
   eventId: string;
   title: string;
   placeName: string | null;
+  placeProvider?: string | null;
+  providerPlaceId?: string | null;
   placeExternalId?: string | null;
   startAt: string | null;
   endAt: string | null;
@@ -160,10 +164,14 @@ const mapTimelineEventSummary = (item: any): TimelineEventSummary => {
     eventType: item.eventType,
     title: item.title ?? '',
     placeName: item.placeName ?? null,
+    placeProvider: item.placeProvider ?? null,
+    providerPlaceId: item.providerPlaceId ?? null,
     startAt: item.startAt ?? null,
     endAt: item.endAt ?? null,
     hidden: Boolean(item.hidden),
     photoCount: toNumber(item.photoCount),
+    centerLatitude: item.centerLatitude == null ? null : toNumber(item.centerLatitude),
+    centerLongitude: item.centerLongitude == null ? null : toNumber(item.centerLongitude),
     representativePhoto,
   };
 };
@@ -185,6 +193,8 @@ const mapEventUpdate = (item: any): EventUpdateData => ({
   eventId: String(item.eventId),
   title: item.title ?? '',
   placeName: item.placeName ?? null,
+  placeProvider: item.placeProvider ?? null,
+  providerPlaceId: item.providerPlaceId ?? null,
   placeExternalId: item.placeExternalId ?? null,
   startAt: item.startAt ?? null,
   endAt: item.endAt ?? null,
