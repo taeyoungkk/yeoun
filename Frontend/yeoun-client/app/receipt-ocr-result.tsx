@@ -15,22 +15,41 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   getReceiptOcrResultApi,
   getReceiptOcrStatusApi,
+  selectReceiptOcrApi,
+  type ReceiptExpenseCategory,
   type ReceiptOcrResultData,
   type ReceiptOcrStatusData,
 } from '@/src/api/receipt';
+import { getTripMembersApi, type TripMemberItem } from '@/src/api/trip';
 import { useUIStore } from '@/src/store/ui.store';
+import { useUserStore } from '@/src/store';
 
 const POLL_INTERVAL_MS = 2500;
 const POLL_TIMEOUT_MS = 30000;
+const CATEGORY_OPTIONS: ReceiptExpenseCategory[] = ['FOOD', 'CAFE', 'TRANSPORT', 'LODGING', 'SHOPPING', 'ETC'];
+const CATEGORY_LABELS: Record<ReceiptExpenseCategory, string> = {
+  FOOD: '식비',
+  CAFE: '카페',
+  TRANSPORT: '교통',
+  LODGING: '숙소',
+  SHOPPING: '쇼핑',
+  ETC: '기타',
+};
 
 export default function ReceiptOcrResultScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ receiptId?: string | string[] }>();
   const receiptId = Array.isArray(params.receiptId) ? params.receiptId[0] : params.receiptId;
   const showToast = useUIStore((state) => state.showToast);
+  const currentUserId = useUserStore((state) => state.profile?.userId ?? null);
 
   const [statusData, setStatusData] = useState<ReceiptOcrStatusData | null>(null);
   const [resultData, setResultData] = useState<ReceiptOcrResultData | null>(null);
+  const [tripMembers, setTripMembers] = useState<TripMemberItem[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<ReceiptExpenseCategory>('ETC');
+  const [selectedPayerUserId, setSelectedPayerUserId] = useState<string | null>(null);
+  const [selectedParticipantUserIds, setSelectedParticipantUserIds] = useState<string[]>([]);
+  const [isSelecting, setIsSelecting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -195,6 +214,52 @@ export default function ReceiptOcrResultScreen() {
     };
   }, [receiptId]);
 
+  const resolvedTripId = resultData?.tripId ?? statusData?.tripId ?? null;
+
+  useEffect(() => {
+    if (!resolvedTripId) return;
+
+    let active = true;
+    const loadMembers = async () => {
+      try {
+        const response = await getTripMembersApi(resolvedTripId);
+        if (!response.success) {
+          throw new Error(response.message ?? '여행 멤버 정보를 불러오지 못했습니다.');
+        }
+
+        if (!active) return;
+
+        const members = response.data.items;
+        setTripMembers(members);
+
+        const defaultPayerUserId =
+          (currentUserId && members.some((member) => member.userId === currentUserId) ? currentUserId : null) ??
+          members[0]?.userId ??
+          null;
+
+        setSelectedPayerUserId((prev) => (prev && members.some((member) => member.userId === prev) ? prev : defaultPayerUserId));
+        setSelectedParticipantUserIds((prev) => {
+          if (prev.length > 0) {
+            const filtered = prev.filter((userId) => members.some((member) => member.userId === userId));
+            if (filtered.length > 0) {
+              return filtered;
+            }
+          }
+          return members.map((member) => member.userId);
+        });
+      } catch (error) {
+        if (!active) return;
+        const message = error instanceof Error ? error.message : '여행 멤버 정보를 불러오지 못했습니다.';
+        setErrorMessage(message);
+      }
+    };
+
+    void loadMembers();
+    return () => {
+      active = false;
+    };
+  }, [currentUserId, resolvedTripId]);
+
   const handleRefresh = async () => {
     if (!receiptId) {
       return;
@@ -210,6 +275,43 @@ export default function ReceiptOcrResultScreen() {
       showToast(message, 'error');
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const handleSelectReceipt = async () => {
+    if (!receiptId || !resolvedTripId) {
+      showToast('영수증 정보가 없어 지출로 확정할 수 없습니다.', 'error');
+      return;
+    }
+    if (!selectedPayerUserId) {
+      showToast('결제자를 선택해 주세요.', 'error');
+      return;
+    }
+    if (selectedParticipantUserIds.length === 0) {
+      showToast('함께한 멤버를 한 명 이상 선택해 주세요.', 'error');
+      return;
+    }
+
+    setIsSelecting(true);
+    try {
+      const response = await selectReceiptOcrApi(receiptId, {
+        payerUserId: selectedPayerUserId,
+        category: selectedCategory,
+        participantUserIds: selectedParticipantUserIds,
+      });
+
+      if (!response.success) {
+        throw new Error(response.message ?? '영수증 내역 확정에 실패했습니다.');
+      }
+
+      showToast('영수증 내역을 지출로 추가했습니다.', 'success');
+      router.replace({ pathname: '/payment-details', params: { tripId: resolvedTripId } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '영수증 내역 확정에 실패했습니다.';
+      setErrorMessage(message);
+      showToast(message, 'error');
+    } finally {
+      setIsSelecting(false);
     }
   };
 
@@ -294,6 +396,77 @@ export default function ReceiptOcrResultScreen() {
               <Text style={styles.sectionTitle}>원문 텍스트</Text>
               <Text style={styles.rawText}>{resultData.rawText?.trim() || '추출된 원문 텍스트가 없습니다.'}</Text>
             </View>
+
+            {tripMembers.length > 0 ? (
+              <View style={styles.resultCard}>
+                <Text style={styles.sectionTitle}>지출로 확정</Text>
+
+                <Text style={styles.fieldLabel}>카테고리</Text>
+                <View style={styles.choiceWrap}>
+                  {CATEGORY_OPTIONS.map((category) => (
+                    <TouchableOpacity
+                      key={category}
+                      style={[styles.choiceChip, selectedCategory === category && styles.choiceChipActive]}
+                      onPress={() => setSelectedCategory(category)}
+                    >
+                      <Text style={[styles.choiceChipText, selectedCategory === category && styles.choiceChipTextActive]}>
+                        {CATEGORY_LABELS[category]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.fieldLabel}>결제자</Text>
+                <View style={styles.choiceWrap}>
+                  {tripMembers.map((member) => (
+                    <TouchableOpacity
+                      key={member.userId}
+                      style={[styles.choiceChip, selectedPayerUserId === member.userId && styles.choiceChipActive]}
+                      onPress={() => setSelectedPayerUserId(member.userId)}
+                    >
+                      <Text
+                        style={[
+                          styles.choiceChipText,
+                          selectedPayerUserId === member.userId && styles.choiceChipTextActive,
+                        ]}
+                      >
+                        {member.nickname}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.fieldLabel}>함께한 멤버</Text>
+                <View style={styles.choiceWrap}>
+                  {tripMembers.map((member) => {
+                    const isSelected = selectedParticipantUserIds.includes(member.userId);
+                    return (
+                      <TouchableOpacity
+                        key={`participant-${member.userId}`}
+                        style={[styles.choiceChip, isSelected && styles.choiceChipActive]}
+                        onPress={() =>
+                          setSelectedParticipantUserIds((prev) =>
+                            prev.includes(member.userId)
+                              ? prev.filter((userId) => userId !== member.userId)
+                              : [...prev, member.userId],
+                          )
+                        }
+                      >
+                        <Text style={[styles.choiceChipText, isSelected && styles.choiceChipTextActive]}>{member.nickname}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => void handleSelectReceipt()}
+                  style={[styles.confirmButton, isSelecting && styles.confirmButtonDisabled]}
+                  disabled={isSelecting}
+                >
+                  <Text style={styles.confirmButtonText}>{isSelecting ? '확정 중...' : '이 내역으로 지출 추가'}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </>
         ) : (
           <View style={styles.resultCard}>
@@ -358,6 +531,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
+    paddingTop: 44,
     paddingBottom: 40,
     gap: 16,
   },
@@ -365,7 +539,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 20,
   },
   backButton: {
     width: 40,
@@ -490,6 +664,53 @@ const styles = StyleSheet.create({
   },
   retryButtonText: {
     color: 'white',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: -2,
+  },
+  choiceWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  choiceChip: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#D7DDD4',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    backgroundColor: '#F8FAF6',
+  },
+  choiceChipActive: {
+    borderColor: '#244934',
+    backgroundColor: '#E7F0EB',
+  },
+  choiceChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  choiceChipTextActive: {
+    color: '#244934',
+  },
+  confirmButton: {
+    marginTop: 6,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: '#244934',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmButtonDisabled: {
+    opacity: 0.7,
+  },
+  confirmButtonText: {
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
   },

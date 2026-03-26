@@ -685,7 +685,11 @@ export default function PaymentDetailsScreen() {
             style={styles.methodItem}
             onPress={() => {
               setAddExpenseMethodVisible(false);
-              Alert.alert('알림', '영수증 스캔 기능은 준비 중입니다.');
+              if (!tripId) {
+                Alert.alert('알림', '여행 정보가 없어 영수증 스캔을 시작할 수 없습니다.');
+                return;
+              }
+              router.push({ pathname: '/receipt-ocr', params: { tripId } });
             }}
           >
             <View style={styles.methodIconBox}>
