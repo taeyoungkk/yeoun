@@ -1,18 +1,18 @@
 import { router, useFocusEffect } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getFriendsApi } from '@/src/api/friend';
-import { getTripsApi, TripListItem } from '@/src/api/trip';
+import { TripListItem } from '@/src/api/trip';
 import { getMyInfo } from '@/src/api/user';
 import { ProfileHeader } from '@/src/components/profile/ProfileHeader';
-import { TripCardProps, TripData } from '@/src/components/profile/TripCard';
+import { TripData } from '@/src/components/profile/TripCard';
 import { TripList } from '@/src/components/profile/TripList';
 import { TreeRingsChart } from '@/src/components/profile/TreeRingsChart';
 import { TravelMap } from '@/src/components/profile/TravelMap';
 import { UserInfoCard } from '@/src/components/profile/UserInfoCard';
-import { useFavoriteStore, useUserStore } from '@/src/store';
+import { useFavoriteStore, useTripStore, useUserStore } from '@/src/store';
 
 const MOCK_FAVORITE_TRIPS: TripData[] = [
   {
@@ -36,7 +36,8 @@ const MOCK_FAVORITE_TRIPS: TripData[] = [
 export default function MyPageScreen() {
   const { profile, setProfile } = useUserStore();
   const { favoriteIds, toggleFavorite } = useFavoriteStore();
-  const [serverTrips, setServerTrips] = useState<TripListItem[]>([]);
+  const serverTrips = useTripStore((state) => state.trips);
+  const fetchTrips = useTripStore((state) => state.fetchTrips);
   const [friendsCount, setFriendsCount] = useState(0);
 
   const mapToTripData = (trip: TripListItem): TripData => ({
@@ -51,11 +52,15 @@ export default function MyPageScreen() {
     isFavorite: favoriteIds.includes(trip.tripId),
   });
 
-  const favoriteTrips: TripCardProps[] = [...MOCK_FAVORITE_TRIPS, ...serverTrips.map(mapToTripData)]
+  const favoriteTrips: TripData[] = [...MOCK_FAVORITE_TRIPS, ...serverTrips.map(mapToTripData)]
     .filter((trip) => favoriteIds.includes(trip.id))
     .filter((trip, index, self) => self.findIndex((item) => item.id === trip.id) === index);
 
   const pastTrips = serverTrips.filter((trip) => trip.status === 'ENDED').map(mapToTripData);
+  const endedTripIds = useMemo(
+    () => serverTrips.filter((trip) => trip.status === 'ENDED').map((trip) => trip.tripId),
+    [serverTrips],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -65,7 +70,7 @@ export default function MyPageScreen() {
         const [profileResult, friendsResult, tripsResult] = await Promise.allSettled([
           getMyInfo(),
           getFriendsApi(),
-          getTripsApi(),
+          fetchTrips(),
         ]);
 
         if (!isMounted) {
@@ -79,7 +84,7 @@ export default function MyPageScreen() {
             console.warn('[MyPage] Profile request completed without success.', profileResult.value);
           }
         } else {
-          console.error('[MyPage] Profile request failed.', profileResult.reason);
+          console.warn('[MyPage] Profile request failed.', profileResult.reason);
         }
 
         if (friendsResult.status === 'fulfilled') {
@@ -89,17 +94,13 @@ export default function MyPageScreen() {
             console.warn('[MyPage] Friends request completed without success.', friendsResult.value);
           }
         } else {
-          console.error('[MyPage] Friends request failed.', friendsResult.reason);
+          console.warn('[MyPage] Friends request failed.', friendsResult.reason);
         }
 
         if (tripsResult.status === 'fulfilled') {
-          if (tripsResult.value.success) {
-            setServerTrips(tripsResult.value.data.items);
-          } else {
-            console.warn('[MyPage] Trips request completed without success.', tripsResult.value);
-          }
+          void tripsResult.value;
         } else {
-          console.error('[MyPage] Trips request failed.', tripsResult.reason);
+          console.warn('[MyPage] Trips request failed.', tripsResult.reason);
         }
       };
 
@@ -108,7 +109,7 @@ export default function MyPageScreen() {
       return () => {
         isMounted = false;
       };
-    }, [setProfile]),
+    }, [fetchTrips, setProfile]),
   );
 
   const handleToggleFavorite = (id: string) => {
@@ -148,7 +149,7 @@ export default function MyPageScreen() {
           onToggleFavorite={handleToggleFavorite}
         />
 
-        <TravelMap />
+        <TravelMap tripIds={endedTripIds} />
         <TreeRingsChart />
       </ScrollView>
     </SafeAreaView>

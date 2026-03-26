@@ -29,6 +29,7 @@ public class LocationLogBatchResultEventConsumer {
             groupId = "${app.kafka.trip-location-log-result-group:backend-trip-location-log-result}"
     )
     public void consume(String payload) {
+        log.info("위치 로그 워커 결과 payload 수신. payloadSize={}", payload.length());
         LocationLogBatchResultEvent event;
         try {
             event = objectMapper.readValue(payload, LocationLogBatchResultEvent.class);
@@ -37,6 +38,16 @@ public class LocationLogBatchResultEventConsumer {
             return;
         }
 
+        log.info(
+                "위치 로그 워커 결과 소비 완료. tripId={} userId={} status={} storedCount={} routePersistedCount={} placePersistedCount={} errorCode={}",
+                event.tripId(),
+                event.userId(),
+                event.status(),
+                event.storedCount(),
+                event.routePersistedCount(),
+                event.placePersistedCount(),
+                event.errorCode()
+        );
         locationLogResultService.handleResult(event);
     }
 }

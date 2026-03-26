@@ -61,6 +61,8 @@ class LocationLogBatchResultMessage(BaseModel):
     place_persisted_count: int = Field(alias="placePersistedCount", default=0, ge=0)
     timeline_candidate_count: int = Field(alias="timelineCandidateCount", default=0, ge=0)
     timeline_candidate_persisted_count: int = Field(alias="timelineCandidatePersistedCount", default=0, ge=0)
+    map_matched_route_day_count: int = Field(alias="mapMatchedRouteDayCount", default=0, ge=0)
+    route_day_fallback_count: int = Field(alias="routeDayFallbackCount", default=0, ge=0)
     filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", default=0, ge=0)
     filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", default=0, ge=0)
     filtered_jump_count: int = Field(alias="filteredJumpCount", default=0, ge=0)
@@ -99,6 +101,8 @@ class LocationPreprocessSummary(BaseModel):
     place_persisted_count: int = Field(alias="placePersistedCount", default=0, ge=0)
     timeline_candidate_count: int = Field(alias="timelineCandidateCount", default=0, ge=0)
     timeline_candidate_persisted_count: int = Field(alias="timelineCandidatePersistedCount", default=0, ge=0)
+    map_matched_route_day_count: int = Field(alias="mapMatchedRouteDayCount", default=0, ge=0)
+    route_day_fallback_count: int = Field(alias="routeDayFallbackCount", default=0, ge=0)
     filtered_accuracy_count: int = Field(alias="filteredAccuracyCount", ge=0)
     filtered_duplicate_count: int = Field(alias="filteredDuplicateCount", ge=0)
     filtered_jump_count: int = Field(alias="filteredJumpCount", ge=0)
@@ -145,6 +149,8 @@ class LocationRouteDay(BaseModel):
     trip_id: str = Field(alias="tripId")
     user_id: str = Field(alias="userId")
     day: str
+    started_at: datetime = Field(alias="startedAt")
+    ended_at: datetime = Field(alias="endedAt")
     point_count: int = Field(alias="pointCount", ge=2)
     distance_m: Decimal = Field(alias="distanceM", ge=Decimal("0"))
     coordinates: list[tuple[Decimal, Decimal]]

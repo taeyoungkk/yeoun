@@ -4,7 +4,8 @@ services:
 
   kafka:
     ports:
-      - "${KAFKA_EXTERNAL_PORT:-9092}:9092"
+      # - "${KAFKA_EXTERNAL_PORT:-9092}:9092"
+      - "${KAFKA_EXTERNAL_PORT:-9094}:9094"
 
   nginx:
     ports:

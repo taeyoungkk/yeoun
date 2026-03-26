@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, Stack } from 'expo-router';
 import { ExpenseGraph } from '@/src/features/payment/components/ExpenseGraph';
 import { ExpenseTable } from '@/src/features/payment/components/ExpenseTable';
+import { ReceiptOcrButton } from '@/src/features/payment/components/ReceiptOcrButton';
 import { useExpenseStore } from '@/src/store/expenseStore';
 import { RegularNav } from '@/src/components/ui/regular-navbar';
 import { HouseSvg } from '@/src/components/icons/HouseSvg';
@@ -123,7 +124,7 @@ const DraggableAvatar = ({
 export default function PaymentDetailsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
-  const hasUnread = useNotificationStore((state) => state.hasUnread);
+  const unreadCount = useNotificationStore((state) => state.unreadCount);
   const { 
     members, 
     expenses,
@@ -182,14 +183,14 @@ export default function PaymentDetailsScreen() {
       label: '알림', 
       href: '/notifications', 
       icon: ({ color, size }: { color: string; size: number }) => <BellSvg color={color} size={size} />,
-      showBadge: hasUnread
+      badgeCount: unreadCount
     },
     { 
       label: '마이페이지', 
       href: '/mypage', 
       icon: ({ color, size }: { color: string; size: number }) => <ProfileRoundSvg color={color} size={size} />
     },
-  ], [hasUnread]);
+  ], [unreadCount]);
   
   const bgColor = '#EBF3EA';
 
@@ -202,14 +203,17 @@ export default function PaymentDetailsScreen() {
           scrollEnabled={!draggingMemberId}
         >
           
-          <View className="mt-8 mb-6 flex-row items-center">
-            <TouchableOpacity onPress={() => router.back()} className="mr-4">
-              <Ionicons name="arrow-back" size={24} color="black" />
-            </TouchableOpacity>
-            <View>
-              <Text className="text-black font-bold text-3xl mb-2" style={{ fontFamily: 'DM Sans' }}>현재 여행 지출</Text>
-              <Text className="text-black font-bold text-xl tracking-tight" style={{ fontFamily: 'DM Sans' }}>총 지출: {totalBudget.toLocaleString()}</Text>
+          <View className="mt-8 mb-6 flex-row items-center justify-between">
+            <View className="flex-row items-center">
+              <TouchableOpacity onPress={() => router.back()} className="mr-4">
+                <Ionicons name="arrow-back" size={24} color="black" />
+              </TouchableOpacity>
+              <View>
+                <Text className="text-black font-bold text-3xl mb-2" style={{ fontFamily: 'DM Sans' }}>현재 여행 지출</Text>
+                <Text className="text-black font-bold text-xl tracking-tight" style={{ fontFamily: 'DM Sans' }}>총 지출: {totalBudget.toLocaleString()}</Text>
+              </View>
             </View>
+            <ReceiptOcrButton />
           </View>
 
           <View className="mb-10 px-2">

@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, FlatList, Pressable, SafeAreaView } from 'react-native';
+import { View, Text, FlatList, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { TripCard, TripData } from '@/src/components/profile/TripCard';
 import { useFavoriteStore } from '@/src/store';
 

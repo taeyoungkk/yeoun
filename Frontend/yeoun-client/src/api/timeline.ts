@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import apiClient from './client';
+import { isMockTripId } from './trip';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -78,6 +79,36 @@ export interface TimelineDayDetail extends TimelineDaySummary {
   events: TimelineEventSummary[];
 }
 
+export interface EventUpdateRequest {
+  title?: string;
+  placeName?: string | null;
+  placeExternalId?: string | null;
+  startAt?: string | null;
+  endAt?: string | null;
+  centerLatitude?: number | null;
+  centerLongitude?: number | null;
+  radiusM?: number | null;
+  hidden?: boolean;
+}
+
+export interface EventUpdateData {
+  eventId: string;
+  title: string;
+  placeName: string | null;
+  placeExternalId?: string | null;
+  startAt: string | null;
+  endAt: string | null;
+  centerLatitude?: number | null;
+  centerLongitude?: number | null;
+  radiusM?: number | null;
+  hidden: boolean;
+  updatedAt: string;
+}
+
+export interface EventMemoUpsertRequest {
+  content: string;
+}
+
 const API_MOCKS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_API_MOCKS === 'true';
 
 const shouldMockInDev = (error: unknown) => {
@@ -87,6 +118,16 @@ const shouldMockInDev = (error: unknown) => {
 
   return axios.isAxiosError(error) && !error.response;
 };
+
+const getErrorMessage = (error: any, fallback: string) =>
+  error?.response?.data?.message ??
+  error?.response?.data?.error?.message ??
+  fallback;
+
+const getErrorCode = (error: any, fallback = 'ERROR') =>
+  error?.response?.data?.code ??
+  error?.response?.data?.error?.code ??
+  fallback;
 
 const toNumber = (value: unknown) => {
   if (typeof value === 'number') return value;
@@ -140,7 +181,29 @@ const mapTimelineDayDetail = (item: any): TimelineDayDetail => ({
   events: Array.isArray(item.events) ? item.events.map(mapTimelineEventSummary) : [],
 });
 
+const mapEventUpdate = (item: any): EventUpdateData => ({
+  eventId: String(item.eventId),
+  title: item.title ?? '',
+  placeName: item.placeName ?? null,
+  placeExternalId: item.placeExternalId ?? null,
+  startAt: item.startAt ?? null,
+  endAt: item.endAt ?? null,
+  centerLatitude: item.centerLatitude == null ? null : toNumber(item.centerLatitude),
+  centerLongitude: item.centerLongitude == null ? null : toNumber(item.centerLongitude),
+  radiusM: item.radiusM == null ? null : toNumber(item.radiusM),
+  hidden: Boolean(item.hidden),
+  updatedAt: item.updatedAt,
+});
+
 export const getTripTimelineDaysApi = async (tripId: string): Promise<ApiResponse<{ timelineDays: TimelineDaySummary[] }>> => {
+  if (isMockTripId(tripId)) {
+    return {
+      success: true,
+      data: { timelineDays: [] },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   try {
     const response = await apiClient.get<ApiResponse<{ timelineDays: any[] }>>(`/trips/${tripId}/timeline-days`);
     return {
@@ -243,3 +306,54 @@ export const getEventDetailApi = async (eventId: string): Promise<ApiResponse<Ev
     throw error;
   }
 };
+
+export const updateEventApi = async (
+  eventId: string,
+  request: EventUpdateRequest,
+): Promise<ApiResponse<EventUpdateData>> => {
+  try {
+    const response = await apiClient.patch<ApiResponse<any>>(`/events/${eventId}`, request);
+    return {
+      ...response.data,
+      data: mapEventUpdate(response.data.data),
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to update event.'),
+      data: {} as EventUpdateData,
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+export const upsertEventMemoApi = async (
+  eventId: string,
+  request: EventMemoUpsertRequest,
+): Promise<ApiResponse<EventMemo>> => {
+  try {
+    const response = await apiClient.put<ApiResponse<any>>(`/events/${eventId}/memo`, request);
+    return {
+      ...response.data,
+      data: mapPhotoMemo(response.data.data),
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to save event memo.'),
+      data: {} as EventMemo,
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+const mapPhotoMemo = (item: any): EventMemo => ({
+  eventMemoId: String(item.eventMemoId),
+  eventId: String(item.eventId),
+  userId: String(item.userId),
+  content: item.content ?? '',
+  createdAt: item.createdAt,
+  updatedAt: item.updatedAt,
+});

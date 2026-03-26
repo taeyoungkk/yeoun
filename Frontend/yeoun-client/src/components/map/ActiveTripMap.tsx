@@ -4,32 +4,35 @@ import * as Location from 'expo-location';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { getEventDetailApi, getTimelineDayDetailApi, getTripTimelineDaysApi } from '@/src/api/timeline';
 import { getTripRouteByDayApi } from '@/src/api/trip';
 import { configureMapbox } from '@/src/lib/mapbox';
 import { useTripStore } from '@/src/store/trip.store';
 import { globalUserState, subscribeUser } from '@/src/store/userStore';
-import { getTripEvents, subscribeTripEvents, TimelineEvent } from '@/src/features/trip/store/tripMockStore';
-import { locationService } from '../../services/locationService';
-import { LocationMarker, PaymentMarker, PhotoMarker } from './EventMarkers';
-import { PastRoutesLayer } from './PastRoutesLayer';
 
-export const MOCK_PAST_ROUTES = [
-  [
-    [126.9882, 37.5511],
-    [126.989, 37.552],
-    [126.9901, 37.5532],
-    [126.9912, 37.5545],
-  ],
-  [
-    [126.9877, 37.5641],
-    [126.988, 37.563],
-    [126.9895, 37.562],
-  ],
-];
+import { locationService } from '../../services/locationService';
+import { LocationMarker, PhotoMarker } from './EventMarkers';
+import { PastRoutesLayer } from './PastRoutesLayer';
 
 configureMapbox();
 
-const getTodayDateString = () => new Date().toISOString().slice(0, 10);
+type MapMarkerItem = {
+  id: string;
+  type: 'photo' | 'location';
+  coordinate: [number, number];
+  title: string;
+  placeName?: string;
+  eventMemo?: string;
+  photoUrls?: string[];
+};
+
+const getTodayDateString = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export function ActiveTripMap() {
   const cameraRef = useRef<Mapbox.Camera>(null);
@@ -38,21 +41,19 @@ export function ActiveTripMap() {
 
   const [currentCoordinate, setCurrentCoordinate] = useState<[number, number] | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
+  const [markers, setMarkers] = useState<MapMarkerItem[]>([]);
   const [isFogEnabled, setIsFogEnabled] = useState(true);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [routeLoadFailed, setRouteLoadFailed] = useState(false);
+  const [isLoadingMarkers, setIsLoadingMarkers] = useState(false);
+  const [markerLoadFailed, setMarkerLoadFailed] = useState(false);
   const [isFollowing, setIsFollowing] = useState(true);
-  const [tripEvents, setTripEvents] = useState<TimelineEvent[]>(() => getTripEvents());
   const [mapPreferences, setMapPreferences] = useState({
     showPhotoPins: globalUserState.showPhotoPins,
     showPaymentPins: globalUserState.showPaymentPins,
   });
 
   useEffect(() => {
-    const unsubscribeTripEvents = subscribeTripEvents(() => {
-      setTripEvents(getTripEvents());
-    });
-
     const unsubscribeUser = subscribeUser(() => {
       setMapPreferences({
         showPhotoPins: globalUserState.showPhotoPins,
@@ -60,10 +61,7 @@ export function ActiveTripMap() {
       });
     });
 
-    return () => {
-      unsubscribeTripEvents();
-      unsubscribeUser();
-    };
+    return unsubscribeUser;
   }, []);
 
   useEffect(() => {
@@ -106,6 +104,8 @@ export function ActiveTripMap() {
     const loadRoute = async () => {
       if (!tripId) {
         setRouteCoordinates([]);
+        setRouteLoadFailed(false);
+        setIsLoadingRoute(false);
         return;
       }
 
@@ -125,6 +125,7 @@ export function ActiveTripMap() {
         setRouteCoordinates(nextCoordinates);
         setRouteLoadFailed(false);
       } else {
+        setRouteCoordinates([]);
         setRouteLoadFailed(true);
       }
 
@@ -138,17 +139,121 @@ export function ActiveTripMap() {
     };
   }, [tripId, routeRefreshKey]);
 
-  const filteredMapEvents = tripEvents.filter((event) => {
-    if (!event.coordinate) return false;
-    if (event.type === 'photo') return mapPreferences.showPhotoPins;
-    if (event.type === 'payment') return mapPreferences.showPaymentPins;
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadMarkers = async () => {
+      if (!tripId) {
+        setMarkers([]);
+        setMarkerLoadFailed(false);
+        setIsLoadingMarkers(false);
+        return;
+      }
+
+      setIsLoadingMarkers(true);
+      setMarkerLoadFailed(false);
+
+      try {
+        const timelineDaysResponse = await getTripTimelineDaysApi(tripId);
+        if (!timelineDaysResponse.success) {
+          throw new Error(timelineDaysResponse.message || 'Failed to fetch timeline days.');
+        }
+
+        const timelineDayDetails = await Promise.all(
+          timelineDaysResponse.data.timelineDays.map(async (timelineDay) => {
+            const detailResponse = await getTimelineDayDetailApi(timelineDay.timelineDayId);
+            if (!detailResponse.success) {
+              throw new Error(detailResponse.message || `Failed to fetch timeline day ${timelineDay.timelineDayId}`);
+            }
+            return detailResponse.data;
+          }),
+        );
+
+        const eventIds = timelineDayDetails.flatMap((timelineDay) =>
+          timelineDay.events.filter((event) => !event.hidden).map((event) => event.eventId),
+        );
+
+        const eventDetails = await Promise.all(
+          eventIds.map(async (eventId) => {
+            const detailResponse = await getEventDetailApi(eventId);
+            if (!detailResponse.success) {
+              return null;
+            }
+
+            return detailResponse.data;
+          }),
+        );
+
+        if (!isMounted) {
+          return;
+        }
+
+        const nextMarkers: MapMarkerItem[] = eventDetails
+          .filter((event): event is NonNullable<typeof event> => Boolean(event))
+          .filter(
+            (event) =>
+              Number.isFinite(event.centerLongitude) &&
+              Number.isFinite(event.centerLatitude) &&
+              !event.hidden,
+          )
+          .map((event) => {
+            const photoUrls =
+              event.photos
+                ?.map((photo) => photo.thumbnailKey)
+                .filter((url): url is string => Boolean(url)) ?? [];
+
+            return {
+              id: event.eventId,
+              type: photoUrls.length > 0 ? 'photo' : 'location',
+              coordinate: [event.centerLongitude, event.centerLatitude],
+              title: event.title || event.placeName || 'Event',
+              placeName: event.placeName ?? undefined,
+              eventMemo: event.myMemo?.content ?? undefined,
+              photoUrls,
+            };
+          });
+
+        setMarkers(nextMarkers);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        console.error('[ActiveTripMap] Failed to load markers.', error);
+        setMarkers([]);
+        setMarkerLoadFailed(true);
+      } finally {
+        if (isMounted) {
+          setIsLoadingMarkers(false);
+        }
+      }
+    };
+
+    void loadMarkers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [tripId, routeRefreshKey]);
+
+  const filteredMarkers = markers.filter((marker) => {
+    if (marker.type === 'photo') {
+      return mapPreferences.showPhotoPins;
+    }
     return true;
   });
 
+  const hasRouteCoordinates = routeCoordinates.length >= 2;
+  const hasEmptyRoute = !isLoadingRoute && !routeLoadFailed && routeCoordinates.length === 0;
+  const hasEmptyMarkers = !isLoadingMarkers && !markerLoadFailed && filteredMarkers.length === 0;
   const centerCoordinate = routeCoordinates[routeCoordinates.length - 1] ?? currentCoordinate ?? [126.9784, 37.5667];
 
-  const routeShape: GeoJSON.FeatureCollection<GeoJSON.LineString> = useMemo(
-    () => ({
+  const routeShape: GeoJSON.FeatureCollection<GeoJSON.LineString> | null = useMemo(() => {
+    if (!hasRouteCoordinates) {
+      return null;
+    }
+
+    return {
       type: 'FeatureCollection',
       features: [
         {
@@ -156,18 +261,12 @@ export function ActiveTripMap() {
           properties: {},
           geometry: {
             type: 'LineString',
-            coordinates:
-              routeCoordinates.length > 0
-                ? routeCoordinates
-                : currentCoordinate
-                  ? [currentCoordinate, currentCoordinate]
-                  : [[126.9784, 37.5667], [126.9784, 37.5667]],
+            coordinates: routeCoordinates,
           },
         },
       ],
-    }),
-    [currentCoordinate, routeCoordinates],
-  );
+    };
+  }, [hasRouteCoordinates, routeCoordinates]);
 
   const centerOnUser = () => {
     if (!cameraRef.current) {
@@ -212,52 +311,75 @@ export function ActiveTripMap() {
           }}
         />
 
-        <PastRoutesLayer
-          routes={[
-            ...MOCK_PAST_ROUTES,
-            ...(routeCoordinates.length > 0 ? [routeCoordinates] : []),
-          ]}
-          isFogEnabled={isFogEnabled}
-        />
+        <PastRoutesLayer routes={hasRouteCoordinates ? [routeCoordinates] : []} isFogEnabled={isFogEnabled} />
 
-        <Mapbox.ShapeSource id="active-trip-route" shape={routeShape}>
-          <Mapbox.LineLayer
-            id="active-trip-route-line"
-            style={{
-              lineColor: '#F35B4F',
-              lineWidth: 5,
-              lineCap: 'round',
-              lineJoin: 'round',
-              lineOpacity: 0.92,
-            }}
-          />
-        </Mapbox.ShapeSource>
+        {routeShape ? (
+          <Mapbox.ShapeSource id="active-trip-route" shape={routeShape}>
+            <Mapbox.LineLayer
+              id="active-trip-route-line"
+              style={{
+                lineColor: '#F35B4F',
+                lineWidth: 5,
+                lineCap: 'round',
+                lineJoin: 'round',
+                lineOpacity: 0.92,
+              }}
+            />
+          </Mapbox.ShapeSource>
+        ) : null}
 
         <Mapbox.UserLocation visible showsUserHeadingIndicator />
 
-        {filteredMapEvents.map((event) => {
-          const coord = event.coordinate as [number, number];
-          if (event.type === 'photo') {
-            return <PhotoMarker key={event.id} id={event.id} coordinate={coord} photoUrls={event.photoUrls} />;
+        {filteredMarkers.map((marker) => {
+          if (marker.type === 'photo') {
+            return (
+              <PhotoMarker
+                key={marker.id}
+                id={marker.id}
+                coordinate={marker.coordinate}
+                photoUrls={marker.photoUrls}
+              />
+            );
           }
-          if (event.type === 'payment') {
-            return <PaymentMarker key={event.id} id={event.id} coordinate={coord} />;
-          }
-          return <LocationMarker key={event.id} id={event.id} coordinate={coord} />;
+
+          return <LocationMarker key={marker.id} id={marker.id} coordinate={marker.coordinate} />;
         })}
       </Mapbox.MapView>
 
-      {(isLoadingRoute || routeLoadFailed) && (
+      {(isLoadingRoute || routeLoadFailed || hasEmptyRoute) && (
         <View style={styles.banner}>
           {isLoadingRoute ? (
             <ActivityIndicator size="small" color="#415D4C" />
-          ) : (
+          ) : routeLoadFailed ? (
             <MaterialIcons name="info-outline" size={18} color="#A65F4B" />
+          ) : (
+            <MaterialIcons name="sync" size={18} color="#415D4C" />
           )}
           <Text style={styles.bannerText}>
             {isLoadingRoute
               ? '동기화된 경로를 불러오는 중입니다.'
-              : '서버 경로를 불러오지 못해 현재 위치만 표시합니다.'}
+              : routeLoadFailed
+                ? '정제된 경로를 불러오지 못했습니다. 동기화 후 다시 확인해 주세요.'
+                : '아직 표시할 정제 경로가 없습니다. GPS 동기화 후 worker 처리 완료 시 경로가 나타납니다.'}
+          </Text>
+        </View>
+      )}
+
+      {(isLoadingMarkers || markerLoadFailed || hasEmptyMarkers) && (
+        <View style={styles.markerBanner}>
+          {isLoadingMarkers ? (
+            <ActivityIndicator size="small" color="#415D4C" />
+          ) : markerLoadFailed ? (
+            <MaterialIcons name="location-off" size={18} color="#A65F4B" />
+          ) : (
+            <MaterialIcons name="place" size={18} color="#415D4C" />
+          )}
+          <Text style={styles.bannerText}>
+            {isLoadingMarkers
+              ? '지도 이벤트를 불러오는 중입니다.'
+              : markerLoadFailed
+                ? '지도 이벤트를 불러오지 못했습니다.'
+                : '표시할 지도 이벤트가 없습니다.'}
           </Text>
         </View>
       )}
@@ -286,6 +408,19 @@ const styles = StyleSheet.create({
   banner: {
     position: 'absolute',
     top: 16,
+    left: 16,
+    right: 88,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  markerBanner: {
+    position: 'absolute',
+    top: 84,
     left: 16,
     right: 88,
     backgroundColor: 'rgba(255,255,255,0.95)',

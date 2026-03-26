@@ -25,21 +25,45 @@ export const useAuthStore = create<AuthState>()(
       isHydrated: false,
 
       setTokens: (accessToken, refreshToken) =>
-        set({ accessToken, refreshToken }),
+        set(() => {
+          console.log('[AuthStore] setTokens', {
+            hasAccessToken: Boolean(accessToken),
+            accessTokenPreview: accessToken ? `${accessToken.slice(0, 12)}...` : null,
+            hasRefreshToken: Boolean(refreshToken),
+            refreshTokenPreview: refreshToken ? `${refreshToken.slice(0, 12)}...` : null,
+          });
+          return { accessToken, refreshToken };
+        }),
 
       setAccessToken: (accessToken) =>
-        set({ accessToken }),
+        set(() => {
+          console.log('[AuthStore] setAccessToken', {
+            hasAccessToken: Boolean(accessToken),
+            accessTokenPreview: accessToken ? `${accessToken.slice(0, 12)}...` : null,
+          });
+          return { accessToken };
+        }),
 
       clearTokens: () =>
-        set({ accessToken: null, refreshToken: null }),
+        set(() => {
+          console.log('[AuthStore] clearTokens');
+          return { accessToken: null, refreshToken: null };
+        }),
 
       setHydrated: (hydrated) =>
-        set({ isHydrated: hydrated }),
+        set(() => {
+          console.log('[AuthStore] setHydrated', { hydrated });
+          return { isHydrated: hydrated };
+        }),
     }),
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
       onRehydrateStorage: () => (state) => {
+        console.log('[AuthStore] rehydrated', {
+          hasAccessToken: Boolean(state?.accessToken),
+          hasRefreshToken: Boolean(state?.refreshToken),
+        });
         state?.setHydrated(true);
       },
     }

@@ -1,6 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -118,7 +118,9 @@ const mapSettlementRows = (expenses: TripExpenseItem[], memberCount: number): Se
     }));
 
 export default function TripReportScreen() {
+  const params = useLocalSearchParams<{ mode?: string }>();
   const currentTrip = useTripStore((state) => state.currentTrip);
+  const reviewTrip = useTripStore((state) => state.reviewTrip);
   const router = useRouter();
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
@@ -126,16 +128,18 @@ export default function TripReportScreen() {
   const [timelineDayDetails, setTimelineDayDetails] = useState<TimelineDayDetail[]>([]);
   const [expenses, setExpenses] = useState<TripExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const isReviewMode = params.mode === 'review';
+  const trip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
   const receiptAppear = useRef(new Animated.Value(0)).current;
 
   const handleGoHome = () => router.replace('/(tabs)');
-  const handleBackToTimeline = () => router.replace('/trip/recording?mode=review');
+  const handleBackToTimeline = () => router.replace(isReviewMode ? '/trip/recording?mode=review' : '/trip/recording');
 
   useEffect(() => {
     let mounted = true;
 
     const loadReport = async () => {
-      if (!currentTrip?.tripId) {
+      if (!trip?.tripId) {
         if (mounted) {
           setTimelineDays([]);
           setTimelineDayDetails([]);
@@ -148,8 +152,8 @@ export default function TripReportScreen() {
       try {
         setIsLoading(true);
         const [timelineDaysResponse, expensesResponse] = await Promise.all([
-          getTripTimelineDaysApi(currentTrip.tripId),
-          getTripExpensesApi(currentTrip.tripId),
+          getTripTimelineDaysApi(trip.tripId),
+          getTripExpensesApi(trip.tripId),
         ]);
 
         const nextTimelineDays = timelineDaysResponse.data.timelineDays ?? [];
@@ -187,7 +191,7 @@ export default function TripReportScreen() {
     return () => {
       mounted = false;
     };
-  }, [currentTrip?.tripId]);
+  }, [trip?.tripId]);
 
   useEffect(() => {
     Animated.spring(receiptAppear, {
@@ -200,13 +204,13 @@ export default function TripReportScreen() {
   }, [receiptAppear]);
 
   const reportDays = useMemo(
-    () => (timelineDays.length > 0 ? timelineDays.map(mapReportDay) : buildFallbackDays(currentTrip?.startDate, currentTrip?.endDate)),
-    [currentTrip?.endDate, currentTrip?.startDate, timelineDays],
+    () => (timelineDays.length > 0 ? timelineDays.map(mapReportDay) : buildFallbackDays(trip?.startDate, trip?.endDate)),
+    [timelineDays, trip?.endDate, trip?.startDate],
   );
   const timelineRows = useMemo(() => mapTimelineRows(timelineDayDetails), [timelineDayDetails]);
   const settlementRows = useMemo(
-    () => mapSettlementRows(expenses, currentTrip?.memberCount ?? 0),
-    [currentTrip?.memberCount, expenses],
+    () => mapSettlementRows(expenses, trip?.memberCount ?? 0),
+    [expenses, trip?.memberCount],
   );
 
   const totalDistance = useMemo(() => reportDays.reduce((sum, day) => sum + day.distanceKm, 0), [reportDays]);
@@ -214,13 +218,13 @@ export default function TripReportScreen() {
   const totalLogs = timelineRows.length;
   const totalUsed = useMemo(() => settlementRows.reduce((sum, row) => sum + row.amount, 0), [settlementRows]);
   const sharedPerPerson = useMemo(() => settlementRows.reduce((sum, row) => sum + row.share, 0), [settlementRows]);
-  const travelerCount = String(currentTrip?.memberCount ?? 0).padStart(2, '0');
-  const tripTitle = currentTrip?.tripName || 'Trip';
+  const travelerCount = String(trip?.memberCount ?? 0).padStart(2, '0');
+  const tripTitle = trip?.tripName || 'Trip';
   const reportTitle = `${tripTitle} 종료`;
-  const tripStartLabel = formatTripDate(currentTrip?.startDate);
-  const tripEndLabel = formatTripDate(currentTrip?.endDate);
-  const tripOrigin = currentTrip?.origin || '출발';
-  const tripDestination = currentTrip?.destination || tripTitle;
+  const tripStartLabel = formatTripDate(trip?.startDate);
+  const tripEndLabel = formatTripDate(trip?.endDate);
+  const tripOrigin = trip?.origin || '출발';
+  const tripDestination = trip?.destination || tripTitle;
   const confirmedRows = settlementRows.filter((row) => row.status === '확정');
 
   return (

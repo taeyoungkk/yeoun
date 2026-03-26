@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
+  InteractionManager,
   Modal,
   Pressable,
   RefreshControl,
@@ -22,7 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { configureMapbox } from '@/src/lib/mapbox';
 import { getTripExpensesApi } from '@/src/api/expense';
 import { getTimelineDayDetailApi, getTripTimelineDaysApi, type TimelineDayDetail } from '@/src/api/timeline';
-import { startTripApi, endTripApi, leaveTripApi, deleteTripApi } from '@/src/api/trip';
+import { getTripDetailApi, startTripApi, endTripApi, leaveTripApi, deleteTripApi } from '@/src/api/trip';
 import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 import {
   CURRENT_USER_ID,
@@ -354,10 +355,13 @@ export default function MockTripRecordingScreen({
   const params = useLocalSearchParams();
   const endTrip = useTripStore((state) => state.endTrip);
   const clearTrip = useTripStore((state) => state.clearTrip);
+  const clearReviewTrip = useTripStore((state) => state.clearReviewTrip);
   const isTripActive = useTripStore((state) => state.isTripActive);
   const currentTrip = useTripStore((state) => state.currentTrip);
+  const reviewTrip = useTripStore((state) => state.reviewTrip);
   const currentTripId = useTripStore((state) => state.currentTripId);
   const activeTrip = useTripStore((state) => state.activeTrip);
+  const setActiveTrip = useTripStore((state) => state.setActiveTrip);
   const currentUserId = useUserStore((state) => state.profile?.userId);
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
@@ -397,16 +401,37 @@ export default function MockTripRecordingScreen({
     confirmLabel: string;
   } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [liveRoute, setLiveRoute] = useState<Coordinate[]>([]);
   const showMockRouteMetrics = useMockData;
+  const isReviewMode = params.mode === 'review';
+  const mockDisplayTrip = useMemo(
+    () =>
+      useMockData
+        ? {
+            tripId: 'mock-trip-preview',
+            tripName: typeof params.tripName === 'string' && params.tripName.trim().length > 0 ? params.tripName : 'Mock Trip',
+            startDate: typeof params.startDate === 'string' ? params.startDate : new Date().toISOString(),
+            endDate: typeof params.endDate === 'string' ? params.endDate : new Date().toISOString(),
+            memberCount:
+              typeof params.memberCount === 'string' && Number.isFinite(Number(params.memberCount))
+                ? Number(params.memberCount)
+                : 2,
+            origin: typeof params.origin === 'string' ? params.origin : 'Korea',
+            destination: typeof params.destination === 'string' ? params.destination : '',
+          }
+        : null,
+    [params.destination, params.endDate, params.memberCount, params.origin, params.startDate, params.tripName, useMockData]
+  );
+  const displayTrip = useMockData ? mockDisplayTrip : isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
 
   const tripDays = useMemo(() => {
     if (!useMockData) {
-      return realTripDays ?? buildEmptyRealTripDays(currentTrip?.startDate, currentTrip?.endDate);
+      return realTripDays ?? buildEmptyRealTripDays(displayTrip?.startDate, displayTrip?.endDate);
     }
 
-    return buildTripDays(currentTrip?.startDate, currentTrip?.endDate);
-  }, [currentTrip?.endDate, currentTrip?.startDate, realTripDays, useMockData]);
+    return buildTripDays(displayTrip?.startDate, displayTrip?.endDate);
+  }, [displayTrip?.endDate, displayTrip?.startDate, realTripDays, useMockData]);
   const filteredDays = useMemo(() => getFilteredDays(activeFilter, tripDays), [activeFilter, tripDays]);
   const filteredEvents = useMemo(
     () => tripEvents.filter((event) => activeFilter === 'all' || event.day === activeFilter),
@@ -503,9 +528,12 @@ export default function MockTripRecordingScreen({
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
   const panelLift = -145 * collapseProgress;
-  const activeTripId = currentTripId ?? currentTrip?.tripId ?? '';
-  const tripTitle = currentTrip?.tripName || 'Trip';
-  const isReviewMode = params.mode === 'review' || !isTripActive;
+  const activeTripId = useMockData
+    ? ''
+    : isReviewMode
+      ? reviewTrip?.tripId ?? currentTrip?.tripId ?? ''
+      : currentTripId ?? currentTrip?.tripId ?? '';
+  const tripTitle = displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
 
@@ -545,9 +573,10 @@ export default function MockTripRecordingScreen({
 
     let cancelled = false;
 
-    const loadRealTripData = async () => {
-      try {
-        const [timelineDaysResponse, expensesResponse] = await Promise.all([
+      const loadRealTripData = async () => {
+        try {
+        const [tripDetailResponse, timelineDaysResponse, expensesResponse] = await Promise.all([
+          getTripDetailApi(activeTripId),
           getTripTimelineDaysApi(activeTripId),
           getTripExpensesApi(activeTripId),
         ]);
@@ -563,6 +592,9 @@ export default function MockTripRecordingScreen({
           return;
         }
 
+        if (tripDetailResponse.success) {
+          setActiveTrip(tripDetailResponse.data);
+        }
         setRealTripDays(buildRealTripDays(timelineDays));
         setTripEvents(appendRealExpenseEvents(buildRealTripEvents(timelineDays), timelineDays, expensesResponse.data.items));
       } catch (error) {
@@ -582,7 +614,7 @@ export default function MockTripRecordingScreen({
     return () => {
       cancelled = true;
     };
-  }, [activeTripId, useMockData]);
+  }, [activeTripId, setActiveTrip, useMockData]);
 
   useEffect(() => {
     const unsubscribe = subscribeUser(() => {
@@ -654,7 +686,7 @@ export default function MockTripRecordingScreen({
   };
 
   const handleOpenReport = () => {
-    router.push(reportRoute);
+    router.push(isReviewMode ? `${reportRoute}?mode=review` : reportRoute);
   };
 
   const performEndTrip = async () => {
@@ -822,19 +854,26 @@ export default function MockTripRecordingScreen({
   const handleConfirmAction = async () => {
     const currentAction = actionConfirm;
     setActionConfirm(null);
+    setIsMenuOpen(false);
 
-    if (!currentAction) {
+    if (!currentAction || isSubmittingAction) {
       return;
     }
 
+    setIsSubmittingAction(true);
+
     if (currentAction.kind === 'end') {
-      setIsSyncing(true);
-      await locationService.syncLocations(activeTripId);
-      await endTripApi(activeTripId);
-      await locationService.stopTracking();
-      setIsSyncing(false);
-      endTrip();
-      router.push(reportRoute);
+      try {
+        setIsSyncing(true);
+        await locationService.syncLocations(activeTripId);
+        await endTripApi(activeTripId);
+        await locationService.stopTracking();
+        endTrip();
+        router.push(reportRoute);
+      } finally {
+        setIsSyncing(false);
+        setIsSubmittingAction(false);
+      }
       return;
     }
 
@@ -851,8 +890,11 @@ export default function MockTripRecordingScreen({
         return;
       }
 
-      clearTrip();
-      router.replace('/(tabs)');
+      InteractionManager.runAfterInteractions(() => {
+        clearTrip();
+        clearReviewTrip();
+        router.replace('/(tabs)');
+      });
       return;
     }
 
@@ -863,8 +905,11 @@ export default function MockTripRecordingScreen({
       return;
     }
 
-    clearTrip();
-    router.replace('/(tabs)');
+    InteractionManager.runAfterInteractions(() => {
+      clearTrip();
+      clearReviewTrip();
+      router.replace('/(tabs)');
+    });
   };
 
   const handleMapReady = () => {
@@ -1153,6 +1198,19 @@ export default function MockTripRecordingScreen({
     setEmotionPicker(null);
   };
 
+  if (!useMockData && !activeTripId && !isReviewMode) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>吏꾪뻾 以묒씤 ?ы뻾???놁뒿?덈떎.</Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={() => router.replace('/trip/start?mode=create')}>
+            <Text style={styles.primaryButtonText}>?ы뻾 ?쒖옉 ?붾㈃?쇰줈 ?대룞</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -1211,17 +1269,17 @@ export default function MockTripRecordingScreen({
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.menuItem, isTripOwner && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, isTripOwner && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
               <MaterialIcons name="logout" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 떠나기</Text>
             </TouchableOpacity>
             {isTripOwner ? (
-              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleDeleteTrip(); }} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleDeleteTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
                 <MaterialIcons name="delete-outline" size={18} color="#244934" />
                 <Text style={styles.menuItemText}>여행 삭제</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); router.push('/trip/start'); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, isReviewMode && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); router.push('/trip/start?mode=edit'); }} activeOpacity={0.85}>
               <MaterialIcons name="edit" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 수정</Text>
             </TouchableOpacity>
@@ -1869,7 +1927,7 @@ export default function MockTripRecordingScreen({
                               onPress={(pressEvent) => {
                                 pressEvent.stopPropagation();
                                 if (shouldShowOverlay) {
-                                  router.push({ pathname: '/trip/photo-album', params: { eventId: event.id } } as never);
+                                  router.push({ pathname: '/trip/mock-photo-album', params: { eventId: event.id } } as never);
                                   return;
                                 }
 
@@ -1993,6 +2051,17 @@ export default function MockTripRecordingScreen({
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#EFF4EC' },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  emptyTitle: { fontFamily: 'Pretendard-Bold', fontSize: 18, color: '#17201A', marginBottom: 16 },
+  primaryButton: {
+    minWidth: 220,
+    height: 52,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#244934',
+  },
+  primaryButtonText: { fontFamily: 'Pretendard-Bold', fontSize: 15, color: '#F7FBF6' },
   header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 20 },
   backButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', marginRight: 2 },
   headerTextWrap: { flex: 1 },

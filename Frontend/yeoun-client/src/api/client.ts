@@ -1,10 +1,30 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/auth.store';
 
-// We'll use a default if EXPO_PUBLIC_API_URL is not set,
-// though in a real app you'd want this to be mandatory.
-const normalizeApiUrl = (url: string) => url.replace(/\/+$/, '');
-const API_URL = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL || 'https://api.yeoun.com/api/v1');
+const DEFAULT_API_URL = 'https://j14b105.p.ssafy.io/api/v1';
+const API_BASE_PATH = '/api/v1';
+
+const trimTrailingSlashes = (value: string) => value.replace(/\/+$/, '');
+
+const normalizeApiUrl = (value?: string) => {
+  const rawValue = value?.trim();
+  if (!rawValue) {
+    return DEFAULT_API_URL;
+  }
+
+  try {
+    const parsedUrl = new URL(rawValue);
+    const normalizedPath = trimTrailingSlashes(parsedUrl.pathname);
+
+    // Accept root origins like https://host and promote them to the API base path.
+    parsedUrl.pathname = normalizedPath ? normalizedPath : API_BASE_PATH;
+    return trimTrailingSlashes(parsedUrl.toString());
+  } catch {
+    return trimTrailingSlashes(rawValue);
+  }
+};
+
+const API_URL = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL);
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -12,6 +32,8 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+console.log('[API Client] baseURL:', API_URL);
 
 const PUBLIC_API_PATH_PREFIXES = [
   '/auth/signup',
@@ -31,6 +53,9 @@ const isPublicApiRequest = (url?: string) => {
   return PUBLIC_API_PATH_PREFIXES.some((prefix) => url.startsWith(prefix));
 };
 
+const toTokenPreview = (token?: string | null) =>
+  token ? `${token.slice(0, 12)}...` : null;
+
 // Request interceptor to add the access token to every request
 apiClient.interceptors.request.use(
   (config) => {
@@ -39,13 +64,29 @@ apiClient.interceptors.request.use(
       if (config.headers?.Authorization) {
         delete config.headers.Authorization;
       }
+      console.log('[API Request]', {
+        method: config.method?.toUpperCase?.() ?? 'GET',
+        url: config.url,
+        public: true,
+      });
       return config;
     }
 
     const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url} - Token: ${token.substring(0, 10)}...`);
+    } else {
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url} - No Token`);
     }
+    console.log('[API Request]', {
+      method: config.method?.toUpperCase?.() ?? 'GET',
+      url: config.url,
+      public: false,
+      hasAccessToken: Boolean(token),
+      accessTokenPreview: toTokenPreview(token),
+      hasAuthorizationHeader: Boolean(config.headers?.Authorization),
+    });
     return config;
   },
   (error) => {
@@ -53,34 +94,47 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle token refresh on 401/403
+// Response interceptor to handle token refresh on 401 only.
+// Treating 403 as an expired session causes valid login sessions to be cleared
+// when the backend is actually reporting a permission problem.
 apiClient.interceptors.response.use(
   (response) => {
+    console.log('[API Response]', {
+      method: response.config.method?.toUpperCase?.() ?? 'GET',
+      url: response.config.url,
+      status: response.status,
+      code: response.data?.code,
+      success: response.data?.success,
+    });
     return response;
   },
   async (error) => {
     const originalRequest = error.config;
     const requestUrl = originalRequest?.url;
+    const status = error.response?.status;
 
-    // If error is 401/403 and NOT already retrying and NOT a public request
+    // If error is 401 (Unauthorized) and NOT already retrying and NOT a public request
     if (
-      (error.response?.status === 401 || error.response?.status === 403) && 
+      error.response?.status === 401 && 
       !originalRequest?._retry &&
       !isPublicApiRequest(requestUrl)
     ) {
       originalRequest._retry = true;
 
-      console.log(`[API Interceptor] Error ${error.response.status} on ${requestUrl}. Attempting token refresh...`);
+      const { refreshToken, clearTokens } = useAuthStore.getState();
+      
+      // Don't attempt refresh if we don't have a refresh token
+      if (!refreshToken || refreshToken === "") {
+        console.log('[API Interceptor] 401 error but no refresh token available. Clearing session.');
+        clearTokens();
+        return Promise.reject(error);
+      }
+
+      console.log(`[API Interceptor] 401 on ${requestUrl}. Attempting token refresh...`);
 
       try {
-        const { refreshToken, setTokens, clearTokens } = useAuthStore.getState();
+        const { setTokens } = useAuthStore.getState();
         
-        if (!refreshToken) {
-          console.log('[API Interceptor] No refresh token available. Clearing session.');
-          clearTokens();
-          return Promise.reject(error);
-        }
-
         // Import refreshApi here to avoid circular dependency
         const { refreshApi } = require('./auth');
         const refreshResponse = await refreshApi(refreshToken);
@@ -103,6 +157,11 @@ apiClient.interceptors.response.use(
         useAuthStore.getState().clearTokens();
         return Promise.reject(refreshError);
       }
+    }
+
+    // For 403 (Forbidden), we don't refresh - just log it and let the component handle it
+    if (error.response?.status === 403) {
+      console.warn(`[API Interceptor] 403 Forbidden on ${requestUrl}. Check user permissions.`);
     }
 
     return Promise.reject(error);

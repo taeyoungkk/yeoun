@@ -7,6 +7,8 @@ import com.yeoun.domain.photo.entity.Photo;
 import com.yeoun.domain.photo.event.PhotoProcessingCoordinatesEvent;
 import com.yeoun.domain.photo.event.PhotoProcessingResultEvent;
 import com.yeoun.domain.photo.repository.PhotoRepository;
+import com.yeoun.domain.timeline.service.TimelineIncrementalSyncService;
+import com.yeoun.domain.tripsync.service.TripSyncStatusService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,18 +28,32 @@ public class PhotoProcessingResultService {
 
     private final PhotoRepository photoRepository;
     private final ObjectMapper objectMapper;
+    private final TimelineIncrementalSyncService timelineIncrementalSyncService;
+    private final TripSyncStatusService tripSyncStatusService;
 
     public PhotoProcessingResultService(
             PhotoRepository photoRepository,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            TimelineIncrementalSyncService timelineIncrementalSyncService,
+            TripSyncStatusService tripSyncStatusService
     ) {
         this.photoRepository = photoRepository;
         this.objectMapper = objectMapper;
+        this.timelineIncrementalSyncService = timelineIncrementalSyncService;
+        this.tripSyncStatusService = tripSyncStatusService;
     }
 
     @Transactional
     public void handleResult(PhotoProcessingResultEvent event) {
         UUID photoId = event.photoId();
+        log.info(
+                "사진 처리 결과 반영 시작. photoId={} tripId={} status={} processedAt={} attempt={}",
+                photoId,
+                event.tripId(),
+                event.status(),
+                event.processedAt(),
+                event.attempt()
+        );
         if (photoId == null) {
             log.warn("Skipping photo-processing-result without photoId.");
             return;
@@ -74,6 +90,18 @@ public class PhotoProcessingResultService {
 
         if (STATUS_FAILED.equals(status)) {
             photo.applyProcessingMetadataOnly(mergedMetadataJson, now);
+            log.warn(
+                    "사진 처리 실패 결과 반영. photoId={} tripId={} errorCode={} errorMessage={}",
+                    photoId,
+                    photo.getTripId(),
+                    event.errorCode(),
+                    event.errorMessage()
+            );
+            tripSyncStatusService.finishPhotoProcessing(
+                    photo.getTripId(),
+                    now,
+                    event.errorMessage() == null ? "Photo sync failed." : event.errorMessage()
+            );
             return;
         }
 
@@ -99,6 +127,21 @@ public class PhotoProcessingResultService {
                 mergedMetadataJson,
                 now
         );
+        log.info(
+                "사진 처리 결과 DB 반영 완료. photoId={} tripId={} thumbnailKey={} width={} height={}",
+                photoId,
+                photo.getTripId(),
+                resolvedThumbnailKey,
+                resolvedWidth,
+                resolvedHeight
+        );
+        log.info("사진 처리 결과 타임라인 동기화 시작. photoId={} tripId={}", photoId, photo.getTripId());
+        timelineIncrementalSyncService.syncTrip(photo.getTripId());
+        log.info("사진 처리 결과 타임라인 동기화 완료. photoId={} tripId={}", photoId, photo.getTripId());
+        tripSyncStatusService.increasePhotoVersion(photo.getTripId(), now);
+        tripSyncStatusService.increaseTimelineVersion(photo.getTripId(), now);
+        tripSyncStatusService.finishPhotoProcessing(photo.getTripId(), now, null);
+        log.info("사진 처리 결과 반영 완료. photoId={} tripId={}", photoId, photo.getTripId());
     }
 
     private ProcessingState extractProcessingState(String metadataJson) {
