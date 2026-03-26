@@ -83,7 +83,6 @@ export default function RootLayout() {
           <Stack.Screen name="friends" />
           <Stack.Screen name="edit-profile" />
           <Stack.Screen name="add-card" />
-          <Stack.Screen name="notifications-mock" />
           <Stack.Screen name="oauthredirect" />
           <Stack.Screen name="trip/start" />
           <Stack.Screen name="trip/recording" />

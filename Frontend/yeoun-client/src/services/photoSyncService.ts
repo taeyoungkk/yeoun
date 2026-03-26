@@ -18,9 +18,12 @@ type SyncCandidate = {
   file: SyncFile;
 };
 
-export type TripPhotoPermissionResult = Awaited<
-  ReturnType<typeof MediaLibrary.requestPermissionsAsync>
->;
+type MediaPermissionBase = Awaited<ReturnType<typeof MediaLibrary.requestPermissionsAsync>>;
+
+export type TripPhotoPermissionResult = MediaPermissionBase & {
+  mediaLocationGranted: boolean;
+  mediaLocationCanAskAgain: boolean;
+};
 
 export interface TripPhotoSyncResult {
   success: boolean;
@@ -38,15 +41,15 @@ const logPhotoSync = (message: string, payload?: Record<string, unknown>) => {
   console.log(`[PhotoSync] ${message}`);
 };
 
-const requestMediaLocationPermission = async () => {
+const requestMediaLocationPermission = async (): Promise<{ granted: boolean; canAskAgain: boolean }> => {
   if (Platform.OS !== 'android') {
-    return true;
+    return { granted: true, canAskAgain: true };
   }
 
   const granted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION);
   if (granted) {
     logPhotoSync('ACCESS_MEDIA_LOCATION already granted.');
-    return true;
+    return { granted: true, canAskAgain: true };
   }
 
   const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION, {
@@ -61,7 +64,10 @@ const requestMediaLocationPermission = async () => {
     result,
     granted: isGranted,
   });
-  return isGranted;
+  return {
+    granted: isGranted,
+    canAskAgain: result !== PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN,
+  };
 };
 
 const isValidDate = (value: Date) => !Number.isNaN(value.getTime());
@@ -97,6 +103,28 @@ const guessMimeType = (fileName: string) => {
   }
 };
 
+const getFileExtension = (fileName: string | undefined) => {
+  const extension = fileName?.split('.').pop()?.trim().toLowerCase();
+  if (!extension) {
+    return 'jpg';
+  }
+
+  if (['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp'].includes(extension)) {
+    return extension;
+  }
+
+  return 'jpg';
+};
+
+const buildUploadFileName = (asset: MediaLibrary.Asset) => {
+  const extension = getFileExtension(asset.filename);
+  const createdAt = typeof asset.creationTime === 'number' && Number.isFinite(asset.creationTime)
+    ? Math.trunc(asset.creationTime)
+    : Date.now();
+
+  return `trip-photo-${createdAt}-${asset.id}.${extension}`;
+};
+
 const chunkArray = <T,>(items: T[], size: number): T[][] => {
   if (size <= 0) {
     return [items];
@@ -129,6 +157,7 @@ const mapAssetToCandidate = async (asset: MediaLibrary.Asset): Promise<SyncCandi
     shouldDownloadFromNetwork: false,
   });
   const uri = assetInfo.localUri ?? asset.uri;
+  const uploadFileName = buildUploadFileName(asset);
 
   if (!uri) {
     return null;
@@ -136,7 +165,7 @@ const mapAssetToCandidate = async (asset: MediaLibrary.Asset): Promise<SyncCandi
 
   return {
     metadata: {
-      fileName: asset.filename,
+      fileName: uploadFileName,
       takenAt: getTakenAt(asset.creationTime),
       takenTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? null,
       exifLatitude: assetInfo.location?.latitude ?? null,
@@ -144,8 +173,8 @@ const mapAssetToCandidate = async (asset: MediaLibrary.Asset): Promise<SyncCandi
     },
     file: {
       uri,
-      name: asset.filename || `trip-photo-${asset.id}.jpg`,
-      type: guessMimeType(asset.filename),
+      name: uploadFileName,
+      type: guessMimeType(uploadFileName),
     },
   };
 };
@@ -231,8 +260,12 @@ export const requestTripPhotoPermission = async (): Promise<TripPhotoPermissionR
   });
 
   if (currentPermission.granted) {
-    await requestMediaLocationPermission();
-    return currentPermission;
+    const mediaLocationPermission = await requestMediaLocationPermission();
+    return {
+      ...currentPermission,
+      mediaLocationGranted: mediaLocationPermission.granted,
+      mediaLocationCanAskAgain: mediaLocationPermission.canAskAgain,
+    };
   }
 
   const nextPermission = await MediaLibrary.requestPermissionsAsync(false, PHOTO_PERMISSIONS);
@@ -241,10 +274,15 @@ export const requestTripPhotoPermission = async (): Promise<TripPhotoPermissionR
     granted: nextPermission.granted,
     canAskAgain: nextPermission.canAskAgain,
   });
+  let mediaLocationPermission = { granted: false, canAskAgain: true };
   if (nextPermission.granted) {
-    await requestMediaLocationPermission();
+    mediaLocationPermission = await requestMediaLocationPermission();
   }
-  return nextPermission;
+  return {
+    ...nextPermission,
+    mediaLocationGranted: mediaLocationPermission.granted,
+    mediaLocationCanAskAgain: mediaLocationPermission.canAskAgain,
+  };
 };
 
 export const syncTripPhotosForDateRange = async ({
