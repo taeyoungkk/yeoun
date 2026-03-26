@@ -565,6 +565,14 @@ function RealTripRecordingScreen({
   const autoPhotoSyncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastAutoPhotoSyncAtRef = useRef(0);
   const appStateRef = useRef(AppState.currentState);
+  const stopAutoPhotoSync = useCallback(() => {
+    autoPhotoSyncInFlightRef.current = false;
+    lastAutoPhotoSyncAtRef.current = 0;
+    if (autoPhotoSyncTimerRef.current) {
+      clearInterval(autoPhotoSyncTimerRef.current);
+      autoPhotoSyncTimerRef.current = null;
+    }
+  }, []);
   const isReviewMode = params.mode === 'review';
   const displayTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
 
@@ -1434,6 +1442,7 @@ function RealTripRecordingScreen({
       }
 
       InteractionManager.runAfterInteractions(() => {
+        stopAutoPhotoSync();
         clearTrip();
         clearReviewTrip();
         router.replace('/(tabs)');
@@ -1449,6 +1458,7 @@ function RealTripRecordingScreen({
     }
 
     InteractionManager.runAfterInteractions(() => {
+      stopAutoPhotoSync();
       clearTrip();
       clearReviewTrip();
       router.replace('/(tabs)');
