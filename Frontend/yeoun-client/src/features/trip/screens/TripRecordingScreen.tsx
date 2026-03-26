@@ -54,14 +54,13 @@ import {
   getTripMembersApi,
   getTripRouteByDayApi,
   leaveTripApi,
-  startTripApi,
   type TripMemberItem,
 } from '@/src/api/trip';
 import { useTripStore, useUserStore } from '@/src/store';
 import { locationService } from '../../../services/locationService';
 import { requestTripPhotoPermission, syncTripPhotosForDateRange } from '../../../services/photoSyncService';
 import { type LocationSyncStatus } from '@/src/store/trip.store';
-import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
+import { PhotoMarker } from '@/src/components/map/EventMarkers';
 import MockTripRecordingScreen from './MockTripRecordingScreen';
 
 const hasMapboxToken = configureMapbox();
@@ -512,7 +511,6 @@ function RealTripRecordingScreen({
   const endTrip = useTripStore((state) => state.endTrip);
   const clearTrip = useTripStore((state) => state.clearTrip);
   const clearReviewTrip = useTripStore((state) => state.clearReviewTrip);
-  const isTripActive = useTripStore((state) => state.isTripActive);
   const currentTrip = useTripStore((state) => state.currentTrip);
   const reviewTrip = useTripStore((state) => state.reviewTrip);
   const currentTripId = useTripStore((state) => state.currentTripId);
@@ -1266,137 +1264,6 @@ function RealTripRecordingScreen({
     router.push(isReviewMode ? `${reportRoute}?mode=review` : reportRoute);
   };
 
-  const performEndTrip = async () => {
-    if (!activeTripId) {
-      Alert.alert('진행 중인 여행이 없어요', '종료할 여행 정보를 찾지 못했습니다.');
-      return;
-    }
-    setIsSyncing(true);
-    stopAutoPhotoSync();
-    await syncTripAssets();
-    await endTripApi(activeTripId);
-    await locationService.stopTracking();
-    setIsSyncing(false);
-    endTrip();
-    router.push(reportRoute);
-    return;
-
-    Alert.alert(
-      '여행 종료',
-      '정말로 여행을 종료하시겠습니까? 현재까지의 모든 경로가 저장됩니다.',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '종료',
-          style: 'destructive',
-          onPress: async () => {
-            setIsSyncing(true);
-            // 1. 마지막 위치 동기화
-            await locationService.syncLocations(activeTripId);
-            // 2. API로 여행 종료 상태 변경
-            await endTripApi(activeTripId);
-            // 3. 트래킹 중지
-            await locationService.stopTracking();
-            setIsSyncing(false);
-      
-            // 4. 전역 여행 상태 종료
-            endTrip();
-
-            // 5. 여행 종료 리포트로 이동
-            router.push(reportRoute);
-          },
-        },
-      ]
-    );
-  };
-
-  const performLeaveTrip = async () => {
-    if (!activeTripId) {
-      Alert.alert('진행 중인 여행이 없어요', '나갈 여행 정보를 찾지 못했습니다.');
-      return;
-    }
-
-    if (isTripOwner) {
-      Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
-      return;
-    }
-
-    const response = await leaveTripApi(activeTripId);
-
-    if (!response.success) {
-      if (response.code === 'CONFLICT') {
-        Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
-        return;
-      }
-
-      Alert.alert('여행 떠나기 실패', response.message || '여행에서 나가지 못했습니다.');
-      return;
-    }
-
-    clearTrip();
-    router.replace('/(tabs)');
-    return;
-
-    if (isTripOwner) {
-      Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
-      return;
-    }
-
-    Alert.alert('여행 떠나기', '정말 이 여행에서 떠나시겠습니까?', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '떠나기',
-        style: 'destructive',
-        onPress: async () => {
-          const response = await leaveTripApi(activeTripId);
-
-          if (!response.success) {
-            if (response.code === 'CONFLICT') {
-              Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
-              return;
-            }
-
-            Alert.alert('여행 떠나기 실패', response.message || '여행에서 나가지 못했습니다.');
-            return;
-          }
-
-          clearTrip();
-          router.replace('/(tabs)');
-        },
-      },
-    ]);
-  };
-
-  const performDeleteTrip = async () => {
-    if (!activeTripId) {
-      Alert.alert('여행 삭제 실패', '삭제할 여행 정보를 찾지 못했습니다.');
-      return;
-    }
-
-    Alert.alert(
-      '여행 삭제',
-      '여행을 삭제하면 여행에 초대된 사람들의 여행도 삭제됩니다.\n정말로 여행을 삭제할 건가요?\n되돌릴 수 없습니다.',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '삭제',
-          style: 'destructive',
-          onPress: async () => {
-            const response = await deleteTripApi(activeTripId);
-
-            if (!response.success) {
-              Alert.alert('여행 삭제 실패', response.message || '여행을 삭제하지 못했습니다.');
-              return;
-            }
-
-            clearTrip();
-            router.replace('/(tabs)');
-          },
-        },
-      ]
-    );
-  };
-
   const handleEndTrip = () => {
     if (!activeTripId) {
       Alert.alert('진행 중인 여행이 없어요', '종료할 여행 정보를 찾지 못했습니다.');
@@ -1468,7 +1335,7 @@ function RealTripRecordingScreen({
         await endTripApi(activeTripId);
         await locationService.stopTracking();
         endTrip();
-        router.push(reportRoute);
+        router.push(`${reportRoute}?mode=review`);
       } finally {
         setIsSyncing(false);
         setIsSubmittingAction(false);
