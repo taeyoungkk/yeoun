@@ -4,58 +4,33 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TripCard, TripData } from '@/src/components/profile/TripCard';
-import { useFavoriteStore } from '@/src/store';
-
-// Mock data sources
-const MOCK_FAVORITE_TRIPS: TripData[] = [
-  {
-    id: '1',
-    title: '제주 여행',
-    location: '제주, 대한민국',
-    dates: '2024.02.03 ~ 02.06',
-    imageSource: require('@/assets/images/trip_placeholder_1.png'),
-    isFavorite: true,
-  },
-  {
-    id: '2',
-    title: '서울 여행',
-    location: '서울, 대한민국',
-    dates: '2024.02.03 ~ 02.06',
-    imageSource: require('@/assets/images/trip_placeholder_2.png'),
-    isFavorite: true,
-  },
-];
-
-const MOCK_PAST_TRIPS: TripData[] = [
-  {
-    id: '3',
-    title: '부산 여행',
-    location: '부산, 대한민국',
-    dates: '2023.08.12 ~ 08.15',
-    imageSource: require('@/assets/images/trip_placeholder_3.png'),
-  },
-  {
-    id: '4',
-    title: '강릉 여행',
-    location: '강릉, 대한민국',
-    dates: '2022.07.01 ~ 07.03',
-    imageSource: require('@/assets/images/trip_placeholder_1.png'),
-  },
-];
+import { useFavoriteStore, useTripStore } from '@/src/store';
 
 export default function LikedTripsScreen() {
   const { favoriteIds, toggleFavorite } = useFavoriteStore();
+  const serverTrips = useTripStore((state) => state.trips);
   
-  const allMockTrips = [...MOCK_FAVORITE_TRIPS, ...MOCK_PAST_TRIPS];
-  const favoriteTrips = allMockTrips
-    .filter(trip => favoriteIds.includes(trip.id))
-    .map(trip => ({ ...trip, isFavorite: true }));
+  const favoriteTrips: TripData[] = serverTrips
+    .filter(trip => favoriteIds.includes(trip.tripId))
+    .map(trip => ({
+      id: trip.tripId,
+      title: trip.title,
+      location: trip.region && trip.country ? `${trip.region}, ${trip.country}` : trip.region || trip.country || '대한민국',
+      dates: `${trip.startDate.replace(/-/g, '.')} ~ ${trip.endDate.split('-').pop()}`,
+      imageSource: require('@/assets/images/trip_placeholder_1.png'),
+      isFavorite: true,
+    }));
 
   const renderItem = ({ item }: { item: TripData }) => (
     <View className="w-[48%]">
         <TripCard 
             data={item} 
-            onPress={() => console.log('Trip pressed:', item.id)}
+            onPress={() => {
+              router.push({
+                pathname: '/trip/report',
+                params: { id: item.id },
+              });
+            }}
             onPressHeart={() => toggleFavorite(item.id)}
         />
     </View>
@@ -79,6 +54,11 @@ export default function LikedTripsScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
         columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: 16 }}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View className="flex-1 items-center justify-center pt-24">
+            <Text className="text-base text-[#8A8A8A] font-medium">좋아하는 여행이 없습니다.</Text>
+          </View>
+        }
       />
     </SafeAreaView>
   );

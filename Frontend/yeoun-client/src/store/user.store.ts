@@ -8,6 +8,7 @@ export interface UserProfile {
   nickname: string;
   profileImageUrl: string | null;
   timezone: string;
+  createdAt: string;
   role: string;
   status: string;
 }

@@ -117,6 +117,7 @@ export const LoginScreen = () => {
           nickname: userNickname,
           profileImageUrl: userPhoto,
           timezone: data.user?.timezone || 'Asia/Seoul',
+          createdAt: data.user?.createdAt || new Date().toISOString(),
           role: data.user?.role || 'USER',
           status: data.user?.status || 'ACTIVE',
         });
@@ -151,6 +152,7 @@ export const LoginScreen = () => {
       nickname: "테스트유저",
       profileImageUrl: null,
       timezone: "Asia/Seoul",
+      createdAt: new Date().toISOString(),
       role: "USER",
       status: "ACTIVE",
     });
@@ -198,6 +200,7 @@ export const LoginScreen = () => {
           nickname: user.nickname,
           profileImageUrl: null,
           timezone: 'Asia/Seoul',
+          createdAt: (user as any).createdAt || new Date().toISOString(),
           role: 'USER',
           status: 'ACTIVE',
         });
