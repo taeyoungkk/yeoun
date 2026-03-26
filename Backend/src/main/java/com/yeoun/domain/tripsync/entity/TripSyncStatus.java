@@ -119,7 +119,15 @@ public class TripSyncStatus {
         this.updatedAt = now;
     }
 
+    public boolean hasPendingPhotoWork() {
+        return this.pendingPhotoCount > 0;
+    }
+
+    public boolean hasPendingLocationWork() {
+        return this.pendingLocationCount > 0;
+    }
+
     public boolean hasPendingWork() {
-        return this.pendingPhotoCount > 0 || this.pendingLocationCount > 0;
+        return hasPendingPhotoWork() || hasPendingLocationWork();
     }
 }
