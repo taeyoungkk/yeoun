@@ -2,12 +2,21 @@ import React from 'react';
 import { TouchableOpacity, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useTripStore } from '@/src/store';
 
 export function ReceiptOcrButton() {
   const router = useRouter();
+  const currentTripId = useTripStore((state) => state.currentTripId);
+  const currentTrip = useTripStore((state) => state.currentTrip);
+  const activeTrip = useTripStore((state) => state.activeTrip);
 
   const handlePress = () => {
-    router.push('/receipt-ocr');
+    const tripId = currentTripId ?? currentTrip?.tripId ?? activeTrip?.tripId ?? '';
+
+    router.push({
+      pathname: '/receipt-ocr',
+      params: tripId ? { tripId } : {},
+    } as never);
   };
 
   return (
