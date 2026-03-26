@@ -107,6 +107,8 @@ type TimelineEvent = {
   chips?: string[];
   coordinate?: Coordinate;
   placeName?: string;
+  placeProvider?: string;
+  providerPlaceId?: string;
   eventMemo?: string;
   photoUrls?: string[];
   photoContributors?: PhotoContributor[];
@@ -355,6 +357,11 @@ const replacePhotoChip = (chips: string[] | undefined, photoCount: number) => {
   return nextChips;
 };
 
+const getEventDisplayTitle = (event: TimelineEvent) => event.title || event.placeName || 'Trip event';
+
+const shouldShowEventPlaceName = (event: TimelineEvent) =>
+  Boolean(event.placeName) && event.placeName !== getEventDisplayTitle(event);
+
 function buildRealTripEvents(
   timelineDays: TimelineDayDetail[],
   eventDetailsById: Record<string, EventDetail>,
@@ -411,9 +418,11 @@ function buildRealTripEvents(
           day: dayKey,
           type: hasPhotos ? 'photo' : 'location',
           time: formatTimeLabel(startAt ?? endAt),
-          title: eventDetail?.title || event.title || event.placeName || 'Trip event',
+          title: eventDetail?.title || event.title || '',
           subtitle: hasPhotos ? '' : placeName ?? '',
           placeName,
+          placeProvider: eventDetail?.placeProvider ?? event.placeProvider ?? undefined,
+          providerPlaceId: eventDetail?.providerPlaceId ?? event.providerPlaceId ?? undefined,
           chips: [eventType, hasPhotos ? buildPhotoChipLabel(visiblePhotos.length) : null].filter(Boolean) as string[],
           eventMemo: eventDetail?.myMemo?.content?.trim() || undefined,
           photoContributors: hasPhotos ? photoContributors : undefined,
@@ -1538,7 +1547,7 @@ function RealTripRecordingScreen({
     }
 
     const nextBody = eventEditor.body.trim();
-    const nextTitle = eventEditor.title.trim() || originalEvent.title;
+    const nextTitle = eventEditor.title.trim();
     const nextPlaceName = eventEditor.placeName.trim() || null;
 
     const eventResponse = await updateEventApi(eventEditor.eventId, {
@@ -2517,8 +2526,8 @@ function RealTripRecordingScreen({
                         </View>
                       ) : null}
                     </View>
-                    <Text style={styles.eventTitle}>{event.title}</Text>
-                    {event.placeName ? <Text style={styles.eventPlaceName}>{event.placeName}</Text> : null}
+                    <Text style={styles.eventTitle}>{getEventDisplayTitle(event)}</Text>
+                    {shouldShowEventPlaceName(event) ? <Text style={styles.eventPlaceName}>{event.placeName}</Text> : null}
                     {event.type === 'payment' ? (
                       <View style={styles.paymentMetaBlock}>
                         <View style={styles.paymentMetaTopRow}>
