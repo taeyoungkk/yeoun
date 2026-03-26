@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
@@ -59,12 +59,18 @@ function ScanFrame() {
 
 export default function ReceiptOcrScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ tripId?: string | string[] }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [capturedUri, setCapturedUri] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const showToast = useUIStore((state) => state.showToast);
   const currentTripId = useTripStore((state) => state.currentTripId);
+  const currentTrip = useTripStore((state) => state.currentTrip);
+  const activeTrip = useTripStore((state) => state.activeTrip);
+
+  const routeTripId = Array.isArray(params.tripId) ? params.tripId[0] : params.tripId;
+  const resolvedTripId = routeTripId ?? currentTripId ?? currentTrip?.tripId ?? activeTrip?.tripId ?? null;
 
   useEffect(() => {
     if (permission && !permission.granted) {
@@ -103,31 +109,55 @@ export default function ReceiptOcrScreen() {
 
   const handleSubmit = async () => {
     if (!capturedUri) {
+      console.warn('[ReceiptOCR] Submit skipped: no captured image.');
       return;
     }
 
-    if (!currentTripId) {
+    if (!resolvedTripId) {
+      console.warn('[ReceiptOCR] Submit skipped: no trip id.', {
+        routeTripId: routeTripId ?? null,
+        currentTripId: currentTripId ?? null,
+        currentTripTripId: currentTrip?.tripId ?? null,
+        activeTripTripId: activeTrip?.tripId ?? null,
+      });
+      Alert.alert('여행 정보 없음', '활성 여행 정보가 없어 영수증 OCR 요청을 보낼 수 없습니다.');
       showToast('활성 여행 정보를 찾을 수 없습니다.', 'error');
       return;
     }
 
     setIsSubmitting(true);
+    console.log('[ReceiptOCR] Submit started.', {
+      tripId: resolvedTripId,
+      hasCapturedUri: Boolean(capturedUri),
+    });
 
     try {
-      const uploadResponse = await uploadReceiptImageApi(currentTripId, {
+      console.log('[ReceiptOCR] Upload request.');
+      const uploadResponse = await uploadReceiptImageApi(resolvedTripId, {
         uri: capturedUri,
         name: `receipt-${Date.now()}.jpg`,
         type: 'image/jpeg',
+      });
+      console.log('[ReceiptOCR] Upload response.', {
+        success: uploadResponse.success,
+        receiptId: uploadResponse.data?.receiptId ?? null,
+        imageUrl: uploadResponse.data?.imageUrl ?? null,
       });
 
       if (!uploadResponse.success || !uploadResponse.data.imageUrl) {
         throw new Error(uploadResponse.message ?? '영수증 이미지를 업로드하지 못했습니다.');
       }
 
-      const ocrResponse = await requestReceiptOcrApi(currentTripId, {
+      console.log('[ReceiptOCR] OCR request.');
+      const ocrResponse = await requestReceiptOcrApi(resolvedTripId, {
         imageUrl: uploadResponse.data.imageUrl,
         currencyCode: 'KRW',
         locale: 'ko-KR',
+      });
+      console.log('[ReceiptOCR] OCR response.', {
+        success: ocrResponse.success,
+        receiptId: ocrResponse.data?.receiptId ?? null,
+        status: ocrResponse.data?.status ?? null,
       });
 
       if (!ocrResponse.success) {
@@ -140,12 +170,14 @@ export default function ReceiptOcrScreen() {
         params: { receiptId: ocrResponse.data.receiptId },
       } as never);
     } catch (error) {
+      console.error('[ReceiptOCR] Submit failed.', error);
       const message = axios.isAxiosError(error)
         ? error.response?.data?.message ?? '영수증 OCR 요청에 실패했습니다.'
         : error instanceof Error
           ? error.message
           : '영수증 OCR 요청에 실패했습니다.';
 
+      Alert.alert('OCR 요청 실패', message);
       showToast(message, 'error');
     } finally {
       setIsSubmitting(false);

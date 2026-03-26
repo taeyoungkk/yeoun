@@ -21,6 +21,7 @@ import {
 import { useUIStore } from '@/src/store/ui.store';
 
 const POLL_INTERVAL_MS = 2500;
+const POLL_TIMEOUT_MS = 30000;
 
 export default function ReceiptOcrResultScreen() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function ReceiptOcrResultScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasShownCompletionToastRef = useRef(false);
+  const pollStartedAtRef = useRef<number | null>(null);
 
   const statusLabel = useMemo(() => {
     switch (statusData?.status) {
@@ -45,16 +47,36 @@ export default function ReceiptOcrResultScreen() {
         return '분석 완료';
       case 'FAILED':
         return '분석 실패';
+      case 'DLQ':
+        return '처리 실패';
       default:
         return '상태 확인 중';
     }
   }, [statusData?.status]);
 
+  const stopWithTimeoutMessage = () => {
+    const message = 'OCR 처리 시간이 오래 걸리고 있습니다. 워커 또는 Kafka 처리 상태를 확인해 주세요.';
+    console.warn('[ReceiptOCR] Polling timed out.', {
+      receiptId: receiptId ?? null,
+      status: statusData?.status ?? null,
+    });
+    setErrorMessage(message);
+    showToast(message, 'error');
+  };
+
   const fetchResult = async (targetReceiptId: string) => {
+    console.log('[ReceiptOCR] Fetch result.', { receiptId: targetReceiptId });
     const resultResponse = await getReceiptOcrResultApi(targetReceiptId);
+    console.log('[ReceiptOCR] Result response.', {
+      receiptId: targetReceiptId,
+      success: resultResponse.success,
+      status: resultResponse.data?.status ?? null,
+    });
+
     if (!resultResponse.success) {
       throw new Error(resultResponse.message ?? '영수증 OCR 결과를 불러오지 못했습니다.');
     }
+
     setResultData(resultResponse.data);
   };
 
@@ -64,6 +86,15 @@ export default function ReceiptOcrResultScreen() {
     }
 
     const statusResponse = await getReceiptOcrStatusApi(targetReceiptId);
+    console.log('[ReceiptOCR] Status response.', {
+      receiptId: targetReceiptId,
+      success: statusResponse.success,
+      status: statusResponse.data?.status ?? null,
+      attempt: statusResponse.data?.attempt ?? null,
+      lastErrorCode: statusResponse.data?.lastErrorCode ?? null,
+      lastErrorMessage: statusResponse.data?.lastErrorMessage ?? null,
+    });
+
     if (!statusResponse.success) {
       throw new Error(statusResponse.message ?? '영수증 OCR 상태를 불러오지 못했습니다.');
     }
@@ -78,7 +109,7 @@ export default function ReceiptOcrResultScreen() {
       }
     }
 
-    if (statusResponse.data.status === 'FAILED') {
+    if (statusResponse.data.status === 'FAILED' || statusResponse.data.status === 'DLQ') {
       setResultData(null);
       setErrorMessage(statusResponse.data.lastErrorMessage ?? '영수증 OCR 분석에 실패했습니다.');
     }
@@ -95,10 +126,18 @@ export default function ReceiptOcrResultScreen() {
 
     let active = true;
     let intervalId: ReturnType<typeof setInterval> | null = null;
+    pollStartedAtRef.current = Date.now();
 
     const startPolling = async () => {
       try {
-        await fetchStatus(receiptId);
+        const initialStatus = await fetchStatus(receiptId);
+        if (
+          initialStatus.status === 'COMPLETED' ||
+          initialStatus.status === 'FAILED' ||
+          initialStatus.status === 'DLQ'
+        ) {
+          return;
+        }
       } catch (error) {
         if (!active) {
           return;
@@ -116,9 +155,22 @@ export default function ReceiptOcrResultScreen() {
           return;
         }
 
+        const elapsedMs = Date.now() - (pollStartedAtRef.current ?? Date.now());
+        if (elapsedMs >= POLL_TIMEOUT_MS) {
+          if (intervalId) {
+            clearInterval(intervalId);
+          }
+          stopWithTimeoutMessage();
+          return;
+        }
+
         try {
           const nextStatus = await fetchStatus(receiptId, { silent: true });
-          if (nextStatus.status === 'COMPLETED' || nextStatus.status === 'FAILED') {
+          if (
+            nextStatus.status === 'COMPLETED' ||
+            nextStatus.status === 'FAILED' ||
+            nextStatus.status === 'DLQ'
+          ) {
             if (intervalId) {
               clearInterval(intervalId);
             }
@@ -149,6 +201,7 @@ export default function ReceiptOcrResultScreen() {
     }
 
     setIsRefreshing(true);
+    pollStartedAtRef.current = Date.now();
     try {
       await fetchStatus(receiptId);
     } catch (error) {
@@ -194,7 +247,7 @@ export default function ReceiptOcrResultScreen() {
           <Text style={styles.statusSubtext}>
             {statusData?.status === 'COMPLETED'
               ? '분석이 완료되었습니다.'
-              : statusData?.status === 'FAILED'
+              : statusData?.status === 'FAILED' || statusData?.status === 'DLQ'
                 ? '분석 중 오류가 발생했습니다.'
                 : '분석 진행 상황을 자동으로 확인하고 있습니다.'}
           </Text>
@@ -246,7 +299,7 @@ export default function ReceiptOcrResultScreen() {
           <View style={styles.resultCard}>
             <Text style={styles.sectionTitle}>결과 대기 중</Text>
             <Text style={styles.emptyText}>
-              {statusData?.status === 'FAILED'
+              {statusData?.status === 'FAILED' || statusData?.status === 'DLQ'
                 ? '분석 결과를 가져오지 못했습니다.'
                 : '결과가 준비되면 이 화면에 자동으로 표시됩니다.'}
             </Text>
