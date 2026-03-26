@@ -531,6 +531,7 @@ function RealTripRecordingScreen({
   const [mapLoadFailed, setMapLoadFailed] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [loadedTripDetail, setLoadedTripDetail] = useState<TripDetail | null>(null);
   const [photoViewer, setPhotoViewer] = useState<{ eventId: string; photoIndex: number } | null>(null);
   const [photoViewerWidth, setPhotoViewerWidth] = useState(0);
   const [eventEditor, setEventEditor] = useState<{ eventId: string; title: string; placeName: string; body: string } | null>(null);
@@ -680,9 +681,11 @@ function RealTripRecordingScreen({
   const storeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
   const activeTripId = (routeTripId || storeTripId || '').trim();
   const tripTitle = (displayTrip as { title?: string; tripName?: string } | null)?.title || displayTrip?.tripName || 'Trip';
-  const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
+  const isTripOwner = Boolean(
+    loadedTripDetail?.ownerUserId && currentUserId && loadedTripDetail.ownerUserId === currentUserId,
+  );
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
-  const canUseActiveTripActions = !isReviewMode && activeTrip?.status === 'ACTIVE';
+  const canUseActiveTripActions = !isReviewMode && loadedTripDetail?.status === 'ACTIVE';
 
   const syncActionInFlight =
     isSyncing || locationSyncStatus === 'uploading' || locationSyncStatus === 'processing';
@@ -847,6 +850,7 @@ function RealTripRecordingScreen({
       setTripEvents([]);
       setRealTripDays(null);
       setTripMembers([]);
+      setLoadedTripDetail(null);
       return;
     }
 
@@ -914,6 +918,7 @@ function RealTripRecordingScreen({
           : {};
 
         if (tripDetailResponse.success) {
+          setLoadedTripDetail(tripDetailResponse.data);
           if (!isReviewMode && tripDetailResponse.data.status !== 'ACTIVE') {
             setActiveTrip(tripDetailResponse.data);
             router.replace({
@@ -952,6 +957,7 @@ function RealTripRecordingScreen({
         }
 
         console.error('Failed to load real trip data', error);
+        setLoadedTripDetail(null);
         setRealTripDays(null);
         setTripEvents([]);
         setTripMembers([]);
@@ -1826,6 +1832,18 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>여행 리포트 확인</Text>
               </TouchableOpacity>
             ) : null}
+            {isReviewMode && isTripOwner ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleDeleteTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
+                <MaterialIcons name="delete-outline" size={18} color="#244934" />
+                <Text style={styles.menuItemText}>여행 삭제</Text>
+              </TouchableOpacity>
+            ) : null}
+            {isReviewMode && !isTripOwner ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
+                <MaterialIcons name="logout" size={18} color="#244934" />
+                <Text style={styles.menuItemText}>여행 떠나기</Text>
+              </TouchableOpacity>
+            ) : null}
             {canUseActiveTripActions ? (
               <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); router.push('/trip/invite'); }} activeOpacity={0.85}>
                 <MaterialIcons name="group-add" size={18} color="#244934" />
@@ -1836,11 +1854,11 @@ function RealTripRecordingScreen({
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.menuItem, (isTripOwner || !canUseActiveTripActions) && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
+            <TouchableOpacity style={[styles.menuItem, (isTripOwner || !canUseActiveTripActions || isReviewMode) && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
               <MaterialIcons name="logout" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 떠나기</Text>
             </TouchableOpacity>
-            {isTripOwner ? (
+            {isTripOwner && !isReviewMode ? (
               <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleDeleteTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
                 <MaterialIcons name="delete-outline" size={18} color="#244934" />
                 <Text style={styles.menuItemText}>여행 삭제</Text>
