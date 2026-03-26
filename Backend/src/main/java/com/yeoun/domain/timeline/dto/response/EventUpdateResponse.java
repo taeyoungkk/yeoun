@@ -13,7 +13,11 @@ public record EventUpdateResponse(
         String title,
         @Schema(description = "장소명")
         String placeName,
-        @Schema(description = "외부 장소 ID")
+        @Schema(description = "장소 제공자")
+        String placeProvider,
+        @Schema(description = "제공자 장소 ID")
+        String providerPlaceId,
+        @Schema(description = "내부 장소 ID")
         String placeExternalId,
         @Schema(description = "시작 시각")
         Instant startAt,

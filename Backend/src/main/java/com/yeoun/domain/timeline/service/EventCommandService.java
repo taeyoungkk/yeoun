@@ -72,6 +72,7 @@ public class EventCommandService {
         Event event = getEditableEvent(eventId, requesterUserId);
         Instant originalStartAt = event.getStartAt();
         UUID originalTimelineDayId = event.getTimelineDayId();
+        String originalPlaceName = event.getPlaceName();
 
         Instant startAt = request.startAt() == null ? event.getStartAt() : request.startAt();
         Instant endAt = request.endAt() == null ? event.getEndAt() : request.endAt();
@@ -95,6 +96,10 @@ public class EventCommandService {
                 request.hidden() == null ? event.isHidden() : request.hidden(),
                 now
         );
+        if (request.placeName() != null && !equalsNullable(request.placeName(), originalPlaceName)) {
+            event.lockPlaceName(now);
+            event.clearPlaceReference(now);
+        }
 
         UUID newTimelineDayId = moveEventIfDayChanged(event, originalStartAt, now);
         recalculateTimelineDayCounts(originalTimelineDayId, now);
@@ -106,6 +111,8 @@ public class EventCommandService {
                 event.getEventId(),
                 event.getTitle(),
                 event.getPlaceName(),
+                event.getPlaceProvider(),
+                event.getProviderPlaceId(),
                 event.getPlaceExternalId(),
                 event.getStartAt(),
                 event.getEndAt(),
@@ -278,5 +285,12 @@ public class EventCommandService {
                 Math.toIntExact(visibleEventCount),
                 now
         );
+    }
+
+    private boolean equalsNullable(String left, String right) {
+        if (left == null) {
+            return right == null;
+        }
+        return left.equals(right);
     }
 }

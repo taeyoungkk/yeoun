@@ -20,6 +20,8 @@ import com.yeoun.domain.tripprocessing.entity.TripProcessingStatusType;
 import com.yeoun.domain.tripprocessing.service.TripProcessingStatusService;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +42,7 @@ import java.util.UUID;
 @Transactional
 public class TimelineBuildService {
 
+    private static final Logger log = LoggerFactory.getLogger(TimelineBuildService.class);
     private static final Duration EVENT_SPLIT_THRESHOLD = Duration.ofHours(2);
     private static final ZoneId DEFAULT_ZONE_ID = ZoneId.of("Asia/Seoul");
 
@@ -50,6 +53,7 @@ public class TimelineBuildService {
     private final EventRepository eventRepository;
     private final EventPhotoRepository eventPhotoRepository;
     private final TripProcessingStatusService tripProcessingStatusService;
+    private final EventPlaceResolverService eventPlaceResolverService;
 
     public TimelineBuildService(
             TripRepository tripRepository,
@@ -58,7 +62,8 @@ public class TimelineBuildService {
             TimelineDayRepository timelineDayRepository,
             EventRepository eventRepository,
             EventPhotoRepository eventPhotoRepository,
-            TripProcessingStatusService tripProcessingStatusService
+            TripProcessingStatusService tripProcessingStatusService,
+            EventPlaceResolverService eventPlaceResolverService
     ) {
         this.tripRepository = tripRepository;
         this.photoRepository = photoRepository;
@@ -67,9 +72,11 @@ public class TimelineBuildService {
         this.eventRepository = eventRepository;
         this.eventPhotoRepository = eventPhotoRepository;
         this.tripProcessingStatusService = tripProcessingStatusService;
+        this.eventPlaceResolverService = eventPlaceResolverService;
     }
 
     public TimelineBuildJobResponse buildTimelineFromPhotos(UUID requesterUserId, UUID tripId) {
+        log.info("타임라인 생성을 시작합니다. tripId={}, requesterUserId={}", tripId, requesterUserId);
         Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
 
@@ -93,9 +100,13 @@ public class TimelineBuildService {
                     .sorted(Comparator.comparing(this::effectivePhotoTime))
                     .toList();
             List<LocationPlace> places = locationPlaceRepository.findByTripIdOrderByStartedAtAscUserIdAsc(tripId);
+            log.info("타임라인 생성용 원본 데이터를 불러왔습니다. tripId={}, photoCount={}, placeCount={}",
+                    tripId, photos.size(), places.size());
 
             BuildResult result = rebuildTimeline(tripId, places, photos, now);
             tripProcessingStatusService.markReady(tripId, now);
+            log.info("타임라인 생성을 완료했습니다. tripId={}, timelineDayCount={}, eventCount={}",
+                    tripId, result.timelineDayCount(), result.eventCount());
 
             return new TimelineBuildJobResponse(
                     tripId,
@@ -106,6 +117,7 @@ public class TimelineBuildService {
                     now
             );
         } catch (RuntimeException ex) {
+            log.error("타임라인 생성에 실패했습니다. tripId={}", tripId, ex);
             tripProcessingStatusService.markFailed(tripId, now, ex.getMessage());
             throw ex;
         }
@@ -171,6 +183,9 @@ public class TimelineBuildService {
     }
 
     private Event createEvent(UUID tripId, UUID timelineDayId, EventDraft eventDraft, Instant now) {
+        log.info("타임라인 이벤트를 생성합니다. tripId={}, timelineDayId={}, eventType={}, placeName={}, placeProvider={}, providerPlaceId={}, photoCount={}",
+                tripId, timelineDayId, eventDraft.eventType(), eventDraft.placeName(),
+                eventDraft.placeProvider(), eventDraft.providerPlaceId(), eventDraft.photos().size());
         return Event.builder()
                 .eventId(UUID.randomUUID())
                 .tripId(tripId)
@@ -179,6 +194,8 @@ public class TimelineBuildService {
                 .eventType(eventDraft.eventType())
                 .title(eventDraft.title())
                 .placeName(eventDraft.placeName())
+                .placeProvider(eventDraft.placeProvider())
+                .providerPlaceId(eventDraft.providerPlaceId())
                 .placeExternalId(eventDraft.placeExternalId())
                 .startAt(eventDraft.startAt())
                 .endAt(eventDraft.endAt())
@@ -209,15 +226,25 @@ public class TimelineBuildService {
     private List<EventDraft> createLocationEventDrafts(List<LocationPlace> places) {
         List<EventDraft> drafts = new ArrayList<>();
         for (LocationPlace place : places) {
-                drafts.add(new EventDraft(
-                        EventType.PLACE_VISIT,
-                        null,
-                        null,
-                        place.getPlaceId().toString(),
-                        place.getStartedAt(),
-                        place.getEndedAt(),
-                        place.getCenterLatitude(),
-                        place.getCenterLongitude(),
+            KakaoLocalClient.ResolvedPlace resolvedPlace = eventPlaceResolverService
+                    .resolveResolvedPlace(place.getCenterLatitude(), place.getCenterLongitude())
+                    .orElse(null);
+            log.info("PLACE_VISIT 초안 생성 완료. placeExternalId={}, startAt={}, endAt={}, placeName={}, placeProvider={}, providerPlaceId={}",
+                    place.getPlaceId(), place.getStartedAt(), place.getEndedAt(),
+                    resolvedPlace == null ? null : resolvedPlace.name(),
+                    resolvedPlace == null ? null : resolvedPlace.provider(),
+                    resolvedPlace == null ? null : resolvedPlace.providerPlaceId());
+            drafts.add(new EventDraft(
+                    EventType.PLACE_VISIT,
+                    null,
+                    resolvedPlace == null ? null : resolvedPlace.name(),
+                    resolvedPlace == null ? null : resolvedPlace.provider(),
+                    resolvedPlace == null ? null : resolvedPlace.providerPlaceId(),
+                    place.getPlaceId().toString(),
+                    place.getStartedAt(),
+                    place.getEndedAt(),
+                    place.getCenterLatitude(),
+                    place.getCenterLongitude(),
                     new ArrayList<>(),
                     place.getCreatedAt()
             ));
@@ -263,15 +290,31 @@ public class TimelineBuildService {
             for (List<Photo> photoGroup : photoGroups) {
                 Photo firstPhoto = photoGroup.get(0);
                 Photo lastPhoto = photoGroup.get(photoGroup.size() - 1);
+                BigDecimal centerLatitude = medianCoordinate(photoGroup.stream()
+                        .map(Photo::getExifLatitude)
+                        .toList());
+                BigDecimal centerLongitude = medianCoordinate(photoGroup.stream()
+                        .map(Photo::getExifLongitude)
+                        .toList());
+                KakaoLocalClient.ResolvedPlace resolvedPlace = eventPlaceResolverService
+                        .resolveResolvedPlace(centerLatitude, centerLongitude)
+                        .orElse(null);
+                log.info("사진 기반 OTHER 초안 생성 완료. firstPhotoId={}, photoCount={}, placeName={}, placeProvider={}, providerPlaceId={}",
+                        firstPhoto.getPhotoId(), photoGroup.size(),
+                        resolvedPlace == null ? null : resolvedPlace.name(),
+                        resolvedPlace == null ? null : resolvedPlace.provider(),
+                        resolvedPlace == null ? null : resolvedPlace.providerPlaceId());
                 drafts.add(new EventDraft(
                         EventType.OTHER,
                         null,
-                        null,
+                        resolvedPlace == null ? null : resolvedPlace.name(),
+                        resolvedPlace == null ? null : resolvedPlace.provider(),
+                        resolvedPlace == null ? null : resolvedPlace.providerPlaceId(),
                         null,
                         effectivePhotoTime(firstPhoto),
                         effectivePhotoTime(lastPhoto),
-                        firstPhoto.getExifLatitude(),
-                        firstPhoto.getExifLongitude(),
+                        centerLatitude,
+                        centerLongitude,
                         new ArrayList<>(photoGroup),
                         firstPhoto.getCreatedAt()
                 ));
@@ -324,6 +367,23 @@ public class TimelineBuildService {
         }
     }
 
+    private BigDecimal medianCoordinate(List<BigDecimal> values) {
+        List<BigDecimal> filtered = values.stream()
+                .filter(value -> value != null)
+                .sorted(BigDecimal::compareTo)
+                .toList();
+        if (filtered.isEmpty()) {
+            return null;
+        }
+        int mid = filtered.size() / 2;
+        if (filtered.size() % 2 == 1) {
+            return filtered.get(mid);
+        }
+        return filtered.get(mid - 1)
+                .add(filtered.get(mid))
+                .divide(BigDecimal.valueOf(2), 7, java.math.RoundingMode.HALF_UP);
+    }
+
     private record BuildResult(int timelineDayCount, int eventCount) {
     }
 
@@ -331,6 +391,8 @@ public class TimelineBuildService {
             EventType eventType,
             String title,
             String placeName,
+            String placeProvider,
+            String providerPlaceId,
             String placeExternalId,
             Instant startAt,
             Instant endAt,
