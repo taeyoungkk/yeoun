@@ -2687,7 +2687,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#244934',
   },
   primaryButtonText: { fontFamily: 'Pretendard-Bold', fontSize: 15, color: '#F7FBF6' },
-  header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 20 },
+  header: { paddingHorizontal: 20, paddingTop: 30, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 20 },
   backButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', marginRight: 2 },
   headerTextWrap: { flex: 1 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
