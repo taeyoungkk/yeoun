@@ -17,6 +17,10 @@ public record TripSyncStatusResponse(
         long timelineVersion,
         @Schema(description = "사진 데이터 버전")
         long photoVersion,
+        @Schema(description = "남은 위치 동기화 대기 건수")
+        int pendingLocationCount,
+        @Schema(description = "남은 사진 동기화 대기 건수")
+        int pendingPhotoCount,
         @Schema(description = "마지막 갱신 시각")
         Instant updatedAt,
         @Schema(description = "마지막 에러 메시지")
