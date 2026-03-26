@@ -292,20 +292,29 @@ export default function PaymentMemberSummaryScreen() {
             {settlementTransfers.length === 0 ? (
               <Text style={styles.emptyText}>누구에게 얼마를 보내야 하는 정산 내역이 아직 없어요.</Text>
             ) : (
-              settlementTransfers.map((transfer, index) => (
-                <View
-                  key={transfer.settlementTransferId || `${transfer.fromUserId}-${transfer.toUserId}-${index}`}
-                  style={[styles.transferRow, index > 0 && styles.transferRowSpaced]}
-                >
-                  <View style={styles.transferTextBox}>
-                    <Text style={styles.transferPrimaryText}>
-                      {transfer.fromNickname} <Text style={styles.transferArrow}>→</Text> {transfer.toNickname}
-                    </Text>
+              <>
+                <View style={styles.transferHeaderRow}>
+                  <View style={styles.transferTextBox} />
+                  <View style={styles.transferAmountBox}>
                     <Text style={styles.transferSecondaryText}>보낼 금액</Text>
-                    <Text style={styles.transferAmountText}>{formatCurrency(transfer.amount)}</Text>
                   </View>
                 </View>
-              ))
+                {settlementTransfers.map((transfer, index) => (
+                  <View
+                    key={transfer.settlementTransferId || `${transfer.fromUserId}-${transfer.toUserId}-${index}`}
+                    style={[styles.transferRow, index > 0 && styles.transferRowSpaced]}
+                  >
+                    <View style={styles.transferTextBox}>
+                      <Text style={styles.transferPrimaryText}>
+                        {transfer.fromNickname} <Text style={styles.transferArrow}>→</Text> {transfer.toNickname}
+                      </Text>
+                    </View>
+                    <View style={styles.transferAmountBox}>
+                      <Text style={styles.transferAmountText}>{formatCurrency(transfer.amount)}</Text>
+                    </View>
+                  </View>
+                ))}
+              </>
             )}
           </>
         )}
@@ -429,14 +438,28 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#A0A0A0',
   },
+  transferHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 8,
+  },
   transferRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 10,
   },
   transferRowSpaced: {
     marginTop: 14,
   },
   transferTextBox: {
-    gap: 6,
+    flex: 1,
+    paddingRight: 16,
+  },
+  transferAmountBox: {
+    width: 110,
+    alignItems: 'flex-end',
   },
   transferPrimaryText: {
     fontFamily: 'Pretendard-Bold',
