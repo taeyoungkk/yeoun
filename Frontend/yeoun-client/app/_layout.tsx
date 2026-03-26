@@ -74,6 +74,17 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="payment-details" />
+          <Stack.Screen name="payment-member-summary" />
+          <Stack.Screen name="payment-summary" />
+          <Stack.Screen name="payment-settlement" />
+          <Stack.Screen name="receipt-ocr" />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="friends" />
+          <Stack.Screen name="edit-profile" />
+          <Stack.Screen name="add-card" />
+          <Stack.Screen name="notifications-mock" />
+          <Stack.Screen name="oauthredirect" />
           <Stack.Screen name="trip/start" />
           <Stack.Screen name="trip/recording" />
           <Stack.Screen name="trip/photo-album" />
