@@ -249,7 +249,11 @@ export default function TripStartScreen() {
 
   const startTrackingAndNavigate = async (tripId: string) => {
     const trackingResult = await locationService.startTracking();
-    const syncTripPhotosForDateRange = async () => ({
+    const syncTripPhotosForDateRange = async (_params?: {
+      tripId: string;
+      startDate: string;
+      endDate: string;
+    }) => ({
       success: true,
       candidateCount: 0,
       syncedCount: 0,
