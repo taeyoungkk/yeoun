@@ -382,11 +382,6 @@ export default function ReceiptOcrResultScreen() {
               )}
             </View>
 
-            <View style={styles.resultCard}>
-              <Text style={styles.sectionTitle}>원문 텍스트</Text>
-              <Text style={styles.rawText}>{resultData.rawText?.trim() || '추출된 원문 텍스트가 없습니다.'}</Text>
-            </View>
-
             {tripMembers.length > 0 ? (
               <View style={styles.resultCard}>
                 <Text style={styles.sectionTitle}>지출로 확정</Text>
