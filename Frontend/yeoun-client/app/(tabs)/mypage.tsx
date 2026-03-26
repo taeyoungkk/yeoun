@@ -14,6 +14,7 @@ import { TreeRingsChart } from '@/src/components/profile/TreeRingsChart';
 import { TravelMap } from '@/src/components/profile/TravelMap';
 import { UserInfoCard } from '@/src/components/profile/UserInfoCard';
 import { useFavoriteStore, useTripStore, useUserStore } from '@/src/store';
+import { reverseGeocodeKo } from '@/src/api/mapbox';
 
 const formatDate = (dateString?: string) => {
   if (!dateString) {
@@ -24,7 +25,7 @@ const formatDate = (dateString?: string) => {
 };
 
 export default function MyPageScreen() {
-  const { profile, setProfile } = useUserStore();
+  const { profile, setProfile, settings } = useUserStore();
   const { favoriteIds, toggleFavorite } = useFavoriteStore();
   const serverTrips = useTripStore((state) => state.trips);
   const fetchTrips = useTripStore((state) => state.fetchTrips);
@@ -55,26 +56,48 @@ export default function MyPageScreen() {
   );
 
   const fetchLocation = async () => {
+    if (!settings.locationPerm) {
+      setLocationName('위치 정보 비활성');
+      return;
+    }
+
     try {
+      const isServiceEnabled = await Location.hasServicesEnabledAsync();
+      if (!isServiceEnabled) {
+        setLocationName('GPS 꺼짐');
+        return;
+      }
+
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setLocationName('위치 권한 필요');
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({});
-      const reverseGeocode = await Location.reverseGeocodeAsync({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
+      // Try last known position first for speed
+      let location = await Location.getLastKnownPositionAsync({});
+      
+      // If no last known, try current position
+      if (!location) {
+        location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+      }
 
-      if (reverseGeocode.length > 0) {
-        const address = reverseGeocode[0];
-        const city = address.city || address.region || '';
-        const district = address.district || address.street || address.name || '';
-        setLocationName(`${city} ${district}`.trim() || '위치 정보 없음');
+      if (!location) {
+        setLocationName('서울시 강남구');
+        return;
+      }
+      
+      const result = await reverseGeocodeKo(location.coords.longitude, location.coords.latitude);
+      
+      if (result) {
+        // Remove '대한민국' and zip codes if present
+        // Example: "대한민국 06611 서울특별시 서초구 서초동" -> "서울특별시 서초구 서초동"
+        const cleaned = result.replace(/대한민국\s*\d*/g, '').replace(/,/g, '').trim();
+        setLocationName(cleaned);
       } else {
-        setLocationName('위치 정보 없음');
+        setLocationName('서울시 강남구');
       }
     } catch (error) {
       console.error('Error fetching location:', error);

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, ScrollView, Text, TouchableOpacity, View, Alert, Linking } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
+import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 
-import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
 import { useAuthStore, useUserStore } from '@/src/store';
 import { logoutApi } from '@/src/api/auth';
 import { withdrawAccount } from '@/src/api/user';
@@ -69,30 +70,52 @@ const IosSwitch = ({
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const [settings, setSettings] = useState({ ...globalUserState });
+  const settings = useUserStore((state) => state.settings);
+  const updateSettings = useUserStore((state) => state.updateSettings);
 
-  useEffect(() => {
-    const unsubscribe = subscribeUser(() => {
-      setSettings({ ...globalUserState });
-    });
+  const openSystemSettings = () => {
+    Alert.alert(
+      '권한 필요',
+      '앱 설정에서 직접 권한을 변경해야 합니다.',
+      [
+        { text: '취소', style: 'cancel' },
+        { text: '설정으로 이동', onPress: () => Linking.openSettings() },
+      ]
+    );
+  };
 
-    return unsubscribe;
-  }, []);
+  const handleLocationPermission = async (val: boolean) => {
+    if (val) {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        openSystemSettings();
+        return;
+      }
+    }
+    updateSettings({ locationPerm: val });
+  };
 
-  const toggleSetting = (key: keyof typeof globalUserState, value: boolean) => {
-    updateUser({ [key]: value });
+  const handlePhotoPermission = async (val: boolean) => {
+    if (val) {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        openSystemSettings();
+        return;
+      }
+    }
+    updateSettings({ photoPerm: val });
   };
 
   const setRouteOnlyMode = (enabled: boolean) => {
     if (enabled) {
-      updateUser({
+      updateSettings({
         showPhotoPins: false,
         showPaymentPins: false,
       });
       return;
     }
 
-    updateUser({
+    updateSettings({
       showPhotoPins: true,
       showPaymentPins: settings.showPaymentPins,
     });
@@ -102,22 +125,16 @@ export default function SettingsScreen() {
 
   const handleLogout = async () => {
     try {
-      // 1. Google 계정 로그아웃 처리
       const hasPlayServices = await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: false }).catch(() => false);
       if (hasPlayServices) {
-        const isSignedIn = GoogleSignin.hasPreviousSignIn();
-        if (isSignedIn) {
+        if (await GoogleSignin.hasPreviousSignIn()) {
           await GoogleSignin.signOut();
         }
       }
-      
-      // 2. 로그아웃 API 호출
       await logoutApi();
     } catch (error) {
       console.log('Logout error:', error);
     } finally {
-      // 3. 인증 토큰 및 프로필 초기화
-      // 상태 관리가 초기화되면 app/_layout.tsx의 useEffect가 자동으로 로그인 화면으로 리다이렉트합니다.
       useAuthStore.getState().clearTokens();
       useUserStore.getState().clearProfile();
     }
@@ -125,20 +142,15 @@ export default function SettingsScreen() {
 
   const handleWithdraw = async () => {
     try {
-      // 1. 회원 탈퇴 API 호출
       const response = await withdrawAccount();
       if (response.success) {
-        // 2. Google 계정 연동 해제 및 로그아웃 처리
         const hasPlayServices = await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: false }).catch(() => false);
         if (hasPlayServices) {
-          const isSignedIn = GoogleSignin.hasPreviousSignIn();
-          if (isSignedIn) {
+          if (await GoogleSignin.hasPreviousSignIn()) {
             await GoogleSignin.revokeAccess();
             await GoogleSignin.signOut();
           }
         }
-
-        // 3. 상태 및 토큰 초기화
         useAuthStore.getState().clearTokens();
         useUserStore.getState().clearProfile();
       }
@@ -153,7 +165,7 @@ export default function SettingsScreen() {
 
       <View className="px-5 py-6 flex-row items-center">
         <TouchableOpacity onPress={() => router.back()} className="mr-3 p-1">
-          <Ionicons name="chevron-back" size={28} color="#000" />
+          <Ionicons name="chevron-back" size={28} color="#1A1A1A" />
         </TouchableOpacity>
         <Text className="text-3xl font-bold text-[#1A1A1A]">설정</Text>
       </View>
@@ -169,7 +181,7 @@ export default function SettingsScreen() {
             <Text className="text-lg font-medium text-[#1A1A1A]">영수증 알림 받기</Text>
             <IosSwitch
               value={settings.receiptNotif}
-              onValueChange={(val) => toggleSetting('receiptNotif', val)}
+              onValueChange={(val) => updateSettings({ receiptNotif: val })}
             />
           </View>
           <View className="w-full h-[1px] bg-[#F0F0F0] mb-6" />
@@ -177,7 +189,7 @@ export default function SettingsScreen() {
             <Text className="text-lg font-medium text-[#1A1A1A]">여행 종료 알림 받기</Text>
             <IosSwitch
               value={settings.endNotif}
-              onValueChange={(val) => toggleSetting('endNotif', val)}
+              onValueChange={(val) => updateSettings({ endNotif: val })}
             />
           </View>
         </View>
@@ -188,7 +200,7 @@ export default function SettingsScreen() {
             <Text className="text-lg font-medium text-[#1A1A1A]">사진 권한</Text>
             <IosSwitch
               value={settings.photoPerm}
-              onValueChange={(val) => toggleSetting('photoPerm', val)}
+              onValueChange={handlePhotoPermission}
             />
           </View>
           <View className="w-full h-[1px] bg-[#F0F0F0] mb-6" />
@@ -196,7 +208,7 @@ export default function SettingsScreen() {
             <Text className="text-lg font-medium text-[#1A1A1A]">위치 권한</Text>
             <IosSwitch
               value={settings.locationPerm}
-              onValueChange={(val) => toggleSetting('locationPerm', val)}
+              onValueChange={handleLocationPermission}
             />
           </View>
         </View>
@@ -218,7 +230,7 @@ export default function SettingsScreen() {
             <Text className="text-lg font-medium text-[#1A1A1A]">사진 표시</Text>
             <IosSwitch
               value={settings.showPhotoPins}
-              onValueChange={(val) => toggleSetting('showPhotoPins', val)}
+              onValueChange={(val) => updateSettings({ showPhotoPins: val })}
             />
           </View>
           <View className="w-full h-[1px] bg-[#F0F0F0] mb-6" />
@@ -226,7 +238,7 @@ export default function SettingsScreen() {
             <Text className="text-lg font-medium text-[#1A1A1A]">결제 표시</Text>
             <IosSwitch
               value={settings.showPaymentPins}
-              onValueChange={(val) => toggleSetting('showPaymentPins', val)}
+              onValueChange={(val) => updateSettings({ showPaymentPins: val })}
             />
           </View>
         </View>
