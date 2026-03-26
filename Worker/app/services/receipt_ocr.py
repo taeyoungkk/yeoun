@@ -49,7 +49,7 @@ class ReceiptOcrService:
         payload: ReceiptOcrRequest,
         image_bytes: bytes,
         mime_type: str,
-    ) -> list[dict[str, Any]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         prompt = (
             "You are extracting data from a receipt image. "
             "Return only a JSON object with these fields: "
@@ -61,25 +61,58 @@ class ReceiptOcrService:
             f"The expected currency code is {payload.currency_code}. "
             f"The locale is {payload.locale}."
         )
-        image_part = {
-            "inline_data": {
-                "mime_type": mime_type,
-                "data": base64.b64encode(image_bytes).decode("ascii"),
-            }
-        }
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": prompt},
-                        image_part,
-                    ]
-                }
-            ]
-        }
-        return [payload]
+        encoded_image = base64.b64encode(image_bytes).decode("ascii")
 
-    async def _call_gemini(self, payloads: list[dict[str, Any]]) -> dict[str, Any]:
+        def with_parts(image_part: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": prompt},
+                            image_part,
+                        ]
+                    }
+                ]
+            }
+
+        payloads: list[tuple[str, dict[str, Any]]] = [
+            (
+                "snake_inline_data",
+                with_parts(
+                    {
+                        "inline_data": {
+                            "mime_type": mime_type,
+                            "data": encoded_image,
+                        }
+                    }
+                ),
+            ),
+            (
+                "camel_inline_data",
+                with_parts(
+                    {
+                        "inlineData": {
+                            "mimeType": mime_type,
+                            "data": encoded_image,
+                        }
+                    }
+                ),
+            ),
+            (
+                "file_data_like",
+                with_parts(
+                    {
+                        "file_data": {
+                            "mime_type": mime_type,
+                            "file_uri": str(payload.image_url),
+                        }
+                    }
+                ),
+            ),
+        ]
+        return payloads
+
+    async def _call_gemini(self, payloads: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
         url = f"{self.settings.gemini_base_url}/models/{self.settings.gemini_model}:generateContent"
         headers = {
             "Content-Type": "application/json",
@@ -87,11 +120,12 @@ class ReceiptOcrService:
         }
         async with httpx.AsyncClient(timeout=self.settings.gemini_timeout_seconds) as client:
             last_error: Exception | None = None
-            for index, payload in enumerate(payloads, start=1):
+            for index, (variant_name, payload) in enumerate(payloads, start=1):
                 serialized_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
                 logger.info(
-                    "Gemini request payloadAttempt=%s keys=%s contentsCount=%s partKeys=%s bodyPreview=%s",
+                    "Gemini request payloadAttempt=%s variant=%s keys=%s contentsCount=%s partKeys=%s bodyPreview=%s",
                     index,
+                    variant_name,
                     sorted(payload.keys()),
                     len(payload.get("contents", [])),
                     [
@@ -104,19 +138,20 @@ class ReceiptOcrService:
                 response = await client.post(url, content=serialized_payload.encode("utf-8"), headers=headers)
                 if response.status_code >= 400:
                     logger.error(
-                        "Gemini error payloadAttempt=%s status=%s body=%s",
+                        "Gemini error payloadAttempt=%s variant=%s status=%s body=%s",
                         index,
+                        variant_name,
                         response.status_code,
                         response.text,
                     )
                 try:
                     response.raise_for_status()
-                    logger.info("Gemini request succeeded payloadAttempt=%s", index)
+                    logger.info("Gemini request succeeded payloadAttempt=%s variant=%s", index, variant_name)
                     return response.json()
                 except httpx.HTTPStatusError as exc:
                     response_text = exc.response.text
                     last_error = RuntimeError(
-                        f"Gemini request failed payloadAttempt={index} "
+                        f"Gemini request failed payloadAttempt={index} variant={variant_name} "
                         f"status={exc.response.status_code} body={response_text}"
                     )
             if last_error is not None:
