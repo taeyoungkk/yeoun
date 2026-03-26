@@ -67,7 +67,7 @@ class ReceiptOcrService:
                 "data": base64.b64encode(image_bytes).decode("ascii"),
             }
         }
-        primary_payload = {
+        payload = {
             "contents": [
                 {
                     "parts": [
@@ -77,16 +77,14 @@ class ReceiptOcrService:
                 }
             ]
         }
-        fallback_payload = {
-            "contents": primary_payload["contents"],
-            "generation_config": {
-                "temperature": 0.1,
-            },
-        }
-        return [primary_payload, fallback_payload]
+        return [payload]
 
     async def _call_gemini(self, payloads: list[dict[str, Any]]) -> dict[str, Any]:
-        url = f"{self.settings.gemini_base_url}/models/{self.settings.gemini_model}:generateContent?key={self.settings.gms_api_key}"
+        url = f"{self.settings.gemini_base_url}/models/{self.settings.gemini_model}:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.settings.gms_api_key,
+        }
         async with httpx.AsyncClient(timeout=self.settings.gemini_timeout_seconds) as client:
             last_error: Exception | None = None
             for index, payload in enumerate(payloads, start=1):
@@ -101,7 +99,7 @@ class ReceiptOcrService:
                         for part in content.get("parts", [])
                     ],
                 )
-                response = await client.post(url, json=payload)
+                response = await client.post(url, json=payload, headers=headers)
                 if response.status_code >= 400:
                     logger.error(
                         "Gemini error payloadAttempt=%s status=%s body=%s",
