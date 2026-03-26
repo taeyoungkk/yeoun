@@ -49,7 +49,7 @@ class ReceiptOcrService:
         payload: ReceiptOcrRequest,
         image_bytes: bytes,
         mime_type: str,
-    ) -> list[dict[str, Any]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         prompt = (
             "You are extracting data from a receipt image. "
             "Return only a JSON object with these fields: "
@@ -61,76 +61,99 @@ class ReceiptOcrService:
             f"The expected currency code is {payload.currency_code}. "
             f"The locale is {payload.locale}."
         )
-        image_part = {
-            "inlineData": {
-                "mimeType": mime_type,
-                "data": base64.b64encode(image_bytes).decode("ascii"),
-            }
-        }
-        primary_payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": prompt},
-                        image_part,
-                    ]
-                }
-            ],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "temperature": 0.1,
-            },
-        }
-        fallback_payload = {
-            "contents": primary_payload["contents"],
-            "generationConfig": {
-                "temperature": 0.1,
-            },
-        }
-        return [primary_payload, fallback_payload]
+        encoded_image = base64.b64encode(image_bytes).decode("ascii")
 
-    async def _call_gemini(self, payloads: list[dict[str, Any]]) -> dict[str, Any]:
-        base_url = f"{self.settings.gemini_base_url}/models/{self.settings.gemini_model}:generateContent"
-        request_variants = [
-            {
-                "name": "bearer",
-                "url": base_url,
-                "headers": {"Authorization": f"Bearer {self.settings.gms_api_key}"},
-            },
-            {
-                "name": "query",
-                "url": f"{base_url}?key={self.settings.gms_api_key}",
-                "headers": {},
-            },
+        def with_parts(image_part: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": prompt},
+                            image_part,
+                        ]
+                    }
+                ]
+            }
+
+        payloads: list[tuple[str, dict[str, Any]]] = [
+            (
+                "snake_inline_data",
+                with_parts(
+                    {
+                        "inline_data": {
+                            "mime_type": mime_type,
+                            "data": encoded_image,
+                        }
+                    }
+                ),
+            ),
+            (
+                "camel_inline_data",
+                with_parts(
+                    {
+                        "inlineData": {
+                            "mimeType": mime_type,
+                            "data": encoded_image,
+                        }
+                    }
+                ),
+            ),
+            (
+                "file_data_like",
+                with_parts(
+                    {
+                        "file_data": {
+                            "mime_type": mime_type,
+                            "file_uri": str(payload.image_url),
+                        }
+                    }
+                ),
+            ),
         ]
+        return payloads
+
+    async def _call_gemini(self, payloads: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+        url = f"{self.settings.gemini_base_url}/models/{self.settings.gemini_model}:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.settings.gms_api_key,
+        }
         async with httpx.AsyncClient(timeout=self.settings.gemini_timeout_seconds) as client:
             last_error: Exception | None = None
-            for variant in request_variants:
-                for index, payload in enumerate(payloads, start=1):
-                    response = await client.post(variant["url"], json=payload, headers=variant["headers"])
-                    if response.status_code >= 400:
-                        logger.error(
-                            "Gemini error auth=%s payloadAttempt=%s status=%s body=%s",
-                            variant["name"],
-                            index,
-                            response.status_code,
-                            response.text,
-                        )
-                    try:
-                        response.raise_for_status()
-                        logger.info(
-                            "Gemini request succeeded auth=%s payloadAttempt=%s",
-                            variant["name"],
-                            index,
-                        )
-                        return response.json()
-                    except httpx.HTTPStatusError as exc:
-                        response_text = exc.response.text
-                        last_error = RuntimeError(
-                            "Gemini request failed "
-                            f"auth={variant['name']} payloadAttempt={index} "
-                            f"status={exc.response.status_code} body={response_text}"
-                        )
+            for index, (variant_name, payload) in enumerate(payloads, start=1):
+                serialized_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                logger.info(
+                    "Gemini request payloadAttempt=%s variant=%s keys=%s contentsCount=%s partKeys=%s bodyPreview=%s",
+                    index,
+                    variant_name,
+                    sorted(payload.keys()),
+                    len(payload.get("contents", [])),
+                    [
+                        sorted(part.keys())
+                        for content in payload.get("contents", [])
+                        for part in content.get("parts", [])
+                    ],
+                    serialized_payload[:500],
+                )
+                response = await client.post(url, content=serialized_payload.encode("utf-8"), headers=headers)
+                if response.status_code >= 400:
+                    logger.error(
+                        "Gemini error payloadAttempt=%s variant=%s status=%s body=%s",
+                        index,
+                        variant_name,
+                        response.status_code,
+                        response.text,
+                    )
+                try:
+                    response.raise_for_status()
+                    logger.info("Gemini request succeeded payloadAttempt=%s variant=%s", index, variant_name)
+                    return response.json()
+                except httpx.HTTPStatusError as exc:
+                    response_text = exc.response.text
+                    last_error = RuntimeError(
+                        f"Gemini request failed payloadAttempt={index} variant={variant_name} "
+                        f"status={exc.response.status_code} body={response_text}"
+                    )
             if last_error is not None:
                 raise last_error
             raise RuntimeError("Gemini request failed without a captured error.")
