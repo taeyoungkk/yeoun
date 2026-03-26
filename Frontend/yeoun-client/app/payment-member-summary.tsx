@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 
-import { getExpenseDetailApi, getTripExpensesApi, TripExpenseItem } from '@/src/api/expense';
+import { getTripExpensesApi, TripExpenseItem } from '@/src/api/expense';
 import {
   createSettlementApi,
   getSettlementDetailApi,
@@ -54,30 +54,6 @@ const getShareAmountForMember = (expense: TripExpenseItem, memberId: string) => 
   const participantUserIds = expense.participantUserIds ?? [];
   if (!participantUserIds.includes(memberId)) return 0;
   return expense.totalAmount / Math.max(participantUserIds.length, 1);
-};
-
-const enrichExpensesWithDetails = async (items: TripExpenseItem[]) => {
-  const enrichedItems = await Promise.all(
-    items.map(async (expense) => {
-      if ((expense.participantUserIds?.length ?? 0) > 0) {
-        return expense;
-      }
-
-      try {
-        const detailResponse = await getExpenseDetailApi(expense.expenseId);
-        if (!detailResponse.success) {
-          return expense;
-        }
-
-        const participantUserIds = detailResponse.data.participantUserIds ?? [];
-        return participantUserIds.length > 0 ? { ...expense, participantUserIds } : expense;
-      } catch {
-        return expense;
-      }
-    }),
-  );
-
-  return enrichedItems;
 };
 
 export default function PaymentMemberSummaryScreen() {
@@ -147,10 +123,8 @@ export default function PaymentMemberSummaryScreen() {
           throw new Error(settlementsResponse.message ?? '정산 정보를 불러오지 못했어요.');
         }
 
-        const enrichedExpenses = await enrichExpensesWithDetails(expensesResponse.data.items);
-
         setTripMembers(membersResponse.data.items);
-        setExpenses(enrichedExpenses);
+        setExpenses(expensesResponse.data.items);
 
         let latestSettlement = [...settlementsResponse.data.items].sort((a, b) => {
           const createdAtA = new Date(a.createdAt).getTime();
@@ -158,7 +132,7 @@ export default function PaymentMemberSummaryScreen() {
           return createdAtB - createdAtA;
         })[0];
 
-        if (!latestSettlement && enrichedExpenses.length > 0) {
+        if (!latestSettlement && expensesResponse.data.items.length > 0) {
           const createResponse = await createSettlementApi(nextTripId, {});
           if (!createResponse.success) {
             throw new Error(createResponse.message ?? '정산을 생성하지 못했어요.');

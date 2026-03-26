@@ -151,30 +151,6 @@ const getCategoryIconName = (category: string) => {
   }
 };
 
-const enrichExpensesWithDetails = async (items: TripExpenseItem[]) => {
-  const enrichedItems = await Promise.all(
-    items.map(async (expense) => {
-      if ((expense.participantUserIds?.length ?? 0) > 0) {
-        return expense;
-      }
-
-      try {
-        const detailResponse = await getExpenseDetailApi(expense.expenseId);
-        if (!detailResponse.success) {
-          return expense;
-        }
-
-        const participantUserIds = detailResponse.data.participantUserIds ?? [];
-        return participantUserIds.length > 0 ? { ...expense, participantUserIds } : expense;
-      } catch {
-        return expense;
-      }
-    }),
-  );
-
-  return enrichedItems;
-};
-
 export default function PaymentDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ tripId?: string }>();
@@ -217,10 +193,8 @@ export default function PaymentDetailsScreen() {
       throw new Error(expensesResponse.message ?? '지출 내역을 불러오지 못했습니다.');
     }
 
-    const enrichedExpenses = await enrichExpensesWithDetails(expensesResponse.data.items);
-
     setTripMembers(membersResponse.data.items);
-    setExpenses(enrichedExpenses);
+    setExpenses(expensesResponse.data.items);
   }, []);
 
   const loadData = useCallback(
@@ -354,40 +328,6 @@ export default function PaymentDetailsScreen() {
       return expense.payerUserId === selectedMemberId || (expense.participantUserIds ?? []).includes(selectedMemberId);
     });
   }, [periodFilteredExpenses, selectedMemberId]);
-
-  useEffect(() => {
-    if (!__DEV__) return;
-
-    console.log(
-      '[payment-details] participant rows debug',
-      expenses.map((expense) => {
-        const participantUserIds = expense.participantUserIds ?? [];
-        return {
-          expenseId: expense.expenseId,
-          merchantName: expense.merchantName,
-          payerUserId: expense.payerUserId,
-          participantUserIds,
-          totalParticipantCount: new Set([expense.payerUserId, ...participantUserIds]).size,
-        };
-      }),
-    );
-  }, [expenses]);
-
-  useEffect(() => {
-    if (!__DEV__ || !selectedMemberId) return;
-
-    console.log(
-      '[payment-details] selectedMember share debug',
-      filteredExpenses.map((expense) => ({
-        expenseId: expense.expenseId,
-        merchantName: expense.merchantName,
-        payerUserId: expense.payerUserId,
-        participantUserIds: expense.participantUserIds ?? [],
-        selectedMemberId,
-        shareAmount: getShareAmountForMember(expense, selectedMemberId),
-      })),
-    );
-  }, [filteredExpenses, selectedMemberId]);
 
   const groupedExpenses = useMemo<GroupedExpense[]>(() => {
     const grouped = new Map<string, TripExpenseItem[]>();
