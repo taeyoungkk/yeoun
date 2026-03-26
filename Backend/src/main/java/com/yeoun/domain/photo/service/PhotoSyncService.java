@@ -18,6 +18,8 @@ import com.yeoun.domain.trip.repository.TripRepository;
 import com.yeoun.domain.tripsync.service.TripSyncStatusService;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -40,6 +42,7 @@ import java.util.UUID;
 @Transactional
 public class PhotoSyncService {
 
+    private static final Logger log = LoggerFactory.getLogger(PhotoSyncService.class);
     private static final long MAX_IMAGE_SIZE_BYTES = 20L * 1024L * 1024L;
     private static final Set<String> ALLOWED_IMAGE_CONTENT_TYPES = Set.of(
             "image/jpg",
@@ -82,6 +85,13 @@ public class PhotoSyncService {
             PhotoSyncRequest metadata,
             List<MultipartFile> files
     ) {
+        log.info(
+                "사진 동기화 시작. requesterUserId={} tripId={} metadataCount={} fileCount={}",
+                requesterUserId,
+                tripId,
+                metadata == null || metadata.items() == null ? 0 : metadata.items().size(),
+                files == null ? 0 : files.size()
+        );
         Trip trip = tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)
                 .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
         validatePhotoSyncAllowed(trip);
@@ -107,18 +117,43 @@ public class PhotoSyncService {
             validateFileName(item.fileName(), file.getOriginalFilename());
 
             if (!isAfterLastSynced(item.takenAt(), member.getLastPhotoSyncedAt())) {
+                log.info(
+                        "사진 동기화 건너뜀. 사유=이미 동기화된 시각 이전 photoFileName={} takenAt={} lastPhotoSyncedAt={}",
+                        item.fileName(),
+                        item.takenAt(),
+                        member.getLastPhotoSyncedAt()
+                );
                 continue;
             }
             if (!isWithinTripTimeRange(item.takenAt(), trip)) {
+                log.info(
+                        "사진 동기화 건너뜀. 사유=여행 시간 범위 밖 photoFileName={} takenAt={} tripId={}",
+                        item.fileName(),
+                        item.takenAt(),
+                        tripId
+                );
                 continue;
             }
 
             String hash = hashFile(file);
             if (photoRepository.existsByOwnerUserIdAndTripIdAndFileHash(requesterUserId, tripId, hash)) {
+                log.info(
+                        "사진 동기화 건너뜀. 사유=중복 파일 photoFileName={} tripId={} requesterUserId={}",
+                        item.fileName(),
+                        tripId,
+                        requesterUserId
+                );
                 continue;
             }
 
             String storageKey = photoStorageService.uploadPhoto(requesterUserId, tripId, file);
+            log.info(
+                    "사진 원본 업로드 완료. requesterUserId={} tripId={} photoFileName={} storageKey={}",
+                    requesterUserId,
+                    tripId,
+                    item.fileName(),
+                    storageKey
+            );
 
             Photo photo = Photo.builder()
                     .photoId(UUID.randomUUID())
@@ -141,6 +176,13 @@ public class PhotoSyncService {
                     .updatedAt(now)
                     .build();
             photoRepository.save(photo);
+            log.info(
+                    "사진 메타데이터 저장 완료. photoId={} tripId={} ownerUserId={} takenAt={}",
+                    photo.getPhotoId(),
+                    tripId,
+                    requesterUserId,
+                    photo.getTakenAt()
+            );
 
             PhotoProcessingRequestEvent processingRequestEvent = new PhotoProcessingRequestEvent(
                     photo.getPhotoId(),
@@ -157,6 +199,12 @@ public class PhotoSyncService {
                     0
             );
             publishAfterCommit(processingRequestEvent);
+            log.info(
+                    "사진 처리 이벤트 발행 예약 완료. photoId={} tripId={} requestedAt={}",
+                    photo.getPhotoId(),
+                    tripId,
+                    now
+            );
             queuedPhotoCount += 1;
 
             syncedItems.add(new PhotoSyncItemResponse(
@@ -167,9 +215,18 @@ public class PhotoSyncService {
             ));
         }
         tripSyncStatusService.startPhotoProcessing(tripId, now, queuedPhotoCount);
+        log.info("사진 동기화 상태 갱신 완료. tripId={} queuedPhotoCount={}", tripId, queuedPhotoCount);
 
         member.markPhotoSynced(now);
+        log.info("사진 마지막 동기화 시각 갱신 완료. requesterUserId={} tripId={} syncedAt={}", requesterUserId, tripId, now);
 
+        log.info(
+                "사진 동기화 완료. requesterUserId={} tripId={} syncedCount={} queuedPhotoCount={}",
+                requesterUserId,
+                tripId,
+                syncedItems.size(),
+                queuedPhotoCount
+        );
         return new PhotoSyncResponse(
                 tripId,
                 syncedItems.size(),
@@ -274,6 +331,7 @@ public class PhotoSyncService {
 
     private void publishAfterCommit(PhotoProcessingRequestEvent event) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            log.info("사진 처리 이벤트 즉시 발행. photoId={} tripId={}", event.photoId(), event.tripId());
             photoProcessingRequestEventPublisher.publish(event);
             return;
         }
@@ -281,6 +339,7 @@ public class PhotoSyncService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
+                log.info("사진 처리 이벤트 트랜잭션 커밋 후 발행. photoId={} tripId={}", event.photoId(), event.tripId());
                 photoProcessingRequestEventPublisher.publish(event);
             }
         });
