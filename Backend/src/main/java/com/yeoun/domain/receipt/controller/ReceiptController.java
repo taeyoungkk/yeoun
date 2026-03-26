@@ -1,12 +1,15 @@
 package com.yeoun.domain.receipt.controller;
 
 import com.yeoun.domain.receipt.dto.request.ReceiptOcrCreateRequest;
+import com.yeoun.domain.receipt.dto.request.ReceiptOcrSelectRequest;
 import com.yeoun.domain.receipt.dto.response.ReceiptOcrCreateResponse;
 import com.yeoun.domain.receipt.dto.response.ReceiptOcrResultResponse;
+import com.yeoun.domain.receipt.dto.response.ReceiptOcrSelectResponse;
 import com.yeoun.domain.receipt.dto.response.ReceiptOcrStatusResponse;
 import com.yeoun.domain.receipt.dto.response.ReceiptUploadResponse;
 import com.yeoun.domain.receipt.service.ReceiptOcrCommandService;
 import com.yeoun.domain.receipt.service.ReceiptOcrQueryService;
+import com.yeoun.domain.receipt.service.ReceiptOcrSelectService;
 import com.yeoun.domain.receipt.service.ReceiptUploadService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -37,15 +40,18 @@ public class ReceiptController {
     private final ReceiptUploadService receiptUploadService;
     private final ReceiptOcrCommandService receiptOcrCommandService;
     private final ReceiptOcrQueryService receiptOcrQueryService;
+    private final ReceiptOcrSelectService receiptOcrSelectService;
 
     public ReceiptController(
             ReceiptUploadService receiptUploadService,
             ReceiptOcrCommandService receiptOcrCommandService,
-            ReceiptOcrQueryService receiptOcrQueryService
+            ReceiptOcrQueryService receiptOcrQueryService,
+            ReceiptOcrSelectService receiptOcrSelectService
     ) {
         this.receiptUploadService = receiptUploadService;
         this.receiptOcrCommandService = receiptOcrCommandService;
         this.receiptOcrQueryService = receiptOcrQueryService;
+        this.receiptOcrSelectService = receiptOcrSelectService;
     }
 
     @PostMapping(value = "/trips/{tripId}/receipts/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -81,12 +87,27 @@ public class ReceiptController {
     }
 
     @GetMapping("/receipts/{receiptId}/ocr-result")
-    @Operation(summary = "영수증 OCR 결과 조회", description = "영수증 OCR 결과와 품목 목록을 조회합니다.")
+    @Operation(summary = "영수증 OCR 결과 조회", description = "영수증 OCR 결과와 항목 목록을 조회합니다.")
     public ApiResponse<ReceiptOcrResultResponse> getReceiptOcrResult(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @PathVariable("receiptId") UUID receiptId
     ) {
         ReceiptOcrResultResponse response = receiptOcrQueryService.getReceiptOcrResult(principal.userId(), receiptId);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/receipts/{receiptId}/select")
+    @Operation(summary = "영수증 OCR 결과 선택", description = "처리 완료된 OCR 결과를 비용(정산용)으로 생성합니다.")
+    public ApiResponse<ReceiptOcrSelectResponse> selectReceiptOcr(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("receiptId") UUID receiptId,
+            @Valid @RequestBody ReceiptOcrSelectRequest request
+    ) {
+        ReceiptOcrSelectResponse response = receiptOcrSelectService.selectReceiptOcr(
+                principal.userId(),
+                receiptId,
+                request
+        );
         return ApiResponse.ok(response);
     }
 }

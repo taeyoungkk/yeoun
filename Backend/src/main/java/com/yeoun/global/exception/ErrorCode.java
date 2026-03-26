@@ -56,6 +56,8 @@ public enum ErrorCode {
     PHOTO_SYNC_FILE_TOO_LARGE(HttpStatus.BAD_REQUEST, "Uploaded photo file is too large."),
     PHOTO_SYNC_UNSUPPORTED_FILE_TYPE(HttpStatus.BAD_REQUEST, "Unsupported photo file type."),
     RECEIPT_OCR_RESULT_NOT_FOUND(HttpStatus.NOT_FOUND, "Receipt OCR result not found."),
+    RECEIPT_OCR_SELECTION_NOT_ALLOWED(HttpStatus.CONFLICT, "Only completed receipt OCR results can be selected."),
+    RECEIPT_OCR_ALREADY_SELECTED(HttpStatus.CONFLICT, "This receipt OCR result is already linked to an expense."),
     EXPENSE_NOT_FOUND(HttpStatus.NOT_FOUND, "Expense not found."),
     EXPENSE_CREATOR_NOT_IN_TRIP(HttpStatus.FORBIDDEN, "Expense creator must be a current trip participant."),
     EXPENSE_PAYER_NOT_IN_TRIP(HttpStatus.BAD_REQUEST, "Expense payer must be a current trip participant."),

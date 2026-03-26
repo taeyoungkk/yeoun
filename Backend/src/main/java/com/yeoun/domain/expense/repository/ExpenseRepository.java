@@ -19,6 +19,8 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> {
 
     Optional<Expense> findByExpenseIdAndStatusNot(UUID expenseId, ExpenseStatus excludedStatus);
 
+    Optional<Expense> findByReceiptId(String receiptId);
+
     @Query("""
             SELECT COALESCE(SUM(e.totalAmount), 0)
             FROM Expense e
