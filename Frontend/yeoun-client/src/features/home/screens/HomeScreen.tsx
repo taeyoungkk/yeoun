@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,6 +12,11 @@ const baseImage = require('@/assets/images/base.png');
 
 const HomeScreen = () => {
     const isTripActive = useTripStore((state) => state.isTripActive);
+    const restoreActiveTripFromServer = useTripStore((state) => state.restoreActiveTripFromServer);
+
+    useEffect(() => {
+        void restoreActiveTripFromServer();
+    }, [restoreActiveTripFromServer]);
 
     return (
         <View style={styles.container}>

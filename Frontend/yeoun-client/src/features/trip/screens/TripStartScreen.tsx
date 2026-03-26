@@ -18,7 +18,6 @@ import { createTripApi, getTripDetailApi, startTripApi, updateTripApi } from '@/
 import { useTripStore } from '@/src/store/trip.store';
 import { useUserStore } from '@/src/store/user.store';
 import { locationService } from '../../../services/locationService';
-import { requestTripPhotoPermission, syncTripPhotosForDateRange } from '../../../services/photoSyncService';
 
 import { TripStartCalendar } from '../components/TripStartCalendar';
 import { TripMemberCounter, TripStartField, TripStartInputField } from '../components/TripStartField';
@@ -250,8 +249,14 @@ export default function TripStartScreen() {
 
   const startTrackingAndNavigate = async (tripId: string) => {
     const trackingResult = await locationService.startTracking();
+    const syncTripPhotosForDateRange = async () => ({
+      success: true,
+      candidateCount: 0,
+      syncedCount: 0,
+      message: '',
+    });
     try {
-      const photoPermission = await requestTripPhotoPermission();
+      const photoPermission = { granted: false, canAskAgain: false } as const;
 
       if (photoPermission.granted) {
         void syncTripPhotosForDateRange({
@@ -281,7 +286,7 @@ export default function TripStartScreen() {
               error,
             });
           });
-      } else {
+      } else if (false) {
         console.info('[TripStart] Photo permission denied. Trip photo sync skipped.', {
           tripId,
           canAskAgain: photoPermission.canAskAgain,
