@@ -269,9 +269,6 @@ export default function NotificationsScreen() {
           </View>
         </View>
         <View className="flex-row items-center gap-3">
-          <TouchableOpacity onPress={() => router.push('/notifications-mock' as any)}>
-            <Text className="text-sm text-[#5F6B65]">목업 화면</Text>
-          </TouchableOpacity>
           {activeTab === 'active' && unreadCount > 0 ? (
             <TouchableOpacity onPress={() => void markAllAsRead()}>
               <Text className="text-sm font-semibold text-[#315B45]">알림 모두 확인</Text>

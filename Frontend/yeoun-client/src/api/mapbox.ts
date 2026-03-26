@@ -69,3 +69,36 @@ export async function matchMapTrace(
     return null;
   }
 }
+/**
+ * Reverse geocodes [longitude, latitude] to a Korean address string using Mapbox Geocoding API.
+ */
+export async function reverseGeocodeKo(
+  longitude: number,
+  latitude: number
+): Promise<string | null> {
+  if (!MAPBOX_ACCESS_TOKEN) return null;
+
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json`;
+
+  try {
+    const response = await axios.get(url, {
+      params: {
+        access_token: MAPBOX_ACCESS_TOKEN,
+        language: 'ko',
+        types: 'district,place,locality,neighborhood',
+        limit: 1,
+      },
+    });
+
+    if (response.data.features && response.data.features.length > 0) {
+      // Mapbox features have a 'place_name' which is usually a full localized address
+      // or we can use the 'text' of the most specific feature.
+      return response.data.features[0].place_name;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('[Mapbox API] Error calling Reverse Geocoding API:', error);
+    return null;
+  }
+}

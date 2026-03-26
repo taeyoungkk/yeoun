@@ -121,8 +121,8 @@ const initialExpenses: ExpenseItem[] = [
 ];
 
 export const useExpenseStore = create<ExpenseStore>((set, get) => ({
-  members: initialMembers,
-  expenses: initialExpenses,
+  members: [],
+  expenses: [],
   isLoading: false,
   error: null,
 

@@ -7,8 +7,7 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { getEventDetailApi, getTimelineDayDetailApi, getTripTimelineDaysApi } from '@/src/api/timeline';
 import { getTripRouteByDayApi } from '@/src/api/trip';
 import { configureMapbox } from '@/src/lib/mapbox';
-import { useTripStore } from '@/src/store/trip.store';
-import { globalUserState, subscribeUser } from '@/src/store/userStore';
+import { useTripStore, useUserStore } from '@/src/store';
 
 import { locationService } from '../../services/locationService';
 import { LocationMarker, PhotoMarker } from './EventMarkers';
@@ -38,6 +37,7 @@ export function ActiveTripMap() {
   const cameraRef = useRef<Mapbox.Camera>(null);
   const tripId = useTripStore((state) => state.currentTripId);
   const routeRefreshKey = useTripStore((state) => state.routeRefreshKey);
+  const { showPhotoPins, showPaymentPins } = useUserStore((state) => state.settings);
 
   const [currentCoordinate, setCurrentCoordinate] = useState<[number, number] | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
@@ -48,21 +48,6 @@ export function ActiveTripMap() {
   const [isLoadingMarkers, setIsLoadingMarkers] = useState(false);
   const [markerLoadFailed, setMarkerLoadFailed] = useState(false);
   const [isFollowing, setIsFollowing] = useState(true);
-  const [mapPreferences, setMapPreferences] = useState({
-    showPhotoPins: globalUserState.showPhotoPins,
-    showPaymentPins: globalUserState.showPaymentPins,
-  });
-
-  useEffect(() => {
-    const unsubscribeUser = subscribeUser(() => {
-      setMapPreferences({
-        showPhotoPins: globalUserState.showPhotoPins,
-        showPaymentPins: globalUserState.showPaymentPins,
-      });
-    });
-
-    return unsubscribeUser;
-  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -238,7 +223,7 @@ export function ActiveTripMap() {
 
   const filteredMarkers = markers.filter((marker) => {
     if (marker.type === 'photo') {
-      return mapPreferences.showPhotoPins;
+      return showPhotoPins;
     }
     return true;
   });

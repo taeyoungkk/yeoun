@@ -7,6 +7,7 @@ export interface UserProfileData {
   nickname: string;
   profileImageUrl: string | null;
   timezone: string;
+  createdAt: string;
   role: string;
   status: string;
 }
@@ -20,6 +21,7 @@ let mockProfile: UserProfileData = {
   nickname: 'MockUser',
   profileImageUrl: null,
   timezone: 'Asia/Seoul',
+  createdAt: '2024-03-26T11:54:08.909Z',
   role: 'USER',
   status: 'ACTIVE',
 };

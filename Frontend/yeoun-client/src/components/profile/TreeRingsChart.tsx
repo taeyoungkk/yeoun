@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import Svg, { Path, G, Text as SvgText, Defs, TextPath } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useStatsStore } from '@/src/store';
+import { calculateRegionStats, RegionStats, INITIAL_REGIONS_DATA } from '@/src/utils/regionMapper';
 
-const regionsData = [
+const MOCK_REGIONS_DATA: RegionStats[] = [
   { id: 'capital',    name: '수도권',   desc: '서울·경기·인천',     total: 66,  visited: 5  },
   { id: 'gangwon',   name: '강원권',   desc: '강원특별자치도',      total: 18,  visited: 2  },
   { id: 'chungbuk',  name: '충북권',   desc: '충청북도',           total: 11,  visited: 1  },
@@ -19,7 +21,7 @@ const CENTER = 200;
 const MAX_RADIUS = 160;
 const INNER_RADIUS = 35;
 const RINGS_COUNT = 10;
-const SIDES = regionsData.length;
+const SIDES = 8; // Number of regional categories
 const STEP = (MAX_RADIUS - INNER_RADIUS) / RINGS_COUNT;
 const ANGLE_STEP = 360 / SIDES;
 
@@ -42,7 +44,7 @@ function getPoint(angleDeg: number, radius: number) {
     return { x: CENTER + radius * Math.cos(rad), y: CENTER + radius * Math.sin(rad) };
 }
 
-function getSmoothedPercent(angleDeg: number) {
+function getSmoothedPercent(angleDeg: number, regionsData: RegionStats[]) {
     let shiftedAngle = angleDeg - (ANGLE_STEP / 2);
     if (shiftedAngle < 0) shiftedAngle += 360;
 
@@ -59,10 +61,10 @@ function getSmoothedPercent(angleDeg: number) {
     return p1 * (1 - t_smooth) + p2 * t_smooth;
 }
 
-function generateRingPath(ringIndex: number, isBackground: boolean) {
+function generateRingPath(ringIndex: number, isBackground: boolean, regionsData: RegionStats[]) {
     let points = [];
     for (let a = 0; a <= 360; a++) {
-        let percent = isBackground ? 1.0 : getSmoothedPercent(a);
+        let percent = isBackground ? 1.0 : getSmoothedPercent(a, regionsData);
         let r_ideal = INNER_RADIUS + ringIndex * STEP;
         let r_max = INNER_RADIUS + (percent * RINGS_COUNT) * STEP;
 
@@ -91,28 +93,27 @@ function generateRingPath(ringIndex: number, isBackground: boolean) {
 
 export const TreeRingsChart = () => {
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const visitedSigCodes = useStatsStore((state) => state.visitedSigCodes);
+  
+  // Calculate real data from store
+  const regionsData = calculateRegionStats(visitedSigCodes);
 
-  const globalVisited = regionsData.reduce((sum, r) => sum + r.visited, 0);
-  const globalTotal = regionsData.reduce((sum, r) => sum + r.total, 0);
-  const globalPercent = Math.round((globalVisited / globalTotal) * 100);
+  const globalVisited = regionsData.reduce((sum: number, r: RegionStats) => sum + r.visited, 0);
+  const globalTotal = regionsData.reduce((sum: number, r: RegionStats) => sum + r.total, 0);
+  const globalPercent = globalTotal > 0 ? Math.round((globalVisited / globalTotal) * 100) : 0;
 
   const selectedRegion = selectedRegionId ? regionsData.find(r => r.id === selectedRegionId) : null;
 
   const currentVisited = selectedRegion ? selectedRegion.visited : globalVisited;
   const currentTotal = selectedRegion ? selectedRegion.total : globalTotal;
-  const currentPercent = selectedRegion ? Math.round((currentVisited / currentTotal) * 100) : globalPercent;
+  const currentPercent = currentTotal > 0 ? Math.round((currentVisited / currentTotal) * 100) : 0;
 
-  // 다양한 플랫폼에서 안정적으로 작동하도록 SVG 요소에 대한 수동 터치 핸들러
+  // Manual touch handler for SVG chart
   const handleTouch = (evt: any) => {
-    // SVG 래퍼 중심을 기준으로 한 좌표 가져오기
     const { locationX, locationY } = evt.nativeEvent;
-    // 내부적으로 맵 뷰는 400x400이지만 반응형 컨테이너에서 렌더링됩니다.
-    // 하지만 터치 이벤트는 Svg 래퍼 뷰에서 발생합니다!
-    // aspectRatio: 1 이므로 뷰가 정사각형이라고 가정합니다.
-    const rectSize = Dimensions.get('window').width - 40; // 컨테이너의 대략적인 너비
+    const rectSize = Dimensions.get('window').width - 40;
     const scale = 400 / rectSize;
     
-    // 터치 포인트를 SVG 400x400 좌표계로 변환
     const x = locationX * scale;
     const y = locationY * scale;
 
@@ -120,17 +121,14 @@ export const TreeRingsChart = () => {
     const dy = y - CENTER;
     const distance = Math.sqrt(dx * dx + dy * dy);
 
-    // 최대 반지름을 벗어나거나 내부 반지름 안쪽인 경우 초기화
     if (distance > MAX_RADIUS + 40 || distance < INNER_RADIUS - 10) {
       setSelectedRegionId(null);
       return;
     }
 
-    // 각도를 도로 계산 (0도는 위, 시계 방향)
     let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
     if (angle < 0) angle += 360;
 
-    // 이 각도가 어느 권역에 속하는지 확인
     const index = Math.floor(angle / ANGLE_STEP);
     if (index >= 0 && index < SIDES) {
       setSelectedRegionId(regionsData[index].id);
@@ -157,7 +155,7 @@ export const TreeRingsChart = () => {
                 return (
                   <Path
                     key={`bg-${r}`}
-                    d={generateRingPath(r, true)}
+                    d={generateRingPath(r, true, regionsData)}
                     fill="#EBF3EA"
                     stroke="#DDE5B6"
                     strokeWidth="1"
@@ -171,7 +169,7 @@ export const TreeRingsChart = () => {
                 return (
                   <Path
                     key={`prog-${r}`}
-                    d={generateRingPath(r, false)}
+                    d={generateRingPath(r, false, regionsData)}
                     fill={getRingColor(r - 1, RINGS_COUNT)}
                     stroke="rgba(235, 243, 234, 0.4)"
                     strokeWidth="0.75"
@@ -217,7 +215,7 @@ export const TreeRingsChart = () => {
                 })}
               </Defs>
 
-              {regionsData.map((region) => (
+              {regionsData.map((region: RegionStats) => (
                 <SvgText
                   key={`label-${region.id}`}
                   fill="#6C584C"
@@ -235,7 +233,7 @@ export const TreeRingsChart = () => {
               ))}
             </G>
             <G id="interaction">
-              {regionsData.map((region, i) => {
+              {regionsData.map((region: RegionStats, i: number) => {
                 let startAngle = i * ANGLE_STEP;
                 let endAngle = (i + 1) * ANGLE_STEP;
                 let p1 = getPoint(startAngle, MAX_RADIUS + 40);
@@ -306,7 +304,7 @@ export const TreeRingsChart = () => {
 
       {/* 하단 그리드 범례 - 사용자 스크린샷에 보이는 하단 범례 */}
       <View className="w-full flex-row flex-wrap bg-white rounded-2xl p-4 gap-y-2 gap-x-3">
-        {regionsData.map(region => (
+        {regionsData.map((region: RegionStats) => (
           <TouchableOpacity 
             key={region.id} 
             className="w-[45%] flex-row justify-between my-1"
