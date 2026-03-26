@@ -370,6 +370,18 @@ const hasSyncVersionChanged = (
   baseline.timelineVersion !== nextStatus.timelineVersion ||
   baseline.photoVersion !== nextStatus.photoVersion;
 
+const isLocationSyncComplete = (
+  baseline: TripSyncStatusData | null,
+  nextStatus: TripSyncStatusData,
+) =>
+  nextStatus.pendingLocationCount === 0 &&
+  (
+    baseline == null ||
+    baseline.pendingLocationCount > 0 ||
+    baseline.routeVersion !== nextStatus.routeVersion ||
+    baseline.timelineVersion !== nextStatus.timelineVersion
+  );
+
 const pollTripSyncStatus = async (tripId: string, baseline: TripSyncStatusData | null) => {
   const startedAt = Date.now();
   let observedProcessing = false;
@@ -380,6 +392,8 @@ const pollTripSyncStatus = async (tripId: string, baseline: TripSyncStatusData |
     baselineRouteVersion: baseline?.routeVersion ?? null,
     baselineTimelineVersion: baseline?.timelineVersion ?? null,
     baselinePhotoVersion: baseline?.photoVersion ?? null,
+    baselinePendingLocationCount: baseline?.pendingLocationCount ?? null,
+    baselinePendingPhotoCount: baseline?.pendingPhotoCount ?? null,
     timeoutMs: LOCATION_STATUS_POLL_TIMEOUT_MS,
   });
 
@@ -392,6 +406,8 @@ const pollTripSyncStatus = async (tripId: string, baseline: TripSyncStatusData |
       routeVersion: response.data?.routeVersion ?? null,
       timelineVersion: response.data?.timelineVersion ?? null,
       photoVersion: response.data?.photoVersion ?? null,
+      pendingLocationCount: response.data?.pendingLocationCount ?? null,
+      pendingPhotoCount: response.data?.pendingPhotoCount ?? null,
       elapsedMs: Date.now() - startedAt,
     });
 
@@ -399,6 +415,13 @@ const pollTripSyncStatus = async (tripId: string, baseline: TripSyncStatusData |
       console.warn('Failed to poll trip sync status:', response.message);
       setLocationSyncState('failed', response.message || '여행 동기화 상태를 확인하지 못했습니다.');
       return false;
+    }
+
+    if (isLocationSyncComplete(baseline, response.data)) {
+      console.log('Trip location sync completed:', response.data);
+      setLocationSyncState('completed', 'GPS 기록 동기화가 완료되었습니다.');
+      useTripStore.getState().bumpRouteRefreshKey();
+      return true;
     }
 
     if (isTripSyncProcessing(response.data.syncStatus)) {
@@ -591,6 +614,8 @@ export const locationService = {
         routeVersion: baselineSyncStatus?.routeVersion ?? null,
         timelineVersion: baselineSyncStatus?.timelineVersion ?? null,
         photoVersion: baselineSyncStatus?.photoVersion ?? null,
+        pendingLocationCount: baselineSyncStatus?.pendingLocationCount ?? null,
+        pendingPhotoCount: baselineSyncStatus?.pendingPhotoCount ?? null,
       });
       const response = await uploadLocationsApi(tripId, logs);
 

@@ -191,6 +191,8 @@ export interface TripSyncStatusData {
   routeVersion: number;
   timelineVersion: number;
   photoVersion: number;
+  pendingLocationCount: number;
+  pendingPhotoCount: number;
   updatedAt?: string | null;
   lastErrorMessage?: string | null;
 }
@@ -793,6 +795,8 @@ export const getTripSyncStatusApi = async (tripId: string): Promise<TripSyncStat
         routeVersion: 1,
         timelineVersion: 1,
         photoVersion: 1,
+        pendingLocationCount: 0,
+        pendingPhotoCount: 0,
         updatedAt: new Date().toISOString(),
         lastErrorMessage: null,
       },
@@ -815,6 +819,8 @@ export const getTripSyncStatusApi = async (tripId: string): Promise<TripSyncStat
           routeVersion: 1,
           timelineVersion: 1,
           photoVersion: 1,
+          pendingLocationCount: 0,
+          pendingPhotoCount: 0,
           updatedAt: new Date().toISOString(),
           lastErrorMessage: null,
         },
@@ -833,6 +839,8 @@ export const getTripSyncStatusApi = async (tripId: string): Promise<TripSyncStat
         routeVersion: 0,
         timelineVersion: 0,
         photoVersion: 0,
+        pendingLocationCount: 0,
+        pendingPhotoCount: 0,
         updatedAt: null,
         lastErrorMessage: null,
       },

@@ -53,7 +53,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
   const setReviewTrip = useTripStore((state) => state.setReviewTrip);
 
   const [isLoading, setIsLoading] = useState(true);
-  const currentDisplayedTripId = activeTrip?.tripId ?? currentTrip?.tripId ?? null;
+  const currentDisplayedTripId = isTripActive ? activeTrip?.tripId ?? currentTrip?.tripId ?? null : null;
 
   const handleOpenCurrentTrip = () => {
     if (!currentDisplayedTripId) {

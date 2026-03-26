@@ -908,7 +908,7 @@ function RealTripRecordingScreen({
           ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
           : {};
 
-        if (tripDetailResponse.success) {
+        if (tripDetailResponse.success && !isReviewMode) {
           setActiveTrip(tripDetailResponse.data);
         }
         setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
@@ -948,7 +948,7 @@ function RealTripRecordingScreen({
     return () => {
       cancelled = true;
     };
-  }, [activeTripId, currentUserId, currentUserNickname, routeRefreshKey, setActiveTrip]);
+  }, [activeTripId, currentUserId, currentUserNickname, isReviewMode, routeRefreshKey, setActiveTrip]);
 
   useEffect(() => {
     const unsubscribe = subscribeUser(() => {

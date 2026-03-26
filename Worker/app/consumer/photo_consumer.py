@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
 
@@ -19,9 +20,14 @@ logger = logging.getLogger(__name__)
 
 try:
     from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+    from aiokafka.structs import TopicPartition
 except ImportError:  # pragma: no cover
     AIOKafkaConsumer = None
     AIOKafkaProducer = None
+    TopicPartition = None
+
+
+PartitionKey = tuple[str, int]
 
 
 class PhotoConsumer:
@@ -36,9 +42,13 @@ class PhotoConsumer:
         self._consumer: Any = None
         self._producer: Any = None
         self._task: asyncio.Task | None = None
+        self._inflight_tasks: set[asyncio.Task] = set()
+        self._next_commit_offsets: dict[PartitionKey, int] = {}
+        self._processed_offsets: dict[PartitionKey, set[int]] = {}
+        self._max_inflight = max(1, settings.kafka_photo_max_inflight)
 
     async def start(self) -> None:
-        if AIOKafkaConsumer is None or AIOKafkaProducer is None:
+        if AIOKafkaConsumer is None or AIOKafkaProducer is None or TopicPartition is None:
             logger.warning("aiokafka is not installed; photo Kafka consumer is disabled.")
             return
 
@@ -58,12 +68,19 @@ class PhotoConsumer:
         await self._consumer.start()
         await self._producer.start()
         self._task = asyncio.create_task(self._consume_loop())
-        logger.info("Photo consumer started for topics=%s", ", ".join(self._subscription_topics()))
+        logger.info(
+            "Photo consumer started for topics=%s maxInflight=%s",
+            ", ".join(self._subscription_topics()),
+            self._max_inflight,
+        )
 
     async def stop(self) -> None:
         if self._task:
-            self._task.cancel()
+            task = self._task
             self._task = None
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
         if self._consumer:
             await self._consumer.stop()
@@ -74,19 +91,34 @@ class PhotoConsumer:
             self._producer = None
 
     async def _consume_loop(self) -> None:
-        async for message in self._consumer:
-            try:
-                await self._process_message(message)
-            except Exception:
-                logger.exception("Fatal error while processing Kafka photo message. Consumer task will stop.")
-                raise
+        try:
+            while True:
+                await self._drain_completed_tasks(wait=False)
+                if len(self._inflight_tasks) >= self._max_inflight:
+                    await self._drain_completed_tasks(wait=True)
+                    continue
+
+                message = await self._consumer.getone()
+                self._register_message(message)
+                task = asyncio.create_task(self._process_message_with_tracking(message))
+                self._inflight_tasks.add(task)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Fatal error while processing Kafka photo message. Consumer task will stop.")
+            raise
+        finally:
+            await self._await_inflight_tasks(cancel_pending=True)
+
+    async def _process_message_with_tracking(self, message: Any) -> None:
+        await self._process_message(message)
+        await self._mark_offset_processed(message)
 
     async def _process_message(self, message: Any) -> None:
         try:
             payload = PhotoProcessingRequest.model_validate(message.value)
         except ValidationError as exc:
             await self._handle_invalid_payload(message, exc)
-            await self._consumer.commit()
             return
 
         self.status_writer.mark_processing(
@@ -111,7 +143,6 @@ class PhotoConsumer:
                 attempt=payload.attempt,
             )
             await self.publish_result(result_message)
-            await self._consumer.commit()
 
             logger.info(
                 (
@@ -142,7 +173,6 @@ class PhotoConsumer:
             )
         except Exception as exc:
             await self._handle_processing_failure(message, payload, exc)
-            await self._consumer.commit()
 
     async def publish_result(self, message: PhotoProcessingResultMessage) -> None:
         await self._publish(
@@ -339,6 +369,65 @@ class PhotoConsumer:
         if self.settings.kafka_photo_retry_topic not in topics:
             topics.append(self.settings.kafka_photo_retry_topic)
         return topics
+
+    def _register_message(self, message: Any) -> None:
+        partition_key = self._partition_key(message)
+        self._processed_offsets.setdefault(partition_key, set())
+        self._next_commit_offsets.setdefault(partition_key, message.offset)
+
+    async def _mark_offset_processed(self, message: Any) -> None:
+        partition_key = self._partition_key(message)
+        processed_offsets = self._processed_offsets.setdefault(partition_key, set())
+        next_commit_offset = self._next_commit_offsets.setdefault(partition_key, message.offset)
+        processed_offsets.add(message.offset)
+
+        advanced_offset = next_commit_offset
+        while advanced_offset in processed_offsets:
+            processed_offsets.remove(advanced_offset)
+            advanced_offset += 1
+
+        if advanced_offset == next_commit_offset:
+            return
+
+        self._next_commit_offsets[partition_key] = advanced_offset
+        await self._consumer.commit(
+            {
+                TopicPartition(message.topic, message.partition): advanced_offset,
+            }
+        )
+
+    async def _drain_completed_tasks(self, *, wait: bool) -> None:
+        if not self._inflight_tasks:
+            return
+
+        done_tasks = {task for task in self._inflight_tasks if task.done()}
+        if wait and not done_tasks:
+            done_tasks, _ = await asyncio.wait(self._inflight_tasks, return_when=asyncio.FIRST_COMPLETED)
+
+        for task in done_tasks:
+            self._inflight_tasks.remove(task)
+            task.result()
+
+    async def _await_inflight_tasks(self, *, cancel_pending: bool) -> None:
+        if not self._inflight_tasks:
+            return
+
+        tasks = list(self._inflight_tasks)
+        self._inflight_tasks.clear()
+
+        if cancel_pending:
+            for task in tasks:
+                task.cancel()
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                continue
+            if isinstance(result, Exception):
+                raise result
+
+    def _partition_key(self, message: Any) -> PartitionKey:
+        return message.topic, message.partition
 
     def _utcnow(self) -> datetime:
         return datetime.now(timezone.utc)
