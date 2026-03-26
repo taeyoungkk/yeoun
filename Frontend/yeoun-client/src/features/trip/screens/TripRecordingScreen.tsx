@@ -1184,7 +1184,7 @@ function RealTripRecordingScreen({
       return;
     }
 
-    void runAutoPhotoSync(true);
+    void runAutoPhotoSync(false);
 
     autoPhotoSyncTimerRef.current = setInterval(() => {
       void runAutoPhotoSync(false);
@@ -1195,7 +1195,7 @@ function RealTripRecordingScreen({
       appStateRef.current = nextAppState;
 
       if ((previousAppState === 'background' || previousAppState === 'inactive') && nextAppState === 'active') {
-        void runAutoPhotoSync(true);
+        void runAutoPhotoSync(false);
       }
     });
 
