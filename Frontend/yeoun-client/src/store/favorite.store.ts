@@ -11,7 +11,7 @@ interface FavoriteState {
 export const useFavoriteStore = create<FavoriteState>()(
   persist(
     (set, get) => ({
-      favoriteIds: ['1', '2'], // Initial mock favorites to match MyPage
+      favoriteIds: [], // Initialize empty
       toggleFavorite: (id) => {
         const { favoriteIds } = get();
         const isFav = favoriteIds.includes(id);

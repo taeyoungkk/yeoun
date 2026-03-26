@@ -21,8 +21,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -48,13 +51,15 @@ public class ExpenseQueryService {
     }
 
     public ExpenseListResponse getTripExpenses(UUID requesterUserId, UUID tripId) {
-        log.info("여행 비용 목록 조회 시작. requesterUserId={} tripId={}", requesterUserId, tripId);
+        log.info("Trip expense list lookup started. requesterUserId={} tripId={}", requesterUserId, tripId);
         Trip trip = findNonDeletedTripOrThrow(tripId);
         validateTripAccessible(requesterUserId, trip);
 
-        List<ExpenseListItemResponse> items = expenseRepository
-                .findByTripIdAndStatusNotOrderByPaidAtDescCreatedAtDesc(tripId, ExpenseStatus.DELETED)
-                .stream()
+        List<Expense> expenses = expenseRepository
+                .findByTripIdAndStatusNotOrderByPaidAtDescCreatedAtDesc(tripId, ExpenseStatus.DELETED);
+        Map<UUID, List<ExpenseSplitItemResponse>> splitsByExpenseId = loadSplitsByExpenseId(expenses);
+
+        List<ExpenseListItemResponse> items = expenses.stream()
                 .map(expense -> new ExpenseListItemResponse(
                         expense.getExpenseId(),
                         expense.getTripId(),
@@ -66,16 +71,17 @@ public class ExpenseQueryService {
                         expense.getPayerUserId(),
                         expense.getSplitType(),
                         expense.getSourceType(),
-                        expense.getStatus()
+                        expense.getStatus(),
+                        splitsByExpenseId.getOrDefault(expense.getExpenseId(), List.of())
                 ))
                 .toList();
 
-        log.info("여행 비용 목록 조회 완료. requesterUserId={} tripId={} expenseCount={}", requesterUserId, tripId, items.size());
+        log.info("Trip expense list lookup completed. requesterUserId={} tripId={} expenseCount={}", requesterUserId, tripId, items.size());
         return new ExpenseListResponse(items);
     }
 
     public ExpenseDetailResponse getExpenseDetail(UUID requesterUserId, UUID expenseId) {
-        log.info("여행 비용 상세 조회 시작. requesterUserId={} expenseId={}", requesterUserId, expenseId);
+        log.info("Expense detail lookup started. requesterUserId={} expenseId={}", requesterUserId, expenseId);
         Expense expense = expenseRepository.findByExpenseIdAndStatusNot(expenseId, ExpenseStatus.DELETED)
                 .orElseThrow(() -> new BaseException(ErrorCode.EXPENSE_NOT_FOUND));
 
@@ -105,8 +111,23 @@ public class ExpenseQueryService {
                 expense.getCreatedAt(),
                 expense.getUpdatedAt()
         );
-        log.info("여행 비용 상세 조회 완료. requesterUserId={} expenseId={} splitCount={}", requesterUserId, expenseId, splitItems.size());
+        log.info("Expense detail lookup completed. requesterUserId={} expenseId={} splitCount={}", requesterUserId, expenseId, splitItems.size());
         return response;
+    }
+
+    private Map<UUID, List<ExpenseSplitItemResponse>> loadSplitsByExpenseId(List<Expense> expenses) {
+        List<UUID> expenseIds = expenses.stream()
+                .map(Expense::getExpenseId)
+                .toList();
+        if (expenseIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        return expenseSplitRepository.findByExpenseIdIn(expenseIds).stream()
+                .collect(Collectors.groupingBy(
+                        ExpenseSplit::getExpenseId,
+                        Collectors.mapping(this::toSplitItem, Collectors.toList())
+                ));
     }
 
     private ExpenseSplitItemResponse toSplitItem(ExpenseSplit split) {
