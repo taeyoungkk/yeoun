@@ -16,6 +16,9 @@ import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -54,6 +57,7 @@ public class ReceiptOcrCommandService {
                 .orElseThrow(() -> new BaseException(ErrorCode.TRIP_NOT_FOUND));
 
         validateTripAccessible(requesterUserId, trip);
+        String normalizedImageUrl = validateAndNormalizeImageUrl(requesterUserId, tripId, request.imageUrl());
 
         UUID receiptId = UUID.randomUUID();
         Instant requestedAt = Instant.now();
@@ -62,7 +66,7 @@ public class ReceiptOcrCommandService {
         receiptOcrRequestEventPublisher.publish(new ReceiptOcrRequestEvent(
                 receiptId,
                 tripId,
-                request.imageUrl().trim(),
+                normalizedImageUrl,
                 normalizeCurrencyCode(request.currencyCode()),
                 normalizeLocale(request.locale()),
                 requestedAt,
@@ -104,6 +108,37 @@ public class ReceiptOcrCommandService {
         );
         if (!isCurrentMember) {
             throw new BaseException(ErrorCode.TRIP_FORBIDDEN);
+        }
+    }
+
+    private String validateAndNormalizeImageUrl(UUID requesterUserId, UUID tripId, String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Image url is required.");
+        }
+
+        String normalized = imageUrl.trim();
+        String expectedPrefix = "receipts/" + requesterUserId + "/" + tripId + "/";
+
+        try {
+            URI uri = URI.create(normalized);
+            String scheme = uri.getScheme();
+            if (scheme == null || (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme))) {
+                throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Invalid receipt image url.");
+            }
+
+            String path = uri.getPath();
+            if (path == null || path.isBlank()) {
+                throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Invalid receipt image url.");
+            }
+
+            String decodedPath = URLDecoder.decode(path, StandardCharsets.UTF_8);
+            String normalizedPath = decodedPath.startsWith("/") ? decodedPath.substring(1) : decodedPath;
+            if (!normalizedPath.startsWith(expectedPrefix) && !normalizedPath.contains("/" + expectedPrefix)) {
+                throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Image url is not issued for this trip receipt.");
+            }
+            return normalized;
+        } catch (IllegalArgumentException exception) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Invalid receipt image url.");
         }
     }
 
