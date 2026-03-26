@@ -109,6 +109,13 @@ const chunkArray = <T,>(items: T[], size: number): T[][] => {
   return chunks;
 };
 
+const sortCandidatesByTakenAtAsc = (candidates: SyncCandidate[]) =>
+  [...candidates].sort((left, right) => {
+    const leftTime = left.metadata.takenAt ? new Date(left.metadata.takenAt).getTime() : Number.NEGATIVE_INFINITY;
+    const rightTime = right.metadata.takenAt ? new Date(right.metadata.takenAt).getTime() : Number.NEGATIVE_INFINITY;
+    return leftTime - rightTime;
+  });
+
 const getTakenAt = (creationTime: number | undefined) => {
   if (typeof creationTime !== 'number' || !Number.isFinite(creationTime) || creationTime <= 0) {
     return null;
@@ -264,7 +271,8 @@ export const syncTripPhotosForDateRange = async ({
     };
   }
 
-  const candidateBatches = chunkArray(candidates, PHOTO_SYNC_BATCH_SIZE);
+  const orderedCandidates = sortCandidatesByTakenAtAsc(candidates);
+  const candidateBatches = chunkArray(orderedCandidates, PHOTO_SYNC_BATCH_SIZE);
   let syncedCount = 0;
   let success = true;
   let lastMessage: string | undefined;
