@@ -1,4 +1,4 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+﻿import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -24,7 +24,7 @@ import { TripMemberCounter, TripStartField, TripStartInputField } from '../compo
 import { TripStartHeader } from '../components/TripStartHeader';
 
 type PickerMode = 'month' | 'year' | null;
-type NoticeModalType = 'missing' | 'start' | null;
+type NoticeModalType = 'missing' | 'start' | 'updated' | null;
 
 const WEEK_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 const MONTH_LABELS = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
@@ -103,6 +103,7 @@ function FieldNoticeModal({
               color={type === 'missing' ? '#5D6C63' : '#355D49'}
             />
           </View>
+
           {type === 'missing' ? (
             <>
               <Text style={styles.modalTitle}>입력 정보가 부족합니다</Text>
@@ -120,11 +121,20 @@ function FieldNoticeModal({
                 <Text style={styles.modalPrimaryButtonText}>확인</Text>
               </TouchableOpacity>
             </>
+          ) : type === 'updated' ? (
+            <>
+              <Text style={styles.modalTitle}>여행 수정 완료</Text>
+              <Text style={styles.modalDescription}>여행 정보가 반영되었어요.</Text>
+
+              <TouchableOpacity style={styles.modalPrimaryButton} onPress={onConfirm} activeOpacity={0.88}>
+                <Text style={styles.modalPrimaryButtonText}>확인</Text>
+              </TouchableOpacity>
+            </>
           ) : (
             <>
               <Text style={styles.modalTitle}>{isEditing ? '여행 정보를 수정할까요?' : '이 여행을 시작할까요?'}</Text>
               <Text style={styles.modalDescription}>
-                {isEditing ? '현재 입력한 내용으로 여행 정보를 갱신합니다.' : '여행을 생성하고 바로 기록을 시작합니다.'}
+                {isEditing ? '현재 입력한 내용으로 여행 정보를 수정합니다.' : '여행을 생성하고 바로 기록을 시작합니다.'}
               </Text>
 
               <View style={styles.summaryCard}>
@@ -234,6 +244,16 @@ export default function TripStartScreen() {
     [currentTrip?.tripId, editSourceTrip?.destination, editSourceTrip?.origin, endDate, memberCount, startDate, tripName],
   );
 
+  const handleCloseNoticeModal = () => {
+    if (noticeModalType === 'updated') {
+      setNoticeModalType(null);
+      router.replace('/trip/recording');
+      return;
+    }
+
+    setNoticeModalType(null);
+  };
+
   const handlePickDay = (date: Date) => {
     const pickedDate = startOfDay(date);
     if (pickedDate < today) {
@@ -271,6 +291,7 @@ export default function TripStartScreen() {
       syncedCount: 0,
       message: '',
     });
+
     try {
       const photoPermission = { granted: false, canAskAgain: false } as const;
 
@@ -309,7 +330,7 @@ export default function TripStartScreen() {
         });
         Alert.alert(
           '사진 권한 필요',
-          '사진 권한을 허용하지 않으면 여행 기간 사진이 자동으로 동기화되지 않아 기록이 일부 비어 보일 수 있습니다.',
+          '사진 권한을 허용하지 않으면 여행 기간 사진을 자동으로 불러오지 못해 기록이 비어 보일 수 있습니다.',
         );
       }
     } catch (error) {
@@ -322,12 +343,12 @@ export default function TripStartScreen() {
     if (!trackingResult.success || !trackingResult.backgroundGranted) {
       Alert.alert(
         '권한 안내',
-        '위치 권한을 허용하지 않으면 이동 경로와 방문 장소 기록이 정확하지 않거나 일부 누락될 수 있습니다.',
+        '위치 권한을 허용하지 않으면 이동 경로와 방문 장소 기록이 정확하지 않을 수 있습니다.',
       );
     }
 
     if (!trackingResult.success) {
-      Alert.alert('위치 추적 실패', '여행 기록을 시작했지만 위치 추적 권한을 확인하지 못했습니다.');
+      Alert.alert('위치 추적 실패', '여행 기록은 시작했지만 위치 추적 권한을 확인하지 못했습니다.');
     } else if (!trackingResult.backgroundGranted) {
       Alert.alert('백그라운드 위치 권한 필요', '앱이 꺼져 있어도 기록하려면 설정에서 항상 허용으로 변경해 주세요.', [
         { text: '나중에' },
@@ -373,18 +394,18 @@ export default function TripStartScreen() {
 
     if (isEditingActiveTrip) {
       if (!currentTrip?.tripId || !startDate || !endDate) {
-        Alert.alert('?수정 ?실패', '?수정할 여행 정보를 확인하지 못했습니다.');
+        Alert.alert('수정 실패', '수정할 여행 정보를 확인하지 못했습니다.');
         return;
       }
 
       const updateResponse = await updateTripApi(currentTrip.tripId, {
-        title: tripName || '?ы뻾',
+        title: tripName || '여행',
         startDate: formatApiDate(startDate),
         endDate: formatApiDate(endDate),
       });
 
       if (!updateResponse.success) {
-        Alert.alert('?수정 ?실패', updateResponse.message || '?여행 정보를 수정하지 못했습니다.');
+        Alert.alert('수정 실패', updateResponse.message || '여행 정보를 수정하지 못했습니다.');
         return;
       }
 
@@ -405,8 +426,7 @@ export default function TripStartScreen() {
         });
       }
 
-      Alert.alert('?수정 ?완료', '?여행 정보가 수정되었습니다.');
-      router.replace('/trip/recording');
+      setNoticeModalType('updated');
       return;
     }
 
@@ -568,8 +588,8 @@ export default function TripStartScreen() {
         dateLabel={dateLabel}
         memberCount={memberCount}
         missingLabels={missingLabels}
-        onClose={() => setNoticeModalType(null)}
-        onConfirm={handleConfirmStartTrip}
+        onClose={handleCloseNoticeModal}
+        onConfirm={noticeModalType === 'updated' ? handleCloseNoticeModal : handleConfirmStartTrip}
       />
     </SafeAreaView>
   );
@@ -739,6 +759,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#355D49',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 22,
   },
   modalPrimaryHalfButton: {
     flex: 1,
