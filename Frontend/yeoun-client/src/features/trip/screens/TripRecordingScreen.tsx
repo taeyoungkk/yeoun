@@ -1272,6 +1272,7 @@ function RealTripRecordingScreen({
       return;
     }
     setIsSyncing(true);
+    stopAutoPhotoSync();
     await syncTripAssets();
     await endTripApi(activeTripId);
     await locationService.stopTracking();
@@ -1462,6 +1463,7 @@ function RealTripRecordingScreen({
     if (currentAction.kind === 'end') {
       try {
         setIsSyncing(true);
+        stopAutoPhotoSync();
         await syncTripAssets();
         await endTripApi(activeTripId);
         await locationService.stopTracking();
