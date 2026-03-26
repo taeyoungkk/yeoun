@@ -494,7 +494,7 @@ const styles = StyleSheet.create({
   inlineDayRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   inlineDayLabel: { fontSize: 16, color: '#5B4F66', fontWeight: '700' },
   inlineDayValue: { flex: 1, textAlign: 'right', fontSize: 14, color: '#7E8CB6', fontWeight: '700' },
-  sectionCard: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFF', padding: 20, elevation: 2 },
+  sectionCard: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFF', padding: 20 },
   sectionKicker: { fontSize: 11, color: '#7182BC', fontWeight: '600' },
   sectionTitle: { fontSize: 19, color: '#1C2751', marginTop: 4, fontWeight: '700', marginBottom: 15 },
   timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
