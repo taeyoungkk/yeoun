@@ -144,9 +144,11 @@ export const useTripStore = create<TripState>()(
       restoreActiveTripFromServer: async () => {
         const trips = await get().fetchTrips(true);
         const persistedTripId = get().currentTripId;
-        const activeTripListItem =
-          trips.find((trip) => trip.tripId === persistedTripId && trip.status === 'ACTIVE') ??
-          trips.find((trip) => trip.status === 'ACTIVE');
+        if (!persistedTripId) {
+          return null;
+        }
+
+        const activeTripListItem = trips.find((trip) => trip.tripId === persistedTripId && trip.status === 'ACTIVE');
 
         if (!activeTripListItem) {
           if (get().isTripActive || get().currentTripId || get().activeTrip) {
