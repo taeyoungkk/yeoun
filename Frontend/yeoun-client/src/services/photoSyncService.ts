@@ -1,9 +1,11 @@
 import * as MediaLibrary from 'expo-media-library';
+import { PermissionsAndroid, Platform } from 'react-native';
 
 import { PhotoSyncItemRequest, syncTripPhotosApi } from '@/src/api/photo';
 
 const MEDIA_PAGE_SIZE = 100;
 const PHOTO_PERMISSIONS: MediaLibrary.GranularPermission[] = ['photo'];
+const PHOTO_SYNC_BATCH_SIZE = 2;
 
 type SyncFile = {
   uri: string;
@@ -34,6 +36,32 @@ const logPhotoSync = (message: string, payload?: Record<string, unknown>) => {
   }
 
   console.log(`[PhotoSync] ${message}`);
+};
+
+const requestMediaLocationPermission = async () => {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+
+  const granted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION);
+  if (granted) {
+    logPhotoSync('ACCESS_MEDIA_LOCATION already granted.');
+    return true;
+  }
+
+  const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION, {
+    title: '사진 위치 정보 접근 권한',
+    message: '사진의 촬영 위치(EXIF GPS)를 읽어 여행 기록과 연결하려면 권한이 필요합니다.',
+    buttonPositive: '허용',
+    buttonNegative: '거부',
+  });
+
+  const isGranted = result === PermissionsAndroid.RESULTS.GRANTED;
+  logPhotoSync('ACCESS_MEDIA_LOCATION permission requested.', {
+    result,
+    granted: isGranted,
+  });
+  return isGranted;
 };
 
 const isValidDate = (value: Date) => !Number.isNaN(value.getTime());
@@ -67,6 +95,18 @@ const guessMimeType = (fileName: string) => {
     default:
       return 'image/jpeg';
   }
+};
+
+const chunkArray = <T,>(items: T[], size: number): T[][] => {
+  if (size <= 0) {
+    return [items];
+  }
+
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 };
 
 const getTakenAt = (creationTime: number | undefined) => {
@@ -184,6 +224,7 @@ export const requestTripPhotoPermission = async (): Promise<TripPhotoPermissionR
   });
 
   if (currentPermission.granted) {
+    await requestMediaLocationPermission();
     return currentPermission;
   }
 
@@ -193,6 +234,9 @@ export const requestTripPhotoPermission = async (): Promise<TripPhotoPermissionR
     granted: nextPermission.granted,
     canAskAgain: nextPermission.canAskAgain,
   });
+  if (nextPermission.granted) {
+    await requestMediaLocationPermission();
+  }
   return nextPermission;
 };
 
@@ -220,26 +264,60 @@ export const syncTripPhotosForDateRange = async ({
     };
   }
 
-  const response = await syncTripPhotosApi(
-    tripId,
-    {
-      items: candidates.map((candidate) => candidate.metadata),
-    },
-    candidates.map((candidate) => candidate.file),
-  );
+  const candidateBatches = chunkArray(candidates, PHOTO_SYNC_BATCH_SIZE);
+  let syncedCount = 0;
+  let success = true;
+  let lastMessage: string | undefined;
+
+  for (const [index, batch] of candidateBatches.entries()) {
+    logPhotoSync('Uploading photo sync batch.', {
+      tripId,
+      batchIndex: index + 1,
+      batchCount: candidateBatches.length,
+      batchSize: batch.length,
+    });
+
+    const response = await syncTripPhotosApi(
+      tripId,
+      {
+        items: batch.map((candidate) => candidate.metadata),
+      },
+      batch.map((candidate) => candidate.file),
+    );
+
+    syncedCount += response.data?.syncedCount ?? 0;
+    lastMessage = response.message;
+
+    logPhotoSync('Photo sync batch completed.', {
+      tripId,
+      batchIndex: index + 1,
+      batchCount: candidateBatches.length,
+      success: response.success,
+      batchSyncedCount: response.data?.syncedCount ?? 0,
+      accumulatedSyncedCount: syncedCount,
+      message: response.message ?? null,
+    });
+
+    if (!response.success) {
+      success = false;
+      break;
+    }
+  }
 
   logPhotoSync('Photo sync request completed.', {
     tripId,
-    success: response.success,
+    success,
     candidateCount: candidates.length,
-    syncedCount: response.data?.syncedCount ?? 0,
-    message: response.message ?? null,
+    syncedCount,
+    message: lastMessage ?? null,
+    batchCount: candidateBatches.length,
+    batchSize: PHOTO_SYNC_BATCH_SIZE,
   });
 
   return {
-    success: response.success,
-    syncedCount: response.data?.syncedCount ?? 0,
+    success,
+    syncedCount,
     candidateCount: candidates.length,
-    message: response.message,
+    message: lastMessage,
   };
 };
