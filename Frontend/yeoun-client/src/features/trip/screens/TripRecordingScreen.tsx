@@ -682,6 +682,7 @@ function RealTripRecordingScreen({
   const tripTitle = (displayTrip as { title?: string; tripName?: string } | null)?.title || displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
+  const canUseActiveTripActions = !isReviewMode && activeTrip?.status === 'ACTIVE';
 
   const syncActionInFlight =
     isSyncing || locationSyncStatus === 'uploading' || locationSyncStatus === 'processing';
@@ -912,8 +913,19 @@ function RealTripRecordingScreen({
           ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
           : {};
 
-        if (tripDetailResponse.success && !isReviewMode) {
-          setActiveTrip(tripDetailResponse.data);
+        if (tripDetailResponse.success) {
+          if (!isReviewMode && tripDetailResponse.data.status !== 'ACTIVE') {
+            setActiveTrip(tripDetailResponse.data);
+            router.replace({
+              pathname: '/trip/recording',
+              params: { mode: 'review', tripId: activeTripId },
+            });
+            return;
+          }
+
+          if (!isReviewMode) {
+            setActiveTrip(tripDetailResponse.data);
+          }
         }
         setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
         setRealTripDays(buildRealTripDays(timelineDays, routeByDate));
@@ -1332,7 +1344,18 @@ function RealTripRecordingScreen({
         setIsSyncing(true);
         stopAutoPhotoSync();
         await syncTripAssets();
-        await endTripApi(activeTripId);
+        const response = await endTripApi(activeTripId);
+
+        if (!response.success) {
+          if (response.code === 'CONFLICT') {
+            Alert.alert('여행 종료 불가', response.message || '이미 종료된 여행이거나 종료할 수 없는 상태입니다.');
+            return;
+          }
+
+          Alert.alert('여행 종료 실패', response.message || '여행을 종료하지 못했습니다.');
+          return;
+        }
+
         await locationService.stopTracking();
         endTrip();
         router.push(`${reportRoute}?mode=review`);
@@ -1770,7 +1793,7 @@ function RealTripRecordingScreen({
         </View>
         <View style={styles.headerActions}>
           <View style={styles.headerActionsTopRow}>
-          {!isReviewMode ? (
+          {canUseActiveTripActions ? (
             <TouchableOpacity 
               style={[styles.syncHeaderButton, syncActionInFlight && styles.syncHeaderButtonDisabled]} 
               activeOpacity={0.88}
@@ -1785,7 +1808,7 @@ function RealTripRecordingScreen({
             <MaterialIcons name="more-horiz" size={22} color="#274232" />
           </TouchableOpacity>
           </View>
-          {!isReviewMode ? (
+          {canUseActiveTripActions ? (
             <TouchableOpacity style={styles.hiddenAction} onPress={() => router.push('/trip/invite')} activeOpacity={0.88}>
               <MaterialIcons name="group-add" size={16} color="#274232" />
               <Text style={styles.inviteQuickButtonText}>친구 초대하기</Text>
@@ -1803,17 +1826,17 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>여행 리포트 확인</Text>
               </TouchableOpacity>
             ) : null}
-            {!isReviewMode ? (
+            {canUseActiveTripActions ? (
               <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); router.push('/trip/invite'); }} activeOpacity={0.85}>
                 <MaterialIcons name="group-add" size={18} color="#244934" />
                 <Text style={styles.menuItemText}>친구 초대하기</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={[styles.menuItem, isReviewMode && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.menuItem, isTripOwner && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
+            <TouchableOpacity style={[styles.menuItem, (isTripOwner || !canUseActiveTripActions) && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
               <MaterialIcons name="logout" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 떠나기</Text>
             </TouchableOpacity>
@@ -1823,7 +1846,7 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>여행 삭제</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={[styles.menuItem, isReviewMode && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); router.push('/trip/start?mode=edit'); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); router.push('/trip/start?mode=edit'); }} activeOpacity={0.85}>
               <MaterialIcons name="edit" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 수정</Text>
             </TouchableOpacity>
@@ -2594,9 +2617,8 @@ function RealTripRecordingScreen({
               </TouchableOpacity>
             </View>
           ) : null}
-          <View style={[styles.bottomActions, isReviewMode && styles.hiddenAction]}>
-            <TouchableOpacity style={styles.endButton} onPress={isReviewMode ? handleOpenReport : handleEndTrip} activeOpacity={0.88}>
-              {isReviewMode ? <Text style={styles.endButtonText}>여행 리포트 확인</Text> : null}
+          <View style={[styles.bottomActions, !canUseActiveTripActions && styles.hiddenAction]}>
+            <TouchableOpacity style={styles.endButton} onPress={handleEndTrip} activeOpacity={0.88}>
               <Text style={styles.endButtonText}>여행 종료</Text>
             </TouchableOpacity>
           </View>
