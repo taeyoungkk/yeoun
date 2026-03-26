@@ -81,6 +81,12 @@ const mapExpenseItem = (item: any): TripExpenseItem => ({
   payerUserId: String(item.payerUserId),
   splitType: String(item.splitType ?? ''),
   sourceType: String(item.sourceType ?? ''),
+  memo: item.memo ?? '',
+  participantUserIds: Array.isArray(item.participantUserIds)
+    ? item.participantUserIds.map((userId: any) => String(userId))
+    : Array.isArray(item.splits)
+      ? item.splits.map((split: any) => String(split.userId))
+      : [],
   status: item.status,
 });
 
