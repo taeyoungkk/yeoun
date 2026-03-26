@@ -8,6 +8,12 @@ import Svg, { Path } from 'react-native-svg';
 
 import { getTripExpensesApi, type TripExpenseItem } from '@/src/api/expense';
 import {
+  createSettlementApi,
+  getSettlementDetailApi,
+  getTripSettlementsApi,
+  type SettlementDetail,
+} from '@/src/api/settlement';
+import {
   getTimelineDayDetailApi,
   getTripTimelineDaysApi,
   type TimelineDayDetail,
@@ -31,14 +37,6 @@ type TimelineRow = {
   title: string;
 };
 
-type SettlementRow = {
-  id: string;
-  title: string;
-  amount: number;
-  share: number;
-  status: '확정' | '대기';
-};
-
 const BARCODE_SEGMENTS = [4, 2, 3, 1, 2, 5, 2, 1, 4, 2, 5, 1, 2, 3, 2, 4, 1, 3, 2, 5, 1, 2, 4, 2, 3, 1];
 
 const EVENT_LABEL: Record<string, string> = {
@@ -47,11 +45,19 @@ const EVENT_LABEL: Record<string, string> = {
   OTHER: '기록',
 };
 
-const formatWon = (value: number) => `₩${value.toLocaleString('ko-KR')}`;
+const formatWon = (value: number) => `${Math.round(value).toLocaleString('ko-KR')}원`;
 const formatTripDate = (date?: string) => (date ? date.slice(2, 10).replace(/-/g, '.') : '--.--.--');
 const formatDayLabel = (date: Date) =>
   `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
 const formatTime = (date?: string | null) => (date ? date.slice(11, 16) : '--:--');
+
+const getExpenseSnapshot = (items: TripExpenseItem[]) => {
+  const confirmedExpenses = items.filter((expense) => expense.status !== 'DELETED');
+  return {
+    count: confirmedExpenses.length,
+    totalAmount: confirmedExpenses.reduce((sum, expense) => sum + expense.totalAmount, 0),
+  };
+};
 
 const buildFallbackDays = (startDate?: string, endDate?: string): ReportDay[] => {
   const start = startDate ? new Date(startDate) : null;
@@ -109,34 +115,32 @@ const mapTimelineRows = (dayDetails: TimelineDayDetail[]): TimelineRow[] =>
     .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
     .map(({ sortKey: _sortKey, ...row }) => row);
 
-const mapSettlementRows = (expenses: TripExpenseItem[], memberCount: number): SettlementRow[] =>
-  expenses
-    .filter((expense) => expense.status !== 'DELETED')
-    .map((expense) => ({
-      id: expense.expenseId,
-      title: expense.merchantName || '결제 내역',
-      amount: expense.totalAmount,
-      share: memberCount > 0 ? Math.round(expense.totalAmount / memberCount) : expense.totalAmount,
-      status: expense.status === 'CONFIRMED' ? '확정' : '대기',
-    }));
-
 export default function TripReportScreen() {
   const params = useLocalSearchParams<{ mode?: string }>();
   const currentTrip = useTripStore((state) => state.currentTrip);
   const reviewTrip = useTripStore((state) => state.reviewTrip);
   const router = useRouter();
-  const [isSettlementOpen, setIsSettlementOpen] = useState(false);
+
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const [timelineDays, setTimelineDays] = useState<TimelineDaySummary[]>([]);
   const [timelineDayDetails, setTimelineDayDetails] = useState<TimelineDayDetail[]>([]);
   const [expenses, setExpenses] = useState<TripExpenseItem[]>([]);
+  const [settlementDetail, setSettlementDetail] = useState<SettlementDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
   const isReviewMode = params.mode === 'review';
   const trip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
   const receiptAppear = useRef(new Animated.Value(0)).current;
 
   const handleGoHome = () => router.replace('/(tabs)');
   const handleBackToTimeline = () => router.replace(isReviewMode ? '/trip/recording?mode=review' : '/trip/recording');
+  const handleOpenSettlementDetail = () => {
+    if (!trip?.tripId) return;
+    router.push({
+      pathname: '/payment-member-summary',
+      params: { tripId: trip.tripId },
+    });
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -147,6 +151,7 @@ export default function TripReportScreen() {
           setTimelineDays([]);
           setTimelineDayDetails([]);
           setExpenses([]);
+          setSettlementDetail(null);
           setIsLoading(false);
         }
         return;
@@ -154,15 +159,58 @@ export default function TripReportScreen() {
 
       try {
         setIsLoading(true);
-        const [timelineDaysResponse, expensesResponse] = await Promise.all([
+
+        const [timelineDaysResponse, expensesResponse, settlementsResponse] = await Promise.all([
           getTripTimelineDaysApi(trip.tripId),
           getTripExpensesApi(trip.tripId),
+          getTripSettlementsApi(trip.tripId),
         ]);
 
         const nextTimelineDays = timelineDaysResponse.data.timelineDays ?? [];
+        const nextExpenses = expensesResponse.data.items ?? [];
         const timelineDetailResponses = await Promise.all(
           nextTimelineDays.map((day) => getTimelineDayDetailApi(day.timelineDayId)),
         );
+
+        let nextSettlementDetail: SettlementDetail | null = null;
+        const expenseSnapshot = getExpenseSnapshot(nextExpenses);
+
+        if (settlementsResponse.success) {
+          let latestSettlement = [...settlementsResponse.data.items].sort((a, b) => {
+            const createdAtA = new Date(a.createdAt).getTime();
+            const createdAtB = new Date(b.createdAt).getTime();
+            return createdAtB - createdAtA;
+          })[0];
+
+          if (!latestSettlement && expenseSnapshot.count > 0) {
+            const createResponse = await createSettlementApi(trip.tripId, {});
+            if (createResponse.success) {
+              latestSettlement = createResponse.data;
+            }
+          }
+
+          if (latestSettlement) {
+            let detailResponse = await getSettlementDetailApi(latestSettlement.settlementId);
+
+            if (detailResponse.success) {
+              const needsRecalculation =
+                expenseSnapshot.count > 0 &&
+                (detailResponse.data.confirmedExpenseCount !== expenseSnapshot.count ||
+                  detailResponse.data.totalConfirmedAmount !== expenseSnapshot.totalAmount);
+
+              if (needsRecalculation) {
+                const recreateResponse = await createSettlementApi(trip.tripId, {});
+                if (recreateResponse.success) {
+                  detailResponse = await getSettlementDetailApi(recreateResponse.data.settlementId);
+                }
+              }
+
+              if (detailResponse.success) {
+                nextSettlementDetail = detailResponse.data;
+              }
+            }
+          }
+        }
 
         if (!mounted) {
           return;
@@ -172,7 +220,8 @@ export default function TripReportScreen() {
         setTimelineDayDetails(
           timelineDetailResponses.filter((response) => response.success).map((response) => response.data),
         );
-        setExpenses(expensesResponse.data.items ?? []);
+        setExpenses(nextExpenses);
+        setSettlementDetail(nextSettlementDetail);
       } catch (error) {
         console.error('Failed to load trip report data:', error);
         if (!mounted) {
@@ -182,6 +231,7 @@ export default function TripReportScreen() {
         setTimelineDays([]);
         setTimelineDayDetails([]);
         setExpenses([]);
+        setSettlementDetail(null);
       } finally {
         if (mounted) {
           setIsLoading(false);
@@ -211,17 +261,18 @@ export default function TripReportScreen() {
     [timelineDays, trip?.endDate, trip?.startDate],
   );
   const timelineRows = useMemo(() => mapTimelineRows(timelineDayDetails), [timelineDayDetails]);
-  const settlementRows = useMemo(
-    () => mapSettlementRows(expenses, trip?.memberCount ?? 0),
-    [expenses, trip?.memberCount],
-  );
 
   const totalDistance = useMemo(() => reportDays.reduce((sum, day) => sum + day.distanceKm, 0), [reportDays]);
   const totalPhotos = useMemo(() => reportDays.reduce((sum, day) => sum + day.photoCount, 0), [reportDays]);
   const totalLogs = timelineRows.length;
-  const totalUsed = useMemo(() => settlementRows.reduce((sum, row) => sum + row.amount, 0), [settlementRows]);
-  const sharedPerPerson = useMemo(() => settlementRows.reduce((sum, row) => sum + row.share, 0), [settlementRows]);
-  const confirmedRows = settlementRows.filter((row) => row.status === '확정');
+  const totalUsed = settlementDetail?.totalConfirmedAmount ?? expenses.reduce((sum, expense) => sum + expense.totalAmount, 0);
+  const sharedPerPerson =
+    settlementDetail && settlementDetail.memberCount > 0
+      ? Math.round(settlementDetail.totalConfirmedAmount / settlementDetail.memberCount)
+      : trip?.memberCount
+        ? Math.round(totalUsed / trip.memberCount)
+        : totalUsed;
+  const confirmedExpenseCount = settlementDetail?.confirmedExpenseCount ?? expenses.filter((expense) => expense.status !== 'DELETED').length;
   const ticketNumber = (trip?.tripId ?? 'YEOUNTRIP').replace(/-/g, '').slice(0, 8).toUpperCase() || 'YEOUN000';
   const travelerCount = String(trip?.memberCount ?? 0).padStart(2, '0');
   const tripTitle = trip?.tripName || 'Trip';
@@ -332,7 +383,7 @@ export default function TripReportScreen() {
           <View style={styles.sectionCard}>
             <TouchableOpacity style={styles.timelineHeader} activeOpacity={0.8} onPress={() => setIsTimelineOpen((prev) => !prev)}>
               <View style={styles.timelineHeaderCopy}>
-                <Text style={styles.sectionKicker}>타임라인</Text>
+                <Text style={styles.sectionKicker}>Timeline</Text>
                 <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>여행 상세보기</Text>
               </View>
               <MaterialIcons name={isTimelineOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={28} color="#1C2751" />
@@ -381,30 +432,15 @@ export default function TripReportScreen() {
               <View style={styles.summaryBottom}>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryBottomLeft}>확정 내역 수</Text>
-                  <Text style={styles.summaryBottomRight}>{`${confirmedRows.length}건`}</Text>
+                  <Text style={styles.summaryBottomRight}>{`${confirmedExpenseCount}건`}</Text>
                 </View>
               </View>
             </Animated.View>
 
-            <TouchableOpacity style={styles.detailButton} onPress={() => setIsSettlementOpen((prev) => !prev)}>
+            <TouchableOpacity style={styles.detailButton} onPress={handleOpenSettlementDetail}>
               <Text style={styles.detailButtonText}>내역 자세히 보기</Text>
-              <MaterialIcons name={isSettlementOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color="#616978" />
+              <MaterialIcons name="chevron-right" size={20} color="#616978" />
             </TouchableOpacity>
-
-            {isSettlementOpen ? (
-              confirmedRows.length > 0 ? (
-                <View style={styles.detailList}>
-                  {confirmedRows.map((row) => (
-                    <View key={row.id} style={styles.detailItem}>
-                      <Text style={styles.detailTitle}>{row.title}</Text>
-                      <Text style={styles.detailPrice}>{formatWon(row.amount)}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <Text style={styles.emptyText}>표시할 정산 내역이 없습니다.</Text>
-              )
-            ) : null}
           </View>
         </ScrollView>
       </LinearGradient>
@@ -457,20 +493,22 @@ const styles = StyleSheet.create({
   perforationContainer: { flexDirection: 'row', alignItems: 'center', height: 40 },
   ticketPerforation: { flex: 1, borderTopWidth: 1.5, borderColor: '#5B4F66', borderStyle: 'dashed', opacity: 0.2 },
   punchHoleLeft: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#EEF4FF',
-    marginLeft: -20,
+    width: 24,
+    height: 48,
+    backgroundColor: '#F7F8FF',
+    marginLeft: -12,
     marginRight: 15,
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 24,
   },
   punchHoleRight: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#EEF4FF',
-    marginRight: -20,
+    width: 24,
+    height: 48,
+    backgroundColor: '#F7F8FF',
+    marginRight: -12,
     marginLeft: 15,
+    borderTopLeftRadius: 24,
+    borderBottomLeftRadius: 24,
   },
   ticketContent: { paddingHorizontal: 24, paddingBottom: 30 },
   ticketTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
@@ -531,16 +569,5 @@ const styles = StyleSheet.create({
     borderColor: '#EEE',
   },
   detailButtonText: { fontSize: 14, color: '#666', marginRight: 5 },
-  detailList: { marginTop: 10 },
-  detailItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 12,
-    backgroundColor: '#FAFAFA',
-    borderRadius: 10,
-    marginBottom: 5,
-  },
-  detailTitle: { fontSize: 14, color: '#333' },
-  detailPrice: { fontSize: 14, fontWeight: '700' },
   emptyText: { marginTop: 14, fontSize: 13, color: '#8A95B4' },
 });
