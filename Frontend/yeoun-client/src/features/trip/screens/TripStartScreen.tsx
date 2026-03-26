@@ -40,6 +40,10 @@ function formatApiDate(date: Date) {
   return formatDateLabel(date).replace(/\./g, '-');
 }
 
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
 function getCalendarDays(baseDate: Date) {
   const year = baseDate.getFullYear();
   const month = baseDate.getMonth();
@@ -166,10 +170,13 @@ export default function TripStartScreen() {
   const isTripActive = useTripStore((state) => state.isTripActive);
   const isCreateMode = params.mode !== 'edit';
   const editSourceTrip = !isCreateMode ? currentTrip : null;
+  const today = useMemo(() => startOfDay(new Date()), []);
 
   const [tripName, setTripName] = useState(editSourceTrip?.tripName ?? '');
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(editSourceTrip?.startDate ? new Date(editSourceTrip.startDate) : new Date());
+  const [calendarMonth, setCalendarMonth] = useState(
+    editSourceTrip?.startDate ? startOfDay(new Date(editSourceTrip.startDate)) : today,
+  );
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
   const [startDate, setStartDate] = useState<Date | null>(editSourceTrip?.startDate ? new Date(editSourceTrip.startDate) : null);
   const [endDate, setEndDate] = useState<Date | null>(editSourceTrip?.endDate ? new Date(editSourceTrip.endDate) : null);
@@ -187,7 +194,7 @@ export default function TripStartScreen() {
   useEffect(() => {
     if (isCreateMode) {
       setTripName('');
-      setCalendarMonth(new Date());
+      setCalendarMonth(today);
       setStartDate(null);
       setEndDate(null);
       setMemberCount(2);
@@ -195,11 +202,11 @@ export default function TripStartScreen() {
     }
 
     setTripName(editSourceTrip?.tripName ?? '');
-    setCalendarMonth(editSourceTrip?.startDate ? new Date(editSourceTrip.startDate) : new Date());
+    setCalendarMonth(editSourceTrip?.startDate ? startOfDay(new Date(editSourceTrip.startDate)) : today);
     setStartDate(editSourceTrip?.startDate ? new Date(editSourceTrip.startDate) : null);
     setEndDate(editSourceTrip?.endDate ? new Date(editSourceTrip.endDate) : null);
     setMemberCount(editSourceTrip?.memberCount ?? 2);
-  }, [editSourceTrip?.endDate, editSourceTrip?.memberCount, editSourceTrip?.startDate, editSourceTrip?.tripId, editSourceTrip?.tripName, isCreateMode]);
+  }, [editSourceTrip?.endDate, editSourceTrip?.memberCount, editSourceTrip?.startDate, editSourceTrip?.tripId, editSourceTrip?.tripName, isCreateMode, today]);
 
   const missingLabels = useMemo(() => {
     const nextMissing: string[] = [];
@@ -228,19 +235,24 @@ export default function TripStartScreen() {
   );
 
   const handlePickDay = (date: Date) => {
+    const pickedDate = startOfDay(date);
+    if (pickedDate < today) {
+      return;
+    }
+
     if (!startDate || endDate) {
-      setStartDate(date);
+      setStartDate(pickedDate);
       setEndDate(null);
       return;
     }
 
-    if (date < startDate) {
+    if (pickedDate < startDate) {
       setEndDate(startDate);
-      setStartDate(date);
+      setStartDate(pickedDate);
       return;
     }
 
-    setEndDate(date);
+    setEndDate(pickedDate);
   };
 
   const handlePressNext = () => {
@@ -500,6 +512,7 @@ export default function TripStartScreen() {
               pickerMode={pickerMode}
               startDate={startDate}
               endDate={endDate}
+              minDate={today}
               onPrevMonth={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
               onNextMonth={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
               onPickDay={handlePickDay}
