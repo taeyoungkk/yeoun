@@ -10,6 +10,8 @@ import {
   Animated,
   InteractionManager,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -52,14 +54,13 @@ import {
   getTripMembersApi,
   getTripRouteByDayApi,
   leaveTripApi,
-  startTripApi,
   type TripMemberItem,
 } from '@/src/api/trip';
 import { useTripStore, useUserStore } from '@/src/store';
 import { locationService } from '../../../services/locationService';
 import { requestTripPhotoPermission, syncTripPhotosForDateRange } from '../../../services/photoSyncService';
 import { type LocationSyncStatus } from '@/src/store/trip.store';
-import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
+import { PhotoMarker } from '@/src/components/map/EventMarkers';
 import MockTripRecordingScreen from './MockTripRecordingScreen';
 
 const hasMapboxToken = configureMapbox();
@@ -500,6 +501,7 @@ function RealTripRecordingScreen({
   const router = useRouter();
   const cameraRef = useRef<Mapbox.Camera>(null);
   const scrollRef = useRef<ScrollView | null>(null);
+  const photoPagerRef = useRef<ScrollView | null>(null);
   const cardPositionsRef = useRef<Record<string, number>>({});
   const [scrollOffset, setScrollOffset] = useState(0);
   const [tripEvents, setTripEvents] = useState<TimelineEvent[]>([]);
@@ -509,7 +511,6 @@ function RealTripRecordingScreen({
   const endTrip = useTripStore((state) => state.endTrip);
   const clearTrip = useTripStore((state) => state.clearTrip);
   const clearReviewTrip = useTripStore((state) => state.clearReviewTrip);
-  const isTripActive = useTripStore((state) => state.isTripActive);
   const currentTrip = useTripStore((state) => state.currentTrip);
   const reviewTrip = useTripStore((state) => state.reviewTrip);
   const currentTripId = useTripStore((state) => state.currentTripId);
@@ -530,7 +531,9 @@ function RealTripRecordingScreen({
   const [mapLoadFailed, setMapLoadFailed] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [loadedTripDetail, setLoadedTripDetail] = useState<TripDetail | null>(null);
   const [photoViewer, setPhotoViewer] = useState<{ eventId: string; photoIndex: number } | null>(null);
+  const [photoViewerWidth, setPhotoViewerWidth] = useState(0);
   const [eventEditor, setEventEditor] = useState<{ eventId: string; title: string; placeName: string; body: string } | null>(null);
   const [photoEditor, setPhotoEditor] = useState<{ eventId: string; photoId: string; memo: string } | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<
@@ -665,12 +668,7 @@ function RealTripRecordingScreen({
     [filteredEvents, photoViewer]
   );
   const selectedPhotoItem = selectedPhotoEvent?.photoItems?.[photoViewer?.photoIndex ?? -1] ?? null;
-  const selectedPhotoContributor = useMemo(
-    () =>
-      selectedPhotoEvent?.photoContributors?.find((contributor) => contributor.id === selectedPhotoItem?.contributorId) ?? null,
-    [selectedPhotoEvent, selectedPhotoItem]
-  );
-  const selectedPhotoIsOwner = selectedPhotoItem?.contributorId === currentUserId;
+  const selectedPhotoItems = selectedPhotoEvent?.photoItems ?? [];
   const selectedPhotoEmotion =
     selectedPhotoEvent?.emotionOwnerId === currentUserId && selectedPhotoEvent?.emotionEmoji && selectedPhotoEvent?.emotionLabel
       ? `${selectedPhotoEvent.emotionEmoji} ${selectedPhotoEvent.emotionLabel}`
@@ -683,8 +681,11 @@ function RealTripRecordingScreen({
   const storeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
   const activeTripId = (routeTripId || storeTripId || '').trim();
   const tripTitle = (displayTrip as { title?: string; tripName?: string } | null)?.title || displayTrip?.tripName || 'Trip';
-  const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
+  const isTripOwner = Boolean(
+    loadedTripDetail?.ownerUserId && currentUserId && loadedTripDetail.ownerUserId === currentUserId,
+  );
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
+  const canUseActiveTripActions = !isReviewMode && loadedTripDetail?.status === 'ACTIVE';
 
   const syncActionInFlight =
     isSyncing || locationSyncStatus === 'uploading' || locationSyncStatus === 'processing';
@@ -849,6 +850,7 @@ function RealTripRecordingScreen({
       setTripEvents([]);
       setRealTripDays(null);
       setTripMembers([]);
+      setLoadedTripDetail(null);
       return;
     }
 
@@ -915,8 +917,20 @@ function RealTripRecordingScreen({
           ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
           : {};
 
-        if (tripDetailResponse.success && !isReviewMode) {
-          setActiveTrip(tripDetailResponse.data);
+        if (tripDetailResponse.success) {
+          setLoadedTripDetail(tripDetailResponse.data);
+          if (!isReviewMode && tripDetailResponse.data.status !== 'ACTIVE') {
+            setActiveTrip(tripDetailResponse.data);
+            router.replace({
+              pathname: '/trip/recording',
+              params: { mode: 'review', tripId: activeTripId },
+            });
+            return;
+          }
+
+          if (!isReviewMode) {
+            setActiveTrip(tripDetailResponse.data);
+          }
         }
         setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
         setRealTripDays(buildRealTripDays(timelineDays, routeByDate));
@@ -943,6 +957,7 @@ function RealTripRecordingScreen({
         }
 
         console.error('Failed to load real trip data', error);
+        setLoadedTripDetail(null);
         setRealTripDays(null);
         setTripEvents([]);
         setTripMembers([]);
@@ -983,6 +998,37 @@ function RealTripRecordingScreen({
       setPhotoViewer(null);
     }
   }, [photoViewer, selectedPhotoEvent, selectedPhotoItem]);
+
+  useEffect(() => {
+    if (!photoViewer || !photoPagerRef.current || photoViewerWidth <= 0) {
+      return;
+    }
+
+    photoPagerRef.current.scrollTo({
+      x: photoViewer.photoIndex * photoViewerWidth,
+      animated: false,
+    });
+  }, [photoViewer, photoViewerWidth]);
+
+  const handlePhotoPagerMomentumEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!photoViewer || photoViewerWidth <= 0) {
+        return;
+      }
+
+      const nextIndex = Math.round(event.nativeEvent.contentOffset.x / photoViewerWidth);
+      if (nextIndex === photoViewer.photoIndex) {
+        return;
+      }
+
+      const maxIndex = Math.max(0, selectedPhotoItems.length - 1);
+      setPhotoViewer({
+        eventId: photoViewer.eventId,
+        photoIndex: Math.min(Math.max(nextIndex, 0), maxIndex),
+      });
+    },
+    [photoViewer, photoViewerWidth, selectedPhotoItems.length],
+  );
 
   useEffect(() => {
     return () => {
@@ -1236,136 +1282,6 @@ function RealTripRecordingScreen({
     router.push(isReviewMode ? `${reportRoute}?mode=review` : reportRoute);
   };
 
-  const performEndTrip = async () => {
-    if (!activeTripId) {
-      Alert.alert('진행 중인 여행이 없어요', '종료할 여행 정보를 찾지 못했습니다.');
-      return;
-    }
-    setIsSyncing(true);
-    await syncTripAssets();
-    await endTripApi(activeTripId);
-    await locationService.stopTracking();
-    setIsSyncing(false);
-    endTrip();
-    router.push(reportRoute);
-    return;
-
-    Alert.alert(
-      '여행 종료',
-      '정말로 여행을 종료하시겠습니까? 현재까지의 모든 경로가 저장됩니다.',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '종료',
-          style: 'destructive',
-          onPress: async () => {
-            setIsSyncing(true);
-            // 1. 마지막 위치 동기화
-            await locationService.syncLocations(activeTripId);
-            // 2. API로 여행 종료 상태 변경
-            await endTripApi(activeTripId);
-            // 3. 트래킹 중지
-            await locationService.stopTracking();
-            setIsSyncing(false);
-      
-            // 4. 전역 여행 상태 종료
-            endTrip();
-
-            // 5. 여행 종료 리포트로 이동
-            router.push(reportRoute);
-          },
-        },
-      ]
-    );
-  };
-
-  const performLeaveTrip = async () => {
-    if (!activeTripId) {
-      Alert.alert('진행 중인 여행이 없어요', '나갈 여행 정보를 찾지 못했습니다.');
-      return;
-    }
-
-    if (isTripOwner) {
-      Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
-      return;
-    }
-
-    const response = await leaveTripApi(activeTripId);
-
-    if (!response.success) {
-      if (response.code === 'CONFLICT') {
-        Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
-        return;
-      }
-
-      Alert.alert('여행 떠나기 실패', response.message || '여행에서 나가지 못했습니다.');
-      return;
-    }
-
-    clearTrip();
-    router.replace('/(tabs)');
-    return;
-
-    if (isTripOwner) {
-      Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
-      return;
-    }
-
-    Alert.alert('여행 떠나기', '정말 이 여행에서 떠나시겠습니까?', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '떠나기',
-        style: 'destructive',
-        onPress: async () => {
-          const response = await leaveTripApi(activeTripId);
-
-          if (!response.success) {
-            if (response.code === 'CONFLICT') {
-              Alert.alert('여행 떠나기 불가', '여행 생성자는 여행을 떠날 수 없습니다. 여행을 삭제해주세요.');
-              return;
-            }
-
-            Alert.alert('여행 떠나기 실패', response.message || '여행에서 나가지 못했습니다.');
-            return;
-          }
-
-          clearTrip();
-          router.replace('/(tabs)');
-        },
-      },
-    ]);
-  };
-
-  const performDeleteTrip = async () => {
-    if (!activeTripId) {
-      Alert.alert('여행 삭제 실패', '삭제할 여행 정보를 찾지 못했습니다.');
-      return;
-    }
-
-    Alert.alert(
-      '여행 삭제',
-      '여행을 삭제하면 여행에 초대된 사람들의 여행도 삭제됩니다.\n정말로 여행을 삭제할 건가요?\n되돌릴 수 없습니다.',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '삭제',
-          style: 'destructive',
-          onPress: async () => {
-            const response = await deleteTripApi(activeTripId);
-
-            if (!response.success) {
-              Alert.alert('여행 삭제 실패', response.message || '여행을 삭제하지 못했습니다.');
-              return;
-            }
-
-            clearTrip();
-            router.replace('/(tabs)');
-          },
-        },
-      ]
-    );
-  };
-
   const handleEndTrip = () => {
     if (!activeTripId) {
       Alert.alert('진행 중인 여행이 없어요', '종료할 여행 정보를 찾지 못했습니다.');
@@ -1432,11 +1348,23 @@ function RealTripRecordingScreen({
     if (currentAction.kind === 'end') {
       try {
         setIsSyncing(true);
+        stopAutoPhotoSync();
         await syncTripAssets();
-        await endTripApi(activeTripId);
+        const response = await endTripApi(activeTripId);
+
+        if (!response.success) {
+          if (response.code === 'CONFLICT') {
+            Alert.alert('여행 종료 불가', response.message || '이미 종료된 여행이거나 종료할 수 없는 상태입니다.');
+            return;
+          }
+
+          Alert.alert('여행 종료 실패', response.message || '여행을 종료하지 못했습니다.');
+          return;
+        }
+
         await locationService.stopTracking();
         endTrip();
-        router.push(reportRoute);
+        router.push(`${reportRoute}?mode=review`);
       } finally {
         setIsSyncing(false);
         setIsSubmittingAction(false);
@@ -1871,20 +1799,22 @@ function RealTripRecordingScreen({
         </View>
         <View style={styles.headerActions}>
           <View style={styles.headerActionsTopRow}>
-          <TouchableOpacity 
-            style={[styles.syncHeaderButton, syncActionInFlight && styles.syncHeaderButtonDisabled]} 
-            activeOpacity={0.88}
-            onPress={handleManualSync}
-            disabled={syncActionInFlight}
-          >
-            <MaterialIcons name={syncActionInFlight ? 'hourglass-top' : 'sync'} size={16} color="#274232" />
-            <Text style={styles.syncHeaderButtonText}>{syncActionInFlight ? '동기화 중' : '동기화'}</Text>
-          </TouchableOpacity>
+          {canUseActiveTripActions ? (
+            <TouchableOpacity 
+              style={[styles.syncHeaderButton, syncActionInFlight && styles.syncHeaderButtonDisabled]} 
+              activeOpacity={0.88}
+              onPress={handleManualSync}
+              disabled={syncActionInFlight}
+            >
+              <MaterialIcons name={syncActionInFlight ? 'hourglass-top' : 'sync'} size={16} color="#274232" />
+              <Text style={styles.syncHeaderButtonText}>{syncActionInFlight ? '동기화 중' : '동기화'}</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev) => !prev)} activeOpacity={0.85}>
             <MaterialIcons name="more-horiz" size={22} color="#274232" />
           </TouchableOpacity>
           </View>
-          {!isReviewMode ? (
+          {canUseActiveTripActions ? (
             <TouchableOpacity style={styles.hiddenAction} onPress={() => router.push('/trip/invite')} activeOpacity={0.88}>
               <MaterialIcons name="group-add" size={16} color="#274232" />
               <Text style={styles.inviteQuickButtonText}>친구 초대하기</Text>
@@ -1902,27 +1832,39 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>여행 리포트 확인</Text>
               </TouchableOpacity>
             ) : null}
-            {!isReviewMode ? (
-              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); router.push('/trip/invite'); }} activeOpacity={0.85}>
-                <MaterialIcons name="group-add" size={18} color="#244934" />
-                <Text style={styles.menuItemText}>친구 초대하기</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity style={[styles.menuItem, isReviewMode && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
-              <MaterialIcons name="flag" size={18} color="#244934" />
-              <Text style={styles.menuItemText}>여행 종료</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.menuItem, isTripOwner && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
-              <MaterialIcons name="logout" size={18} color="#244934" />
-              <Text style={styles.menuItemText}>여행 떠나기</Text>
-            </TouchableOpacity>
-            {isTripOwner ? (
+            {isReviewMode && isTripOwner ? (
               <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleDeleteTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
                 <MaterialIcons name="delete-outline" size={18} color="#244934" />
                 <Text style={styles.menuItemText}>여행 삭제</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={[styles.menuItem, isReviewMode && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); router.push('/trip/start?mode=edit'); }} activeOpacity={0.85}>
+            {isReviewMode && !isTripOwner ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
+                <MaterialIcons name="logout" size={18} color="#244934" />
+                <Text style={styles.menuItemText}>여행 떠나기</Text>
+              </TouchableOpacity>
+            ) : null}
+            {canUseActiveTripActions ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); router.push('/trip/invite'); }} activeOpacity={0.85}>
+                <MaterialIcons name="group-add" size={18} color="#244934" />
+                <Text style={styles.menuItemText}>친구 초대하기</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
+              <MaterialIcons name="flag" size={18} color="#244934" />
+              <Text style={styles.menuItemText}>여행 종료</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.menuItem, (isTripOwner || !canUseActiveTripActions || isReviewMode) && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleLeaveTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
+              <MaterialIcons name="logout" size={18} color="#244934" />
+              <Text style={styles.menuItemText}>여행 떠나기</Text>
+            </TouchableOpacity>
+            {isTripOwner && !isReviewMode ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); handleDeleteTrip(); }} activeOpacity={0.85} disabled={isSubmittingAction}>
+                <MaterialIcons name="delete-outline" size={18} color="#244934" />
+                <Text style={styles.menuItemText}>여행 삭제</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); router.push('/trip/start?mode=edit'); }} activeOpacity={0.85}>
               <MaterialIcons name="edit" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 수정</Text>
             </TouchableOpacity>
@@ -1997,77 +1939,123 @@ function RealTripRecordingScreen({
 
       <Modal visible={Boolean(photoViewer && selectedPhotoEvent && selectedPhotoItem)} transparent animationType="fade" onRequestClose={() => setPhotoViewer(null)}>
         <Pressable style={styles.photoModalBackdrop} onPress={() => setPhotoViewer(null)}>
-          <Pressable style={styles.photoModalCard} onPress={() => undefined}>
-            <View style={styles.photoModalHeader}>
-              <View style={styles.photoModalHeaderCopy}>
-                <Text style={styles.photoModalTitle}>{selectedPhotoEvent?.title}</Text>
-                {selectedPhotoContributor ? (
-                  <View style={styles.photoModalMetaRow}>
-                    <View style={[styles.photoModalAvatar, { backgroundColor: selectedPhotoContributor.color }]}>
-                      <Text style={styles.photoModalAvatarText}>{selectedPhotoContributor.name.slice(0, 1)}</Text>
-                    </View>
-                    <Text style={styles.photoModalMeta}>{`photo by ${selectedPhotoContributor.name}`}</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.photoModalMeta}>사진 상세</Text>
-                )}
-              </View>
-              <View style={styles.photoModalHeaderActions}>
-                <View style={styles.photoModalTextActionRow}>
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      if (!selectedPhotoItem) {
-                        return;
-                      }
-                      openPhotoEditor(selectedPhotoEvent!.id, selectedPhotoItem.id, selectedPhotoItem.memo);
-                    }}
-                  >
-                    <Text style={[styles.photoModalTextAction, !selectedPhotoIsOwner && styles.photoModalDisabledAction]}>수정</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      if (!selectedPhotoItem) {
-                        return;
-                      }
-                      confirmDeletePhoto(selectedPhotoEvent!.id, selectedPhotoItem.id, Boolean(selectedPhotoIsOwner));
-                    }}
-                  >
-                    <Text
+          <Pressable style={styles.photoModalViewport} onPress={() => undefined}>
+            <View
+              onLayout={(event) => {
+                const nextWidth = Math.round(event.nativeEvent.layout.width);
+                if (nextWidth > 0 && nextWidth !== photoViewerWidth) {
+                  setPhotoViewerWidth(nextWidth);
+                }
+              }}
+            >
+              <ScrollView
+                ref={photoPagerRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={handlePhotoPagerMomentumEnd}
+                scrollEventThrottle={16}
+              >
+                {selectedPhotoItems.map((photoItem) => {
+                  const photoContributor =
+                    selectedPhotoEvent?.photoContributors?.find(
+                      (contributor) => contributor.id === photoItem.contributorId,
+                    ) ?? null;
+                  const photoIsOwner = currentUserId != null && photoItem.contributorId === currentUserId;
+
+                  return (
+                    <View
+                      key={photoItem.id}
                       style={[
-                        styles.photoModalTextAction,
-                        styles.photoModalDeleteAction,
-                        !selectedPhotoIsOwner && styles.photoModalDisabledAction,
+                        styles.photoModalSlide,
+                        photoViewerWidth > 0 ? { width: photoViewerWidth } : null,
                       ]}
                     >
-                      삭제
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <TouchableOpacity onPress={() => setPhotoViewer(null)} activeOpacity={0.85}>
-                  <MaterialIcons name="close" size={22} color="#223428" />
-                </TouchableOpacity>
-              </View>
+                      <View style={styles.photoModalCard}>
+                        <View style={styles.photoModalHeader}>
+                          <View style={styles.photoModalHeaderCopy}>
+                            <Text style={styles.photoModalTitle}>{selectedPhotoEvent?.title}</Text>
+                            {photoContributor ? (
+                              <View style={styles.photoModalMetaRow}>
+                                <View style={[styles.photoModalAvatar, { backgroundColor: photoContributor.color }]}>
+                                  <Text style={styles.photoModalAvatarText}>{photoContributor.name.slice(0, 1)}</Text>
+                                </View>
+                                <Text style={styles.photoModalMeta}>{`photo by ${photoContributor.name}`}</Text>
+                              </View>
+                            ) : (
+                              <Text style={styles.photoModalMeta}>사진 상세</Text>
+                            )}
+                          </View>
+                          <View style={styles.photoModalHeaderActions}>
+                            <View style={styles.photoModalTextActionRow}>
+                              <TouchableOpacity
+                                activeOpacity={0.85}
+                                onPress={() => {
+                                  openPhotoEditor(selectedPhotoEvent!.id, photoItem.id, photoItem.memo);
+                                }}
+                              >
+                                <Text style={[styles.photoModalTextAction, !photoIsOwner && styles.photoModalDisabledAction]}>
+                                  수정
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                activeOpacity={0.85}
+                                onPress={() => {
+                                  confirmDeletePhoto(selectedPhotoEvent!.id, photoItem.id, Boolean(photoIsOwner));
+                                }}
+                              >
+                                <Text
+                                  style={[
+                                    styles.photoModalTextAction,
+                                    styles.photoModalDeleteAction,
+                                    !photoIsOwner && styles.photoModalDisabledAction,
+                                  ]}
+                                >
+                                  삭제
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                            <TouchableOpacity onPress={() => setPhotoViewer(null)} activeOpacity={0.85}>
+                              <MaterialIcons name="close" size={22} color="#223428" />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+
+                        <Image source={photoItem.source} style={styles.photoModalImage} contentFit="cover" />
+
+                        {selectedPhotoItems.length > 1 ? (
+                          <Text style={styles.photoModalPagerText}>
+                            {`${selectedPhotoItems.findIndex((item) => item.id === photoItem.id) + 1} / ${selectedPhotoItems.length}`}
+                          </Text>
+                        ) : null}
+
+                        {selectedPhotoEvent?.placeName ? (
+                          <Text style={styles.photoModalSectionLabel}>장소</Text>
+                        ) : null}
+                        {selectedPhotoEvent?.placeName ? (
+                          <Text style={styles.photoModalSectionBody}>{selectedPhotoEvent.placeName}</Text>
+                        ) : null}
+
+                        <Text style={styles.photoModalSectionLabel}>이벤트 메모</Text>
+                        <Text style={styles.photoModalSectionBody}>
+                          {selectedPhotoEvent?.eventMemo ?? selectedPhotoEvent?.subtitle}
+                        </Text>
+
+                        {selectedPhotoEmotion ? <Text style={styles.photoModalSectionLabel}>내 감정 기록</Text> : null}
+                        {selectedPhotoEmotion ? (
+                          <Text style={styles.photoModalSectionBody}>{selectedPhotoEmotion}</Text>
+                        ) : null}
+
+                        <Text style={styles.photoModalSectionLabel}>사진 메모</Text>
+                        <Text style={styles.photoModalSectionBody}>
+                          {photoItem.memo ?? '이 사진에 대한 메모가 아직 없어요.'}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
             </View>
-
-            {selectedPhotoItem ? (
-              <Image source={selectedPhotoItem.source} style={styles.photoModalImage} contentFit="cover" />
-            ) : null}
-
-            {selectedPhotoEvent?.placeName ? (
-              <Text style={styles.photoModalSectionLabel}>장소</Text>
-            ) : null}
-            {selectedPhotoEvent?.placeName ? <Text style={styles.photoModalSectionBody}>{selectedPhotoEvent.placeName}</Text> : null}
-
-            <Text style={styles.photoModalSectionLabel}>이벤트 메모</Text>
-            <Text style={styles.photoModalSectionBody}>{selectedPhotoEvent?.eventMemo ?? selectedPhotoEvent?.subtitle}</Text>
-
-            {selectedPhotoEmotion ? <Text style={styles.photoModalSectionLabel}>내 감정 기록</Text> : null}
-            {selectedPhotoEmotion ? <Text style={styles.photoModalSectionBody}>{selectedPhotoEmotion}</Text> : null}
-
-            <Text style={styles.photoModalSectionLabel}>사진 메모</Text>
-            <Text style={styles.photoModalSectionBody}>{selectedPhotoItem?.memo ?? '이 사진에 대한 메모가 아직 없어요.'}</Text>
           </Pressable>
         </Pressable>
       </Modal>
@@ -2647,9 +2635,8 @@ function RealTripRecordingScreen({
               </TouchableOpacity>
             </View>
           ) : null}
-          <View style={[styles.bottomActions, isReviewMode && styles.hiddenAction]}>
-            <TouchableOpacity style={styles.endButton} onPress={isReviewMode ? handleOpenReport : handleEndTrip} activeOpacity={0.88}>
-              {isReviewMode ? <Text style={styles.endButtonText}>여행 리포트 확인</Text> : null}
+          <View style={[styles.bottomActions, !canUseActiveTripActions && styles.hiddenAction]}>
+            <TouchableOpacity style={styles.endButton} onPress={handleEndTrip} activeOpacity={0.88}>
               <Text style={styles.endButtonText}>여행 종료</Text>
             </TouchableOpacity>
           </View>
@@ -2687,7 +2674,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#244934',
   },
   primaryButtonText: { fontFamily: 'Pretendard-Bold', fontSize: 15, color: '#F7FBF6' },
-  header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 20 },
+  header: { paddingHorizontal: 20, paddingTop: 30, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 20 },
   backButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', marginRight: 2 },
   headerTextWrap: { flex: 1 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -2754,6 +2741,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontFamily: 'Pretendard-Bold', fontSize: 20, color: '#182119' },
   modalBody: { marginTop: 12, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 22, color: '#66756C' },
   photoModalBackdrop: { flex: 1, backgroundColor: 'rgba(12, 18, 14, 0.45)', justifyContent: 'center', paddingHorizontal: 18 },
+  photoModalViewport: { width: '100%' },
   photoModalCard: { borderRadius: 28, backgroundColor: '#FCFEFB', paddingHorizontal: 18, paddingTop: 18, paddingBottom: 20 },
   photoModalHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   photoModalHeaderCopy: { flex: 1 },
@@ -2774,6 +2762,8 @@ const styles = StyleSheet.create({
   photoModalDeleteAction: { color: '#A45A49' },
   photoModalDisabledAction: { color: '#A3B0A8' },
   photoModalImage: { width: '100%', aspectRatio: 1, borderRadius: 22, marginTop: 16, backgroundColor: '#E7ECE5' },
+  photoModalSlide: { paddingHorizontal: 4 },
+  photoModalPagerText: { marginTop: 10, fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#738078', textAlign: 'center' },
   photoModalSectionLabel: { marginTop: 16, fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#7A867F' },
   photoModalSectionBody: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 21, color: '#243028' },
   deleteDialogBackdrop: {

@@ -13,6 +13,7 @@ export default function PastTripsScreen() {
   const { favoriteIds, toggleFavorite } = useFavoriteStore();
   const serverTrips = useTripStore((state) => state.trips);
   const loadTrips = useTripStore((state) => state.fetchTrips);
+  const setReviewTrip = useTripStore((state) => state.setReviewTrip);
   const [trips, setTrips] = useState<TripData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -59,9 +60,22 @@ export default function PastTripsScreen() {
       <TripCard
         data={item}
         onPress={() => {
+          const selectedTrip = serverTrips.find((trip) => trip.tripId === item.id);
+          if (selectedTrip) {
+            setReviewTrip({
+              tripId: selectedTrip.tripId,
+              tripName: selectedTrip.title,
+              startDate: selectedTrip.startDate,
+              endDate: selectedTrip.endDate,
+              memberCount: selectedTrip.memberCount,
+              origin: '---',
+              destination: selectedTrip.title,
+            });
+          }
+
           router.push({
             pathname: '/trip/report',
-            params: { id: item.id },
+            params: { mode: 'review', id: item.id },
           });
         }}
         onPressHeart={() => toggleFavorite(item.id)}

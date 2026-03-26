@@ -17,6 +17,7 @@ type TripStartCalendarProps = {
   pickerMode: PickerMode;
   startDate: Date | null;
   endDate: Date | null;
+  minDate: Date;
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onPickDay: (date: Date) => void;
@@ -41,6 +42,10 @@ function isDateBetween(target: Date, start: Date | null, end: Date | null) {
   return time > start.getTime() && time < end.getTime();
 }
 
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
 export function TripStartCalendar({
   monthLabels,
   weekLabels,
@@ -49,6 +54,7 @@ export function TripStartCalendar({
   pickerMode,
   startDate,
   endDate,
+  minDate,
   onPrevMonth,
   onNextMonth,
   onPickDay,
@@ -57,7 +63,12 @@ export function TripStartCalendar({
   onSelectMonth,
   onSelectYear,
 }: TripStartCalendarProps) {
-  const years = Array.from({ length: 11 }, (_, index) => 2020 + index);
+  const years = Array.from({ length: 11 }, (_, index) => minDate.getFullYear() + index);
+  const minDay = startOfDay(minDate);
+  const visibleMonthLabels =
+    calendarMonth.getFullYear() === minDay.getFullYear()
+      ? monthLabels.slice(minDay.getMonth())
+      : monthLabels;
 
   return (
     <View style={styles.card}>
@@ -68,20 +79,20 @@ export function TripStartCalendar({
 
         <View style={styles.selectorRow}>
           <TouchableOpacity
-            style={[styles.selectorPill, pickerMode === 'month' && styles.selectorPillActive]}
-            onPress={() => onTogglePicker(pickerMode === 'month' ? null : 'month')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.selectorText}>{monthLabels[calendarMonth.getMonth()]}</Text>
-            <MaterialIcons name="expand-more" size={16} color="#5A645E" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
             style={[styles.selectorPill, pickerMode === 'year' && styles.selectorPillActive]}
             onPress={() => onTogglePicker(pickerMode === 'year' ? null : 'year')}
             activeOpacity={0.8}
           >
             <Text style={styles.selectorText}>{calendarMonth.getFullYear()}</Text>
+            <MaterialIcons name="expand-more" size={16} color="#5A645E" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.selectorPill, pickerMode === 'month' && styles.selectorPillActive]}
+            onPress={() => onTogglePicker(pickerMode === 'month' ? null : 'month')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.selectorText}>{monthLabels[calendarMonth.getMonth()]}</Text>
             <MaterialIcons name="expand-more" size={16} color="#5A645E" />
           </TouchableOpacity>
         </View>
@@ -95,7 +106,7 @@ export function TripStartCalendar({
         <View style={styles.verticalPickerOverlay}>
           <View style={styles.verticalPickerCard}>
             <ScrollView showsVerticalScrollIndicator={false} style={styles.verticalPickerScroll}>
-              {(pickerMode === 'month' ? monthLabels : years).map((item) => {
+              {(pickerMode === 'month' ? visibleMonthLabels : years).map((item) => {
                 const label = String(item);
                 const active =
                   pickerMode === 'month'
@@ -136,6 +147,7 @@ export function TripStartCalendar({
         {days.map(({ date, currentMonth }) => {
           const selected = isSameDay(date, startDate) || isSameDay(date, endDate);
           const inRange = isDateBetween(date, startDate, endDate);
+          const disabled = startOfDay(date) < minDay;
 
           return (
             <View key={date.toISOString()} style={styles.dayCell}>
@@ -144,9 +156,11 @@ export function TripStartCalendar({
                   styles.dayButton,
                   selected && styles.dayButtonSelected,
                   inRange && styles.dayButtonInRange,
+                  disabled && styles.dayButtonDisabled,
                 ]}
                 onPress={() => onPickDay(date)}
                 activeOpacity={0.9}
+                disabled={disabled}
               >
                 <Text
                   style={[
@@ -154,6 +168,7 @@ export function TripStartCalendar({
                     !currentMonth && styles.dayTextDim,
                     selected && styles.dayTextSelected,
                     inRange && styles.dayTextInRange,
+                    disabled && styles.dayTextDisabled,
                   ]}
                 >
                   {date.getDate()}
@@ -287,6 +302,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  dayButtonDisabled: {
+    opacity: 0.35,
+  },
   dayButtonSelected: {
     backgroundColor: '#2C2E31',
   },
@@ -306,6 +324,9 @@ const styles = StyleSheet.create({
   },
   dayTextInRange: {
     color: '#4C564E',
+  },
+  dayTextDisabled: {
+    color: '#B9C0B9',
   },
   confirmButton: {
     marginTop: 18,

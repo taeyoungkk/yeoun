@@ -464,9 +464,10 @@ export const endTripApi = async (tripId: string): Promise<TripStartResponse> => 
     }
 
     console.error('End Trip API Error:', error);
+    const normalizedCode = error?.response?.status === 409 ? 'CONFLICT' : getErrorCode(error);
     return {
       success: false,
-      code: getErrorCode(error),
+      code: normalizedCode,
       message: getErrorMessage(error, 'Failed to end trip.'),
       data: {} as TripStartData,
       timestamp: new Date().toISOString(),

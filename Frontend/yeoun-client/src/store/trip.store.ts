@@ -142,35 +142,47 @@ export const useTripStore = create<TripState>()(
         }
       },
       restoreActiveTripFromServer: async () => {
-        const trips = await get().fetchTrips(true);
         const persistedTripId = get().currentTripId;
         if (!persistedTripId) {
           return null;
         }
 
-        const activeTripListItem = trips.find((trip) => trip.tripId === persistedTripId && trip.status === 'ACTIVE');
-
-        if (!activeTripListItem) {
-          if (get().isTripActive || get().currentTripId || get().activeTrip) {
-            get().clearTrip();
+        const detailResponse = await getTripDetailApi(persistedTripId);
+        if (detailResponse.success) {
+          if (detailResponse.data.status === 'ACTIVE') {
+            get().syncAcceptedTrip(detailResponse.data);
+            void get().fetchTrips(true);
+            return detailResponse.data;
           }
-          return null;
-        }
 
-        const detailResponse = await getTripDetailApi(activeTripListItem.tripId);
-        if (!detailResponse.success) {
-          return null;
-        }
-
-        if (detailResponse.data.status !== 'ACTIVE') {
           if (get().currentTripId === detailResponse.data.tripId || get().isTripActive) {
             get().clearTrip();
           }
+          void get().fetchTrips(true);
           return detailResponse.data;
         }
 
-        get().syncAcceptedTrip(detailResponse.data);
-        return detailResponse.data;
+        const trips = await get().fetchTrips(true);
+        const activeTripListItem = trips.find((trip) => trip.tripId === persistedTripId && trip.status === 'ACTIVE');
+
+        if (!activeTripListItem) {
+          return null;
+        }
+
+        const activeDetailResponse = await getTripDetailApi(activeTripListItem.tripId);
+        if (!activeDetailResponse.success) {
+          return null;
+        }
+
+        if (activeDetailResponse.data.status !== 'ACTIVE') {
+          if (get().currentTripId === activeDetailResponse.data.tripId || get().isTripActive) {
+            get().clearTrip();
+          }
+          return activeDetailResponse.data;
+        }
+
+        get().syncAcceptedTrip(activeDetailResponse.data);
+        return activeDetailResponse.data;
       },
       bumpRouteRefreshKey: () =>
         set((state) => ({
