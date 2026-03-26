@@ -49,6 +49,8 @@ public class TripSyncStatusService {
                 tripSyncStatus.getRouteVersion(),
                 tripSyncStatus.getTimelineVersion(),
                 tripSyncStatus.getPhotoVersion(),
+                tripSyncStatus.getPendingLocationCount(),
+                tripSyncStatus.getPendingPhotoCount(),
                 tripSyncStatus.getUpdatedAt(),
                 tripSyncStatus.getLastErrorMessage()
         );
@@ -129,7 +131,10 @@ public class TripSyncStatusService {
             tripSyncStatus.markFailed(now, tripSyncStatus.getLastErrorMessage());
             return;
         }
-        if (tripSyncStatus.hasPendingWork()) {
+        boolean hasPendingLocationWork = tripSyncStatus.hasPendingLocationWork();
+        boolean hasPendingPhotoWork = tripSyncStatus.hasPendingPhotoWork();
+
+        if (hasPendingLocationWork || hasPendingPhotoWork) {
             tripSyncStatus.markProcessing(now);
             return;
         }

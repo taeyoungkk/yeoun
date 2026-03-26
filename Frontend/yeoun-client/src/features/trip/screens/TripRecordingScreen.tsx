@@ -55,11 +55,10 @@ import {
   startTripApi,
   type TripMemberItem,
 } from '@/src/api/trip';
-import { globalUserState, subscribeUser, updateUser } from '@/src/store/userStore';
+import { useTripStore, useUserStore } from '@/src/store';
 import { locationService } from '../../../services/locationService';
 import { requestTripPhotoPermission, syncTripPhotosForDateRange } from '../../../services/photoSyncService';
-import { type LocationSyncStatus, useTripStore } from '@/src/store/trip.store';
-import { useUserStore } from '@/src/store/user.store';
+import { type LocationSyncStatus } from '@/src/store/trip.store';
 import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
 import MockTripRecordingScreen from './MockTripRecordingScreen';
 
@@ -107,6 +106,8 @@ type TimelineEvent = {
   chips?: string[];
   coordinate?: Coordinate;
   placeName?: string;
+  placeProvider?: string;
+  providerPlaceId?: string;
   eventMemo?: string;
   photoUrls?: string[];
   photoContributors?: PhotoContributor[];
@@ -355,6 +356,11 @@ const replacePhotoChip = (chips: string[] | undefined, photoCount: number) => {
   return nextChips;
 };
 
+const getEventDisplayTitle = (event: TimelineEvent) => event.title || event.placeName || 'Trip event';
+
+const shouldShowEventPlaceName = (event: TimelineEvent) =>
+  Boolean(event.placeName) && event.placeName !== getEventDisplayTitle(event);
+
 function buildRealTripEvents(
   timelineDays: TimelineDayDetail[],
   eventDetailsById: Record<string, EventDetail>,
@@ -411,9 +417,11 @@ function buildRealTripEvents(
           day: dayKey,
           type: hasPhotos ? 'photo' : 'location',
           time: formatTimeLabel(startAt ?? endAt),
-          title: eventDetail?.title || event.title || event.placeName || 'Trip event',
+          title: eventDetail?.title || event.title || '',
           subtitle: hasPhotos ? '' : placeName ?? '',
           placeName,
+          placeProvider: eventDetail?.placeProvider ?? event.placeProvider ?? undefined,
+          providerPlaceId: eventDetail?.providerPlaceId ?? event.providerPlaceId ?? undefined,
           chips: [eventType, hasPhotos ? buildPhotoChipLabel(visiblePhotos.length) : null].filter(Boolean) as string[],
           eventMemo: eventDetail?.myMemo?.content?.trim() || undefined,
           photoContributors: hasPhotos ? photoContributors : undefined,
@@ -543,10 +551,9 @@ function RealTripRecordingScreen({
     selectedEmoji?: string;
     selectedLabel?: string;
   } | null>(null);
-  const [mapPreferences, setMapPreferences] = useState({
-    showPhotoPins: globalUserState.showPhotoPins,
-    showPaymentPins: globalUserState.showPaymentPins,
-  });
+  const settings = useUserStore((state) => state.settings);
+  const { showPhotoPins, showPaymentPins } = settings;
+  const updateSettings = useUserStore((state) => state.updateSettings);
   const [actionConfirm, setActionConfirm] = useState<{
     kind: ActionConfirmKind;
     title: string;
@@ -584,7 +591,7 @@ function RealTripRecordingScreen({
     () => tripEvents.filter((event) => activeFilter === 'all' || event.day === activeFilter),
     [activeFilter, tripEvents]
   );
-  const routeOnlyMode = !mapPreferences.showPhotoPins && !mapPreferences.showPaymentPins;
+  const routeOnlyMode = !showPhotoPins && !showPaymentPins;
   const filteredMapEvents = useMemo(
     () =>
       filteredEvents.filter((event) => {
@@ -593,16 +600,16 @@ function RealTripRecordingScreen({
         }
 
         if (event.type === 'photo') {
-          return mapPreferences.showPhotoPins;
+          return showPhotoPins;
         }
 
         if (event.type === 'payment') {
-          return mapPreferences.showPaymentPins;
+          return showPaymentPins;
         }
 
         return false;
       }),
-    [filteredEvents, mapPreferences.showPaymentPins, mapPreferences.showPhotoPins, routeOnlyMode]
+    [filteredEvents, showPaymentPins, showPhotoPins, routeOnlyMode]
   );
 
   const routeCoordinates = useMemo(() => {
@@ -908,7 +915,7 @@ function RealTripRecordingScreen({
           ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
           : {};
 
-        if (tripDetailResponse.success) {
+        if (tripDetailResponse.success && !isReviewMode) {
           setActiveTrip(tripDetailResponse.data);
         }
         setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
@@ -948,18 +955,8 @@ function RealTripRecordingScreen({
     return () => {
       cancelled = true;
     };
-  }, [activeTripId, currentUserId, currentUserNickname, routeRefreshKey, setActiveTrip]);
+  }, [activeTripId, currentUserId, currentUserNickname, isReviewMode, routeRefreshKey, setActiveTrip]);
 
-  useEffect(() => {
-    const unsubscribe = subscribeUser(() => {
-      setMapPreferences({
-        showPhotoPins: globalUserState.showPhotoPins,
-        showPaymentPins: globalUserState.showPaymentPins,
-      });
-    });
-
-    return unsubscribe;
-  }, []);
 
   useEffect(() => {
     if (selectedEventId && !filteredEvents.some((event) => event.id === selectedEventId)) {
@@ -1499,19 +1496,19 @@ function RealTripRecordingScreen({
   };
 
   const toggleMapPreference = (key: MapFilterKey) => {
-    updateUser({ [key]: !mapPreferences[key] });
+    updateSettings({ [key]: !settings[key] });
   };
 
   const toggleRouteOnlyMode = () => {
     if (routeOnlyMode) {
-      updateUser({
+      updateSettings({
         showPhotoPins: true,
         showPaymentPins: true,
       });
       return;
     }
 
-    updateUser({
+    updateSettings({
       showPhotoPins: false,
       showPaymentPins: false,
     });
@@ -1538,7 +1535,7 @@ function RealTripRecordingScreen({
     }
 
     const nextBody = eventEditor.body.trim();
-    const nextTitle = eventEditor.title.trim() || originalEvent.title;
+    const nextTitle = eventEditor.title.trim();
     const nextPlaceName = eventEditor.placeName.trim() || null;
 
     const eventResponse = await updateEventApi(eventEditor.eventId, {
@@ -2372,7 +2369,7 @@ function RealTripRecordingScreen({
             <Text style={[styles.mapFilterChipText, routeOnlyMode && styles.mapFilterChipTextActive]}>동선만</Text>
           </TouchableOpacity>
           {MAP_FILTER_META.map((filter) => {
-            const isActive = mapPreferences[filter.key];
+            const isActive = settings[filter.key];
             return (
               <TouchableOpacity
                 key={filter.key}
@@ -2517,8 +2514,8 @@ function RealTripRecordingScreen({
                         </View>
                       ) : null}
                     </View>
-                    <Text style={styles.eventTitle}>{event.title}</Text>
-                    {event.placeName ? <Text style={styles.eventPlaceName}>{event.placeName}</Text> : null}
+                    <Text style={styles.eventTitle}>{getEventDisplayTitle(event)}</Text>
+                    {shouldShowEventPlaceName(event) ? <Text style={styles.eventPlaceName}>{event.placeName}</Text> : null}
                     {event.type === 'payment' ? (
                       <View style={styles.paymentMetaBlock}>
                         <View style={styles.paymentMetaTopRow}>

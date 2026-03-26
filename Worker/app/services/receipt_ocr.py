@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import mimetypes
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
@@ -9,6 +10,8 @@ from urllib.parse import urlparse
 import httpx
 from app.config import Settings, get_settings
 from app.schemas.receipt import ReceiptLineItem, ReceiptOcrRequest, ReceiptOcrResponse
+
+logger = logging.getLogger(__name__)
 
 
 class ReceiptOcrService:
@@ -20,8 +23,8 @@ class ReceiptOcrService:
             raise ValueError("GMS_API_KEY is required to call Gemini OCR.")
 
         image_bytes, mime_type = await self._download_image(str(payload.image_url))
-        gemini_payload = self._build_gemini_payload(payload, image_bytes, mime_type)
-        gemini_response = await self._call_gemini(gemini_payload)
+        gemini_payloads = self._build_gemini_payloads(payload, image_bytes, mime_type)
+        gemini_response = await self._call_gemini(gemini_payloads)
         raw_text = self._extract_response_text(gemini_response)
         parsed = self._parse_json(raw_text)
         return self._build_receipt_response(payload, parsed, raw_text)
@@ -41,12 +44,12 @@ class ReceiptOcrService:
             mime_type = guessed_type or "image/jpeg"
         return response.content, mime_type
 
-    def _build_gemini_payload(
+    def _build_gemini_payloads(
         self,
         payload: ReceiptOcrRequest,
         image_bytes: bytes,
         mime_type: str,
-    ) -> dict[str, Any]:
+    ) -> list[dict[str, Any]]:
         prompt = (
             "You are extracting data from a receipt image. "
             "Return only a JSON object with these fields: "
@@ -59,12 +62,12 @@ class ReceiptOcrService:
             f"The locale is {payload.locale}."
         )
         image_part = {
-            "inline_data": {
-                "mime_type": mime_type,
+            "inlineData": {
+                "mimeType": mime_type,
                 "data": base64.b64encode(image_bytes).decode("ascii"),
             }
         }
-        return {
+        primary_payload = {
             "contents": [
                 {
                     "parts": [
@@ -78,16 +81,59 @@ class ReceiptOcrService:
                 "temperature": 0.1,
             },
         }
+        fallback_payload = {
+            "contents": primary_payload["contents"],
+            "generationConfig": {
+                "temperature": 0.1,
+            },
+        }
+        return [primary_payload, fallback_payload]
 
-    async def _call_gemini(self, payload: dict[str, Any]) -> dict[str, Any]:
-        url = (
-            f"{self.settings.gemini_base_url}/models/"
-            f"{self.settings.gemini_model}:generateContent?key={self.settings.gms_api_key}"
-        )
+    async def _call_gemini(self, payloads: list[dict[str, Any]]) -> dict[str, Any]:
+        base_url = f"{self.settings.gemini_base_url}/models/{self.settings.gemini_model}:generateContent"
+        request_variants = [
+            {
+                "name": "bearer",
+                "url": base_url,
+                "headers": {"Authorization": f"Bearer {self.settings.gms_api_key}"},
+            },
+            {
+                "name": "query",
+                "url": f"{base_url}?key={self.settings.gms_api_key}",
+                "headers": {},
+            },
+        ]
         async with httpx.AsyncClient(timeout=self.settings.gemini_timeout_seconds) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            return response.json()
+            last_error: Exception | None = None
+            for variant in request_variants:
+                for index, payload in enumerate(payloads, start=1):
+                    response = await client.post(variant["url"], json=payload, headers=variant["headers"])
+                    if response.status_code >= 400:
+                        logger.error(
+                            "Gemini error auth=%s payloadAttempt=%s status=%s body=%s",
+                            variant["name"],
+                            index,
+                            response.status_code,
+                            response.text,
+                        )
+                    try:
+                        response.raise_for_status()
+                        logger.info(
+                            "Gemini request succeeded auth=%s payloadAttempt=%s",
+                            variant["name"],
+                            index,
+                        )
+                        return response.json()
+                    except httpx.HTTPStatusError as exc:
+                        response_text = exc.response.text
+                        last_error = RuntimeError(
+                            "Gemini request failed "
+                            f"auth={variant['name']} payloadAttempt={index} "
+                            f"status={exc.response.status_code} body={response_text}"
+                        )
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError("Gemini request failed without a captured error.")
 
     def _extract_response_text(self, response_json: dict[str, Any]) -> str:
         candidates = response_json.get("candidates") or []

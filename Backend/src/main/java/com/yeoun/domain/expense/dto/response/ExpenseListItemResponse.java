@@ -7,6 +7,7 @@ import com.yeoun.domain.expense.entity.ExpenseStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record ExpenseListItemResponse(
@@ -20,6 +21,7 @@ public record ExpenseListItemResponse(
         UUID payerUserId,
         ExpenseSplitType splitType,
         ExpenseSourceType sourceType,
-        ExpenseStatus status
+        ExpenseStatus status,
+        List<ExpenseSplitItemResponse> splits
 ) {
 }

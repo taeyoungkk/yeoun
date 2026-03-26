@@ -1,43 +1,54 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Alert } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
-import { useUIStore } from '@/src/store/ui.store';
+import axios from 'axios';
 import * as ImagePicker from 'expo-image-picker';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+import { requestReceiptOcrApi, uploadReceiptImageApi } from '@/src/api/receipt';
+import { useTripStore } from '@/src/store';
+import { useUIStore } from '@/src/store/ui.store';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FRAME_SIZE = SCREEN_WIDTH * 0.78;
 const CORNER_SIZE = 28;
 const CORNER_THICKNESS = 4;
 
 function ScanFrame() {
-  const cornerStyle = { width: CORNER_SIZE, height: CORNER_SIZE };
-  const hStyle = { height: CORNER_THICKNESS, width: CORNER_SIZE, backgroundColor: '#5CE1F0', borderRadius: 2 };
-  const vStyle = { width: CORNER_THICKNESS, height: CORNER_SIZE, backgroundColor: '#5CE1F0', borderRadius: 2 };
+  const hStyle = {
+    height: CORNER_THICKNESS,
+    width: CORNER_SIZE,
+    backgroundColor: '#5CE1F0',
+    borderRadius: 2,
+  };
+  const vStyle = {
+    width: CORNER_THICKNESS,
+    height: CORNER_SIZE,
+    backgroundColor: '#5CE1F0',
+    borderRadius: 2,
+  };
 
   return (
     <View style={{ width: FRAME_SIZE, height: FRAME_SIZE * 1.4, position: 'relative' }}>
-      {/* Dim overlay inside frame border */}
       <View style={StyleSheet.absoluteFillObject} />
 
-      {/* Top-left */}
       <View style={[styles.corner, { top: 0, left: 0 }]}>
         <View style={hStyle} />
         <View style={[vStyle, { position: 'absolute', top: 0, left: 0 }]} />
       </View>
-      {/* Top-right */}
+
       <View style={[styles.corner, { top: 0, right: 0 }]}>
         <View style={[hStyle, { alignSelf: 'flex-end' }]} />
         <View style={[vStyle, { position: 'absolute', top: 0, right: 0 }]} />
       </View>
-      {/* Bottom-left */}
+
       <View style={[styles.corner, { bottom: 0, left: 0 }]}>
         <View style={[hStyle, { position: 'absolute', bottom: 0, left: 0 }]} />
         <View style={[vStyle, { position: 'absolute', bottom: 0, left: 0 }]} />
       </View>
-      {/* Bottom-right */}
+
       <View style={[styles.corner, { bottom: 0, right: 0 }]}>
         <View style={[hStyle, { position: 'absolute', bottom: 0, right: 0 }]} />
         <View style={[vStyle, { position: 'absolute', bottom: 0, right: 0 }]} />
@@ -48,24 +59,37 @@ function ScanFrame() {
 
 export default function ReceiptOcrScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ tripId?: string | string[] }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [capturedUri, setCapturedUri] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const showToast = useUIStore((state) => state.showToast);
+  const currentTripId = useTripStore((state) => state.currentTripId);
+  const currentTrip = useTripStore((state) => state.currentTrip);
+  const activeTrip = useTripStore((state) => state.activeTrip);
+
+  const routeTripId = Array.isArray(params.tripId) ? params.tripId[0] : params.tripId;
+  const resolvedTripId = routeTripId ?? currentTripId ?? currentTrip?.tripId ?? activeTrip?.tripId ?? null;
 
   useEffect(() => {
     if (permission && !permission.granted) {
       requestPermission();
     }
-  }, []);
+  }, [permission, requestPermission]);
 
   const takePicture = async () => {
-    if (!cameraRef.current) return;
+    if (!cameraRef.current) {
+      return;
+    }
+
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
-      if (photo?.uri) setCapturedUri(photo.uri);
-    } catch (e) {
-      Alert.alert('오류', '사진 촬영에 실패했습니다.');
+      if (photo?.uri) {
+        setCapturedUri(photo.uri);
+      }
+    } catch {
+      Alert.alert('오류', '사진을 촬영하지 못했습니다.');
     }
   };
 
@@ -75,6 +99,7 @@ export default function ReceiptOcrScreen() {
       allowsEditing: true,
       quality: 0.8,
     });
+
     if (!result.canceled && result.assets?.[0]?.uri) {
       setCapturedUri(result.assets[0].uri);
     }
@@ -82,17 +107,88 @@ export default function ReceiptOcrScreen() {
 
   const handleRetake = () => setCapturedUri(null);
 
-  const handleSubmit = () => {
-    showToast('영수증 분석을 요청했습니다! 잠시 후 결과를 확인하세요.', 'success');
-    router.back();
+  const handleSubmit = async () => {
+    if (!capturedUri) {
+      console.warn('[ReceiptOCR] Submit skipped: no captured image.');
+      return;
+    }
+
+    if (!resolvedTripId) {
+      console.warn('[ReceiptOCR] Submit skipped: no trip id.', {
+        routeTripId: routeTripId ?? null,
+        currentTripId: currentTripId ?? null,
+        currentTripTripId: currentTrip?.tripId ?? null,
+        activeTripTripId: activeTrip?.tripId ?? null,
+      });
+      Alert.alert('여행 정보 없음', '활성 여행 정보가 없어 영수증 OCR 요청을 보낼 수 없습니다.');
+      showToast('활성 여행 정보를 찾을 수 없습니다.', 'error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    console.log('[ReceiptOCR] Submit started.', {
+      tripId: resolvedTripId,
+      hasCapturedUri: Boolean(capturedUri),
+    });
+
+    try {
+      console.log('[ReceiptOCR] Upload request.');
+      const uploadResponse = await uploadReceiptImageApi(resolvedTripId, {
+        uri: capturedUri,
+        name: `receipt-${Date.now()}.jpg`,
+        type: 'image/jpeg',
+      });
+      console.log('[ReceiptOCR] Upload response.', {
+        success: uploadResponse.success,
+        receiptId: uploadResponse.data?.receiptId ?? null,
+        imageUrl: uploadResponse.data?.imageUrl ?? null,
+      });
+
+      if (!uploadResponse.success || !uploadResponse.data.imageUrl) {
+        throw new Error(uploadResponse.message ?? '영수증 이미지를 업로드하지 못했습니다.');
+      }
+
+      console.log('[ReceiptOCR] OCR request.');
+      const ocrResponse = await requestReceiptOcrApi(resolvedTripId, {
+        imageUrl: uploadResponse.data.imageUrl,
+        currencyCode: 'KRW',
+        locale: 'ko-KR',
+      });
+      console.log('[ReceiptOCR] OCR response.', {
+        success: ocrResponse.success,
+        receiptId: ocrResponse.data?.receiptId ?? null,
+        status: ocrResponse.data?.status ?? null,
+      });
+
+      if (!ocrResponse.success) {
+        throw new Error(ocrResponse.message ?? '영수증 OCR 요청에 실패했습니다.');
+      }
+
+      showToast('영수증 분석을 요청했습니다. 잠시 후 결과를 확인하세요.', 'success');
+      router.replace({
+        pathname: '/receipt-ocr-result',
+        params: { receiptId: ocrResponse.data.receiptId },
+      } as never);
+    } catch (error) {
+      console.error('[ReceiptOCR] Submit failed.', error);
+      const message = axios.isAxiosError(error)
+        ? error.response?.data?.message ?? '영수증 OCR 요청에 실패했습니다.'
+        : error instanceof Error
+          ? error.message
+          : '영수증 OCR 요청에 실패했습니다.';
+
+      Alert.alert('OCR 요청 실패', message);
+      showToast(message, 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  // ── Preview Screen ─────────────────────────────────────────────────────────
   if (capturedUri) {
     return (
       <View style={{ flex: 1, backgroundColor: 'black' }}>
         <Stack.Screen options={{ headerShown: false }} />
-        {/* Header */}
+
         <View style={styles.previewHeader}>
           <Text style={styles.previewTitle}>영수증 스캔</Text>
           <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
@@ -102,62 +198,56 @@ export default function ReceiptOcrScreen() {
 
         <Image source={{ uri: capturedUri }} style={{ flex: 1 }} contentFit="contain" />
 
-        {/* Bottom actions */}
         <View style={styles.previewActions}>
-          <TouchableOpacity onPress={handleRetake} style={styles.retakeBtn}>
+          <TouchableOpacity onPress={handleRetake} style={styles.retakeBtn} disabled={isSubmitting}>
             <Ionicons name="refresh" size={20} color="#ccc" />
             <Text style={styles.retakeTxt}>다시 찍기</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleSubmit} style={styles.submitBtn}>
-            <Ionicons name="scan-outline" size={20} color="white" />
-            <Text style={styles.submitTxt}>정산하기</Text>
+          <TouchableOpacity
+            onPress={handleSubmit}
+            style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
+            disabled={isSubmitting}
+          >
+            <Ionicons name={isSubmitting ? 'time-outline' : 'scan-outline'} size={20} color="white" />
+            <Text style={styles.submitTxt}>{isSubmitting ? '요청 중...' : '분석 요청'}</Text>
           </TouchableOpacity>
         </View>
       </View>
     );
   }
 
-  // ── No Permission ──────────────────────────────────────────────────────────
   if (!permission?.granted) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+      <View style={styles.permissionContainer}>
         <Stack.Screen options={{ headerShown: false }} />
         <Ionicons name="camera-outline" size={64} color="#555" />
-        <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', marginTop: 20, marginBottom: 24 }}>
-          카메라 권한이 필요합니다.
-        </Text>
+        <Text style={styles.permissionText}>영수증 촬영을 위해 카메라 권한이 필요합니다.</Text>
         <TouchableOpacity onPress={requestPermission} style={styles.submitBtn}>
-          <Text style={styles.submitTxt}>권한 허용하기</Text>
+          <Text style={styles.submitTxt}>권한 허용</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
-          <Text style={{ color: '#666' }}>취소</Text>
+          <Text style={{ color: '#666' }}>닫기</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // ── Live Camera Viewfinder ─────────────────────────────────────────────────
   return (
     <View style={{ flex: 1, backgroundColor: 'black' }}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing="back" />
 
-      {/* Dark overlay with cut-out */}
       <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-        {/* Top dim */}
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }} />
-        {/* Middle row: dim | frame | dim */}
         <View style={{ flexDirection: 'row', height: FRAME_SIZE * 1.4 }}>
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }} />
           <View style={{ width: FRAME_SIZE }} />
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }} />
         </View>
-        {/* Bottom dim */}
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }} />
       </View>
 
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>영수증 스캔</Text>
         <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
@@ -165,28 +255,22 @@ export default function ReceiptOcrScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Scan frame centered */}
       <View style={styles.frameWrapper}>
         <ScanFrame />
-        {/* Hint bubble */}
         <View style={styles.hintBubble}>
-          <Text style={styles.hintText}>영수증의 지출 정보가{'\n'}잘 나오게 찍어주세요!</Text>
+          <Text style={styles.hintText}>영수증 전체가 잘 보이도록 맞춰서 촬영해 주세요.</Text>
         </View>
       </View>
 
-      {/* Bottom controls */}
       <View style={styles.controls}>
-        {/* Gallery button */}
         <TouchableOpacity onPress={pickFromGallery} style={styles.sideBtn}>
           <Ionicons name="images-outline" size={28} color="white" />
         </TouchableOpacity>
 
-        {/* Shutter */}
         <TouchableOpacity onPress={takePicture} style={styles.shutter}>
           <View style={styles.shutterInner} />
         </TouchableOpacity>
 
-        {/* Spacer */}
         <View style={styles.sideBtn} />
       </View>
     </View>
@@ -274,7 +358,6 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     backgroundColor: 'white',
   },
-  // Preview styles
   previewHeader: {
     paddingTop: 60,
     paddingBottom: 16,
@@ -321,9 +404,26 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#244934',
   },
+  submitBtnDisabled: {
+    opacity: 0.7,
+  },
   submitTxt: {
     color: 'white',
     fontWeight: '700',
     fontSize: 16,
+  },
+  permissionContainer: {
+    flex: 1,
+    backgroundColor: '#111',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  permissionText: {
+    color: '#aaa',
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 20,
+    marginBottom: 24,
   },
 });
