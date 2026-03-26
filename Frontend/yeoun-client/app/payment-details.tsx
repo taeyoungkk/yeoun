@@ -611,8 +611,10 @@ export default function PaymentDetailsScreen() {
                 <View style={styles.listContainer}>
                   <View style={styles.listHeaderRow}>
                     <Text style={[styles.listHeaderCol, styles.colCategory]}>카테고리</Text>
-                    <Text style={[styles.listHeaderCol, styles.colMerchant]}>상호명</Text>
-                    <Text style={[styles.listHeaderCol, styles.colAmount]}>{selectedMemberId ? '사용 금액' : '결제 금액'}</Text>
+                    <Text style={[styles.listHeaderCol, styles.colMerchant, styles.colMerchantHeader]}>결제 내역</Text>
+                    <Text style={[styles.listHeaderCol, styles.colAmount]}>
+                      {selectedMemberId ? '개인별 지출 금액' : '결제 금액'}
+                    </Text>
                   </View>
 
                   {group.items.map(renderExpenseRow)}
@@ -1012,9 +1014,16 @@ const styles = StyleSheet.create({
   },
   colCategory: {
     width: 84,
+    paddingLeft: 8,
   },
   colMerchant: {
     flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    marginLeft: -25,
+  },
+  colMerchantHeader: {
+    textAlign: 'center',
   },
   colAmount: {
     width: 132,
@@ -1036,10 +1045,12 @@ const styles = StyleSheet.create({
     color: '#333333',
   },
   merchantTextTable: {
+    width: '100%',
     fontSize: 14,
     fontFamily: 'Pretendard-Bold',
     color: '#333333',
     marginTop: -1,
+    textAlign: 'center',
   },
   amountTextTable: {
     fontSize: 14,

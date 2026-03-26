@@ -56,6 +56,14 @@ const getShareAmountForMember = (expense: TripExpenseItem, memberId: string) => 
   return expense.totalAmount / Math.max(participantUserIds.length, 1);
 };
 
+const getExpenseSnapshot = (items: TripExpenseItem[]) => {
+  const confirmedExpenses = items.filter((expense) => expense.status !== 'DELETED');
+  return {
+    count: confirmedExpenses.length,
+    totalAmount: confirmedExpenses.reduce((sum, expense) => sum + expense.totalAmount, 0),
+  };
+};
+
 export default function PaymentMemberSummaryScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ tripId?: string }>();
@@ -126,13 +134,15 @@ export default function PaymentMemberSummaryScreen() {
         setTripMembers(membersResponse.data.items);
         setExpenses(expensesResponse.data.items);
 
+        const expenseSnapshot = getExpenseSnapshot(expensesResponse.data.items);
+
         let latestSettlement = [...settlementsResponse.data.items].sort((a, b) => {
           const createdAtA = new Date(a.createdAt).getTime();
           const createdAtB = new Date(b.createdAt).getTime();
           return createdAtB - createdAtA;
         })[0];
 
-        if (!latestSettlement && expensesResponse.data.items.length > 0) {
+        if (!latestSettlement && expenseSnapshot.count > 0) {
           const createResponse = await createSettlementApi(nextTripId, {});
           if (!createResponse.success) {
             throw new Error(createResponse.message ?? '정산을 생성하지 못했어요.');
@@ -145,9 +155,26 @@ export default function PaymentMemberSummaryScreen() {
           return;
         }
 
-        const detailResponse = await getSettlementDetailApi(latestSettlement.settlementId);
+        let detailResponse = await getSettlementDetailApi(latestSettlement.settlementId);
         if (!detailResponse.success) {
           throw new Error(detailResponse.message ?? '정산 상세 정보를 불러오지 못했어요.');
+        }
+
+        const needsRecalculation =
+          expenseSnapshot.count > 0 &&
+          (detailResponse.data.confirmedExpenseCount !== expenseSnapshot.count ||
+            detailResponse.data.totalConfirmedAmount !== expenseSnapshot.totalAmount);
+
+        if (needsRecalculation) {
+          const recreateResponse = await createSettlementApi(nextTripId, {});
+          if (!recreateResponse.success) {
+            throw new Error(recreateResponse.message ?? '정산을 다시 계산하지 못했어요.');
+          }
+
+          detailResponse = await getSettlementDetailApi(recreateResponse.data.settlementId);
+          if (!detailResponse.success) {
+            throw new Error(detailResponse.message ?? '재계산된 정산 상세 정보를 불러오지 못했어요.');
+          }
         }
 
         setSettlementDetail(detailResponse.data);
