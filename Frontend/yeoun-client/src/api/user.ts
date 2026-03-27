@@ -75,15 +75,46 @@ export interface PasswordChangeRequest {
 export type PasswordChangeResponse = AuthTokens;
 
 /**
- * Updates the currently logged-in user's profile information.
+ * Updates the currently logged-in user's profile information (JSON only).
  * PATCH /api/v1/users/me
  */
-export const updateMyInfo = async (data: UpdateProfileRequest): Promise<CommonResponse<UserProfileData>> => {
+export const updateMyInfo = async (
+  data: UpdateProfileRequest
+): Promise<CommonResponse<UserProfileData>> => {
   try {
     const response = await apiClient.patch<CommonResponse<UserProfileData>>('/users/me', data);
-    // If successful, we would ideally update our local mock too, but we return fresh data from server
     return response.data;
   } catch (error) {
+    console.error('[updateMyInfo] API Error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Uploads a profile image using a dedicated endpoint.
+ * POST /api/v1/users/me/profile-image
+ */
+export const uploadProfileImage = async (fileUri: string): Promise<CommonResponse<UserProfileData>> => {
+  try {
+    const formData = new FormData();
+    const filename = fileUri.split('/').pop() || 'profile.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : 'image/jpeg';
+    
+    formData.append('file', {
+      uri: fileUri,
+      name: filename,
+      type,
+    } as any);
+
+    const response = await apiClient.post<CommonResponse<UserProfileData>>('/users/me/profile-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('[uploadProfileImage] API Error:', error);
     throw error;
   }
 };

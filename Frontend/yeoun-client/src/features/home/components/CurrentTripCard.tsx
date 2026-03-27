@@ -1,5 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { TouchableOpacity, Text, View } from 'react-native';
+import { TouchableOpacity, Text, View, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 
 import { IconSymbol } from '@/src/components/ui/icon-symbol';
@@ -12,6 +13,8 @@ interface CurrentTripCardProps {
   date: string;
   participants: number;
   imageUrl?: any;
+  isFavorite?: boolean;
+  onPressHeart?: () => void;
   onPress?: () => void;
 }
 
@@ -21,6 +24,8 @@ export const CurrentTripCard = ({
   date,
   participants,
   imageUrl,
+  isFavorite,
+  onPressHeart,
   onPress,
 }: CurrentTripCardProps) => {
   return (
@@ -36,6 +41,17 @@ export const CurrentTripCard = ({
           className="w-full h-full"
           contentFit="cover"
         />
+
+        <Pressable 
+          onPress={onPressHeart} 
+          className="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/20 items-center justify-center"
+        >
+          <Ionicons 
+            name={isFavorite ? "heart" : "heart-outline"} 
+            size={24} 
+            color={isFavorite ? "#E74C3C" : "white"} 
+          />
+        </Pressable>
 
         <View className="absolute bottom-4 left-4 right-4 bg-white/85 rounded-[32px] p-5 gap-1.5">
           <Text className="text-xl font-pretendard-bold text-[#101018]">{title}</Text>

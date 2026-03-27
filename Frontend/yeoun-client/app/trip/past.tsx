@@ -5,8 +5,9 @@ import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { TripListItem } from '@/src/api/trip';
+import { getTripImage, getTripPlaceholder } from '@/src/utils/image-utils';
 import { TripCard } from '@/src/features/home/components/TripCard';
-import { useTripStore } from '@/src/store';
+import { useTripStore, useFavoriteStore } from '@/src/store';
 
 const toSortableDate = (value?: string) => new Date(value ?? '').getTime() || 0;
 
@@ -21,12 +22,13 @@ const formatRange = (start?: string, end?: string) => {
 
 const getTripLocation = (trip: TripListItem) => {
   const locationParts = [trip.region, trip.country].filter(Boolean);
-  return locationParts.length > 0 ? locationParts.join(', ') : '';
+  return locationParts.length > 0 ? locationParts.join(', ') : '여행지 정보';
 };
 
 export default function PastTripsScreen() {
   const loadTrips = useTripStore((state) => state.fetchTrips);
   const setReviewTrip = useTripStore((state) => state.setReviewTrip);
+  const { favoriteIds, toggleFavorite } = useFavoriteStore();
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -75,12 +77,15 @@ export default function PastTripsScreen() {
     router.push('/trip/report?mode=review');
   };
 
-  const renderItem = ({ item }: { item: TripListItem }) => (
+  const renderItem = ({ item, index }: { item: TripListItem, index: number }) => (
     <View style={{ marginBottom: 16 }}>
       <TripCard
         title={item.title}
         location={getTripLocation(item)}
         date={formatRange(item.startDate, item.endDate)}
+        imageUrl={getTripImage(item.tripId, item.imageUrl)}
+        isFavorite={favoriteIds.includes(item.tripId)}
+        onPressHeart={() => toggleFavorite(item.tripId)}
         onPress={() => handleTripPress(item)}
       />
     </View>

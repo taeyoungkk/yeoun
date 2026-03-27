@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import { getProfileImageUrl } from '@/src/utils/image-utils';
 import { stringToColor } from '@/src/utils/colors';
 
 export interface ProfileHeaderProps {
@@ -26,7 +27,7 @@ export function ProfileHeader({
     <View style={styles.container}>
       <View style={[styles.avatarContainer, { backgroundColor: bgColor }]}>
         {avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={styles.avatarImage} contentFit="cover" />
+          <Image source={{ uri: getProfileImageUrl(avatarUrl) as string }} style={styles.avatarImage} contentFit="cover" />
         ) : (
           <Text style={styles.avatarText}>{initial}</Text>
         )}

@@ -133,7 +133,7 @@ export default function TripReportScreen() {
   const receiptAppear = useRef(new Animated.Value(0)).current;
 
   const handleGoHome = () => router.replace('/(tabs)');
-  const handleBackToTimeline = () => router.replace(isReviewMode ? '/trip/recording?mode=review' : '/trip/recording');
+  const handleBackToTimeline = () => router.back();
   const handleOpenSettlementDetail = () => {
     if (!trip?.tripId) return;
     router.push({
@@ -160,17 +160,34 @@ export default function TripReportScreen() {
       try {
         setIsLoading(true);
 
-        const [timelineDaysResponse, expensesResponse, settlementsResponse] = await Promise.all([
+        // STAGE 1: Basic Trip Data (Fast)
+        const [timelineDaysResponse, expensesResponse] = await Promise.all([
           getTripTimelineDaysApi(trip.tripId),
           getTripExpensesApi(trip.tripId),
-          getTripSettlementsApi(trip.tripId),
         ]);
 
         const nextTimelineDays = timelineDaysResponse.data.timelineDays ?? [];
         const nextExpenses = expensesResponse.data.items ?? [];
-        const timelineDetailResponses = await Promise.all(
-          nextTimelineDays.map((day) => getTimelineDayDetailApi(day.timelineDayId)),
-        );
+
+        if (mounted) {
+          setTimelineDays(nextTimelineDays);
+          setExpenses(nextExpenses);
+          // SET Stage 1 complete! This allows the Ticket to show basic info immediately.
+          setIsLoading(false);
+        }
+
+        // STAGE 2: Deep Details (Can be slow)
+        // Fetch settlements first as they affect the ticket "Total Cost" and "Shared Cost"
+        const [settlementsResponse, timelineDetailResponses] = await Promise.all([
+          getTripSettlementsApi(trip.tripId),
+          Promise.all(nextTimelineDays.map((day) => getTimelineDayDetailApi(day.timelineDayId))),
+        ]);
+
+        if (mounted) {
+          setTimelineDayDetails(
+            timelineDetailResponses.filter((response) => response.success).map((response) => response.data),
+          );
+        }
 
         let nextSettlementDetail: SettlementDetail | null = null;
         const expenseSnapshot = getExpenseSnapshot(nextExpenses);
@@ -212,26 +229,17 @@ export default function TripReportScreen() {
           }
         }
 
-        if (!mounted) {
-          return;
+        if (mounted) {
+          setSettlementDetail(nextSettlementDetail);
         }
-
-        setTimelineDays(nextTimelineDays);
-        setTimelineDayDetails(
-          timelineDetailResponses.filter((response) => response.success).map((response) => response.data),
-        );
-        setExpenses(nextExpenses);
-        setSettlementDetail(nextSettlementDetail);
       } catch (error) {
         console.error('Failed to load trip report data:', error);
-        if (!mounted) {
-          return;
+        if (mounted) {
+          setTimelineDays([]);
+          setTimelineDayDetails([]);
+          setExpenses([]);
+          setSettlementDetail(null);
         }
-
-        setTimelineDays([]);
-        setTimelineDayDetails([]);
-        setExpenses([]);
-        setSettlementDetail(null);
       } finally {
         if (mounted) {
           setIsLoading(false);

@@ -3,35 +3,46 @@ import { View, Text, FlatList, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { TripCard, TripData } from '@/src/components/profile/TripCard';
+import { TripDetail, TripListItem } from '@/src/api/trip';
+import { getTripImage, getTripPlaceholder } from '@/src/utils/image-utils';
+import { TripCard } from '@/src/features/home/components/TripCard';
 import { useFavoriteStore, useTripStore } from '@/src/store';
 
 export default function LikedTripsScreen() {
   const { favoriteIds, toggleFavorite } = useFavoriteStore();
   const serverTrips = useTripStore((state) => state.trips);
   
-  const favoriteTrips: TripData[] = serverTrips
-    .filter(trip => favoriteIds.includes(trip.tripId))
-    .map(trip => ({
-      id: trip.tripId,
-      title: trip.title,
-      location: trip.region && trip.country ? `${trip.region}, ${trip.country}` : trip.region || trip.country || '대한민국',
-      dates: `${trip.startDate.replace(/-/g, '.')} ~ ${trip.endDate.split('-').pop()}`,
-      imageSource: require('@/assets/images/trip_placeholder_1.png'),
-      isFavorite: true,
-    }));
+  const favoriteTrips = serverTrips
+    .filter(trip => favoriteIds.includes(trip.tripId));
 
-  const renderItem = ({ item }: { item: TripData }) => (
-    <View className="w-[48%]">
+  const formatRange = (start?: string, end?: string) => {
+    if (!start || !end) return '';
+    const normalize = (value: string) => value.replace(/-/g, '.').slice(0, 10);
+    return `${normalize(start)} ~ ${normalize(end)}`;
+  };
+
+  const getTripLocation = (trip: any) => {
+    const locationParts = [trip.region, trip.country].filter(Boolean);
+    return locationParts.length > 0 ? locationParts.join(', ') : '대한민국';
+  };
+
+  const handleTripPress = (trip: any) => {
+    router.push({
+      pathname: '/trip/report',
+      params: { id: trip.tripId, mode: 'review' },
+    });
+  };
+
+  const renderItem = ({ item, index }: { item: any, index: number }) => (
+    <View style={{ marginBottom: 16 }}>
         <TripCard 
-            data={item} 
-            onPress={() => {
-              router.push({
-                pathname: '/trip/report',
-                params: { id: item.id },
-              });
-            }}
-            onPressHeart={() => toggleFavorite(item.id)}
+            title={item.title}
+            location={getTripLocation(item)}
+            date={formatRange(item.startDate, item.endDate)}
+            imageUrl={getTripImage(item.tripId, item.imageUrl)}
+            isFavorite={true}
+            onPressHeart={() => toggleFavorite(item.tripId)}
+            onPress={() => handleTripPress(item)}
         />
     </View>
   );
@@ -49,10 +60,8 @@ export default function LikedTripsScreen() {
       <FlatList
         data={favoriteTrips}
         renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
+        keyExtractor={(item) => item.tripId}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
-        columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: 16 }}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View className="flex-1 items-center justify-center pt-24">

@@ -3,7 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { TripListItem } from '@/src/api/trip';
-import { useTripStore } from '@/src/store/trip.store';
+import { getTripImage, getTripPlaceholder } from '@/src/utils/image-utils';
+import { useTripStore, useFavoriteStore } from '@/src/store';
 
 import { CurrentTripCard } from './CurrentTripCard';
 import { TripCard } from './TripCard';
@@ -51,6 +52,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
   const trips = useTripStore((state) => state.trips);
   const fetchTrips = useTripStore((state) => state.fetchTrips);
   const setReviewTrip = useTripStore((state) => state.setReviewTrip);
+  const { favoriteIds, toggleFavorite } = useFavoriteStore();
 
   const [isLoading, setIsLoading] = useState(true);
   const currentDisplayedTripId = isTripActive ? activeTrip?.tripId ?? currentTrip?.tripId ?? null : null;
@@ -184,6 +186,8 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
             date={currentTripCard.date}
             participants={currentTripCard.participants}
             imageUrl={currentTripCard.imageUrl}
+            isFavorite={!!currentDisplayedTripId && favoriteIds.includes(currentDisplayedTripId)}
+            onPressHeart={() => currentDisplayedTripId && toggleFavorite(currentDisplayedTripId)}
             onPress={handleOpenCurrentTrip}
           />
         </View>
@@ -206,7 +210,9 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
                       title={trip.title}
                       location="여행지 정보"
                       date={`${trip.startDate} ~ ${trip.endDate}`}
-                      imageUrl={trip.tripId.includes('mock') ? require('@/assets/images/trip_placeholder_2.png') : undefined}
+                      imageUrl={getTripImage(trip.tripId, trip.imageUrl)}
+                      isFavorite={favoriteIds.includes(trip.tripId)}
+                      onPressHeart={() => toggleFavorite(trip.tripId)}
                       onPress={() => handleTripPress(trip)}
                     />
                   </View>

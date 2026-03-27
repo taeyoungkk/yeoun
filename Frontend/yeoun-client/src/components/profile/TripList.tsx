@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { getTripPlaceholder } from '@/src/utils/image-utils';
 import { TripCard, TripData } from './TripCard';
 
 interface Props {
@@ -26,14 +27,28 @@ export function TripList({ title, trips, onViewMore, onToggleFavorite }: Props) 
         showsHorizontalScrollIndicator={true}
         contentContainerStyle={styles.scrollContent}
       >
-        {trips.map(trip => (
-          <TripCard 
-            key={trip.id} 
-            data={trip} 
-            onPress={() => console.log('Trip pressed:', trip.id)} 
-            onPressHeart={() => onToggleFavorite?.(trip.id)}
-          />
-        ))}
+        {trips.slice(0, 3).map((trip, index) => {
+          const isLastVisible = index === 2 && trips.length > 3;
+          return (
+            <TripCard 
+              key={trip.id} 
+              data={{
+                ...trip,
+                showMoreOverlay: isLastVisible,
+                moreCount: isLastVisible ? trips.length - 3 : 0
+              }} 
+              onPress={() => {
+                if (isLastVisible && onViewMore) {
+                  onViewMore();
+                } else {
+                  console.log('Trip pressed:', trip.id);
+                  // Optional: navigate to trip details here if available
+                }
+              }} 
+              onPressHeart={() => onToggleFavorite?.(trip.id)}
+            />
+          );
+        })}
       </ScrollView>
     </View>
   );

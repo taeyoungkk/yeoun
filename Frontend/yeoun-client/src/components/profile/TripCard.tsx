@@ -9,6 +9,8 @@ export interface TripData {
   dates: string;
   imageSource: any;
   isFavorite?: boolean;
+  showMoreOverlay?: boolean;
+  moreCount?: number;
 }
 
 interface Props {
@@ -36,16 +38,26 @@ export function TripCard({ data, onPress, onPressHeart }: Props) {
         </View>
         
         <View style={styles.infoOverlay}>
-          <Text style={styles.title}>{data.title}</Text>
+          <Text style={styles.title} numberOfLines={1}>{data.title}</Text>
           <View style={styles.row}>
             <Ionicons name="location" size={12} color="#8A8A8A" />
-            <Text style={styles.rowText}>{data.location}</Text>
+            <Text style={styles.rowText} numberOfLines={1}>{data.location}</Text>
           </View>
           <View style={styles.row}>
             <Ionicons name="calendar" size={12} color="#8A8A8A" />
             <Text style={styles.rowText}>{data.dates}</Text>
           </View>
         </View>
+
+        {data.showMoreOverlay && (
+          <View style={styles.moreOverlay}>
+            {data.moreCount && data.moreCount > 0 ? (
+              <Text style={styles.moreText}>+{data.moreCount}</Text>
+            ) : (
+              <Ionicons name="add" size={48} color="white" />
+            )}
+          </View>
+        )}
       </ImageBackground>
     </Pressable>
   );
@@ -88,5 +100,17 @@ const styles = StyleSheet.create({
     color: '#8A8A8A',
     marginLeft: 4,
     fontWeight: '500',
+  },
+  moreOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  moreText: {
+    color: 'white',
+    fontSize: 32,
+    fontWeight: 'bold',
   }
 });

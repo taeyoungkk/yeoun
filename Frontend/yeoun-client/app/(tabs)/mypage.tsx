@@ -15,6 +15,7 @@ import { TravelMap } from '@/src/components/profile/TravelMap';
 import { UserInfoCard } from '@/src/components/profile/UserInfoCard';
 import { useFavoriteStore, useTripStore, useUserStore } from '@/src/store';
 import { reverseGeocodeKo } from '@/src/api/mapbox';
+import { getTripImage, getTripPlaceholder } from '@/src/utils/image-utils';
 
 const formatDate = (dateString?: string) => {
   if (!dateString) {
@@ -40,7 +41,7 @@ export default function MyPageScreen() {
         ? `${trip.region}, ${trip.country}`
         : trip.region || trip.country || '대한민국',
     dates: `${trip.startDate.replace(/-/g, '.')} ~ ${trip.endDate.split('-').pop()}`,
-    imageSource: require('@/assets/images/trip_placeholder_1.png'),
+    imageSource: getTripImage(trip.tripId, trip.imageUrl),
     isFavorite: favoriteIds.includes(trip.tripId),
   });
 
@@ -170,7 +171,7 @@ export default function MyPageScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F3F6EB]" edges={['top', 'left', 'right']}>
+    <SafeAreaView className="flex-1 bg-[#EBF3EA]" edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         <ProfileHeader
           nickname={profile?.nickname || 'Guest'}
@@ -196,12 +197,12 @@ export default function MyPageScreen() {
         />
 
         <TripList
-          title="다녀온 여행"
+          title="지난 여행"
           trips={pastTrips}
           onViewMore={() => router.push('/trip/past')}
           onToggleFavorite={handleToggleFavorite}
         />
-
+  
         <TravelMap tripIds={monitoredTripIds} />
         <TreeRingsChart />
       </ScrollView>
