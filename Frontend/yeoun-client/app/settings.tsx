@@ -160,7 +160,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F3F6EB]" edges={['top', 'left', 'right']}>
+    <SafeAreaView className="flex-1 bg-[#EBF3EA]" edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <View className="px-5 py-6 flex-row items-center">
@@ -245,6 +245,19 @@ export default function SettingsScreen() {
 
         <Text className="text-xl font-bold text-[#1A1A1A] mb-4 mt-2">계정 관리</Text>
         <View className="bg-white rounded-[32px] p-5 mb-8">
+          <TouchableOpacity 
+            onPress={() => router.push('/edit-profile')}
+            className="flex-row justify-between items-center mb-6 px-1"
+          >
+            <View className="flex-row items-center gap-3">
+              <View className="w-10 h-10 rounded-full bg-[#F3F6EB] items-center justify-center">
+                <Ionicons name="person-outline" size={20} color="#1A1A1A" />
+              </View>
+              <Text className="text-lg font-medium text-[#1A1A1A]">개인정보 수정</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#C4C4C4" />
+          </TouchableOpacity>
+          <View className="w-full h-[1px] bg-[#F0F0F0] mb-6" />
           <TouchableOpacity 
             onPress={handleLogout}
             className="flex-row justify-between items-center mb-6 px-1"

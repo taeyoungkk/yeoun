@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { TripListItem } from '@/src/api/trip';
 import { TripCard } from '@/src/features/home/components/TripCard';
-import { useTripStore } from '@/src/store';
+import { useTripStore, useFavoriteStore } from '@/src/store';
 
 const toSortableDate = (value?: string) => new Date(value ?? '').getTime() || 0;
 
@@ -27,6 +27,7 @@ const getTripLocation = (trip: TripListItem) => {
 export default function PastTripsScreen() {
   const loadTrips = useTripStore((state) => state.fetchTrips);
   const setReviewTrip = useTripStore((state) => state.setReviewTrip);
+  const { favoriteIds, toggleFavorite } = useFavoriteStore();
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -81,6 +82,8 @@ export default function PastTripsScreen() {
         title={item.title}
         location={getTripLocation(item)}
         date={formatRange(item.startDate, item.endDate)}
+        isFavorite={favoriteIds.includes(item.tripId)}
+        onPressHeart={() => toggleFavorite(item.tripId)}
         onPress={() => handleTripPress(item)}
       />
     </View>

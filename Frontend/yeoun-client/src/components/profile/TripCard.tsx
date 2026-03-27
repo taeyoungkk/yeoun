@@ -9,6 +9,7 @@ export interface TripData {
   dates: string;
   imageSource: any;
   isFavorite?: boolean;
+  showMoreOverlay?: boolean;
 }
 
 interface Props {
@@ -46,6 +47,12 @@ export function TripCard({ data, onPress, onPressHeart }: Props) {
             <Text style={styles.rowText}>{data.dates}</Text>
           </View>
         </View>
+
+        {data.showMoreOverlay && (
+          <View style={styles.moreOverlay}>
+            <Ionicons name="add" size={48} color="white" />
+          </View>
+        )}
       </ImageBackground>
     </Pressable>
   );
@@ -88,5 +95,12 @@ const styles = StyleSheet.create({
     color: '#8A8A8A',
     marginLeft: 4,
     fontWeight: '500',
+  },
+  moreOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   }
 });

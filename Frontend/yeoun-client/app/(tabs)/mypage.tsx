@@ -170,7 +170,7 @@ export default function MyPageScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F3F6EB]" edges={['top', 'left', 'right']}>
+    <SafeAreaView className="flex-1 bg-[#EBF3EA]" edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         <ProfileHeader
           nickname={profile?.nickname || 'Guest'}

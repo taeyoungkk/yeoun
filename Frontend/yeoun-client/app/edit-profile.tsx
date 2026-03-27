@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useUserStore } from '@/src/store';
 import { useAuthStore } from '@/src/store/auth.store';
-import { updateMyInfo, updatePassword } from '@/src/api/user';
+import { updateMyInfo, updatePassword, UpdateProfileRequest } from '@/src/api/user';
 import { stringToColor } from '@/src/utils/colors';
 
 // Password requirement checkers
@@ -31,7 +31,6 @@ export default function EditProfileScreen() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-
   const pickImage = async () => {
     let permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -75,10 +74,12 @@ export default function EditProfileScreen() {
   const saveProfileInfo = async () => {
     setIsSaving(true);
     try {
-      const response = await updateMyInfo({
-        nickname,
-        profileImageUrl: avatarUrl || undefined,
-      });
+      const isLocalUri = avatarUrl && (avatarUrl.startsWith('file://') || avatarUrl.startsWith('content://'));
+      
+      const response = await updateMyInfo(
+        { nickname },
+        isLocalUri ? avatarUrl : undefined
+      );
 
       if (response.success) {
         updateProfile({
@@ -90,9 +91,10 @@ export default function EditProfileScreen() {
           router.back();
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update profile info:', error);
-      alert('프로필 정보 수정에 실패했습니다.');
+      const serverMsg = error?.response?.data?.message || error?.message;
+      alert(`프로필 정보 수정에 실패했습니다: ${serverMsg}`);
     } finally {
       if (password === INITIAL_PASSWORD) {
         setIsSaving(false);
@@ -138,7 +140,7 @@ export default function EditProfileScreen() {
   const bgColor = stringToColor(nickname);
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F3F6EB]" edges={['top', 'left', 'right']}>
+    <SafeAreaView className="flex-1 bg-[#EBF3EA]" edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1"
@@ -162,7 +164,12 @@ export default function EditProfileScreen() {
                 className="w-24 h-24 rounded-full items-center justify-center mb-4 overflow-hidden border border-[#E5E5E5]"
               >
                 {avatarUrl ? (
-                  <Image source={{ uri: avatarUrl }} className="w-full h-full" contentFit="cover" />
+                  <Image 
+                    key={avatarUrl}
+                    source={{ uri: avatarUrl }} 
+                    className="w-full h-full" 
+                    contentFit="cover" 
+                  />
                 ) : (
                   <Text className="text-white text-4xl font-medium">{initial}</Text>
                 )}
@@ -248,7 +255,7 @@ export default function EditProfileScreen() {
               비밀번호를 변경하시겠습니까?{"\n"}본인 확인을 위해 현재 비밀번호를 입력해주세요.
             </Text>
 
-            <View className="bg-[#F3F6EB] rounded-2xl px-4 py-3 mb-8">
+            <View className="bg-white rounded-2xl px-4 py-3 mb-8 border border-[#E5E5E5]">
               <TextInput
                 secureTextEntry
                 placeholder="현재 비밀번호"
