@@ -10,6 +10,10 @@ import com.yeoun.domain.expense.repository.ExpenseItemRepository;
 import com.yeoun.domain.expense.repository.ExpenseItemSplitRepository;
 import com.yeoun.domain.expense.repository.ExpenseRepository;
 import com.yeoun.domain.expense.repository.ExpenseSplitRepository;
+import com.yeoun.domain.paymentimport.entity.PaymentImport;
+import com.yeoun.domain.paymentimport.entity.PaymentImportSourceType;
+import com.yeoun.domain.paymentimport.entity.PaymentImportStatus;
+import com.yeoun.domain.paymentimport.repository.PaymentImportRepository;
 import com.yeoun.domain.receipt.dto.request.ReceiptOcrSelectRequest;
 import com.yeoun.domain.receipt.dto.response.ReceiptOcrSelectResponse;
 import com.yeoun.domain.receipt.entity.ReceiptOcrLineItem;
@@ -75,6 +79,9 @@ class ReceiptOcrSelectServiceTest {
     private ExpenseSplitRepository expenseSplitRepository;
 
     @Mock
+    private PaymentImportRepository paymentImportRepository;
+
+    @Mock
     private TimelineDayRepository timelineDayRepository;
 
     @Mock
@@ -106,6 +113,7 @@ class ReceiptOcrSelectServiceTest {
         ReceiptOcrLineItem lineItem2 = lineItem(receiptId, lineItem2Id, 1, "주먹밥", "3000.00");
         ReceiptOcrSelectRequest request = new ReceiptOcrSelectRequest(
                 payerUserId,
+                null,
                 ExpenseCategory.FOOD,
                 "점심",
                 List.of(
@@ -206,6 +214,61 @@ class ReceiptOcrSelectServiceTest {
     }
 
     @Test
+    void selectReceiptOcr_linksPaymentImportWhenAmountMatches() {
+        UUID requesterUserId = UUID.randomUUID();
+        UUID payerUserId = UUID.randomUUID();
+        UUID participantUserId = UUID.randomUUID();
+        UUID tripId = UUID.randomUUID();
+        UUID receiptId = UUID.randomUUID();
+        UUID lineItemId = UUID.randomUUID();
+        UUID paymentImportId = UUID.randomUUID();
+
+        ReceiptOcrResult receiptOcrResult = receiptOcrResult(receiptId, tripId, "COMPLETED");
+        Trip trip = trip(tripId, requesterUserId);
+        ReceiptOcrLineItem lineItem = lineItem(receiptId, lineItemId, 0, "떡볶이", "15000.00");
+        PaymentImport paymentImport = paymentImport(paymentImportId, requesterUserId, null, "15000.00", PaymentImportStatus.CANDIDATE);
+        ReceiptOcrSelectRequest request = new ReceiptOcrSelectRequest(
+                payerUserId,
+                paymentImportId,
+                ExpenseCategory.FOOD,
+                null,
+                List.of(
+                        new ReceiptOcrSelectRequest.ReceiptOcrSelectLineItemRequest(
+                                lineItemId,
+                                new BigDecimal("15000.00"),
+                                List.of(participantUserId)
+                        )
+                )
+        );
+
+        when(receiptOcrResultRepository.findById(receiptId.toString())).thenReturn(Optional.of(receiptOcrResult));
+        when(expenseRepository.findByReceiptId(receiptId.toString())).thenReturn(Optional.empty());
+        when(paymentImportRepository.findByPaymentImportId(paymentImportId)).thenReturn(Optional.of(paymentImport));
+        when(tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)).thenReturn(Optional.of(trip));
+        when(tripMemberRepository.existsByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
+                tripId, requesterUserId, TripMemberInviteStatus.ACCEPTED
+        )).thenReturn(true);
+        when(tripMemberRepository.findCurrentUserIdsByTripId(tripId))
+                .thenReturn(List.of(requesterUserId, payerUserId, participantUserId));
+        when(receiptOcrLineItemRepository.findByReceiptIdOrderBySortOrderAsc(receiptId.toString()))
+                .thenReturn(List.of(lineItem));
+        when(timelineDayRepository.findByTripIdAndDayDate(eq(tripId), any()))
+                .thenReturn(Optional.empty());
+        when(timelineDayRepository.save(any(TimelineDay.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        receiptOcrSelectService.selectReceiptOcr(requesterUserId, receiptId, request);
+
+        ArgumentCaptor<Expense> expenseCaptor = ArgumentCaptor.forClass(Expense.class);
+        verify(expenseRepository).save(expenseCaptor.capture());
+        Expense savedExpense = expenseCaptor.getValue();
+        assertThat(savedExpense.getPaymentImportId()).isEqualTo(paymentImportId);
+        assertThat(paymentImport.getStatus()).isEqualTo(PaymentImportStatus.SELECTED);
+        assertThat(paymentImport.getTripId()).isEqualTo(tripId);
+        assertThat(paymentImport.getLinkedExpenseId()).isEqualTo(savedExpense.getExpenseId());
+    }
+
+    @Test
     void selectReceiptOcr_throwsWhenSelectedLineItemDoesNotExist() {
         UUID requesterUserId = UUID.randomUUID();
         UUID payerUserId = UUID.randomUUID();
@@ -220,6 +283,7 @@ class ReceiptOcrSelectServiceTest {
         ReceiptOcrLineItem lineItem = lineItem(receiptId, existingLineItemId, 0, "떡볶이", "12000.00");
         ReceiptOcrSelectRequest request = new ReceiptOcrSelectRequest(
                 payerUserId,
+                null,
                 ExpenseCategory.FOOD,
                 null,
                 List.of(
@@ -251,6 +315,54 @@ class ReceiptOcrSelectServiceTest {
         verify(expenseItemRepository, never()).saveAll(any());
         verify(expenseItemSplitRepository, never()).saveAll(any());
         verify(expenseSplitRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void selectReceiptOcr_throwsWhenPaymentImportAmountDoesNotMatch() {
+        UUID requesterUserId = UUID.randomUUID();
+        UUID payerUserId = UUID.randomUUID();
+        UUID participantUserId = UUID.randomUUID();
+        UUID tripId = UUID.randomUUID();
+        UUID receiptId = UUID.randomUUID();
+        UUID lineItemId = UUID.randomUUID();
+        UUID paymentImportId = UUID.randomUUID();
+
+        ReceiptOcrResult receiptOcrResult = receiptOcrResult(receiptId, tripId, "COMPLETED");
+        Trip trip = trip(tripId, requesterUserId);
+        ReceiptOcrLineItem lineItem = lineItem(receiptId, lineItemId, 0, "떡볶이", "12000.00");
+        PaymentImport paymentImport = paymentImport(paymentImportId, requesterUserId, null, "15000.00", PaymentImportStatus.CANDIDATE);
+        ReceiptOcrSelectRequest request = new ReceiptOcrSelectRequest(
+                payerUserId,
+                paymentImportId,
+                ExpenseCategory.FOOD,
+                null,
+                List.of(
+                        new ReceiptOcrSelectRequest.ReceiptOcrSelectLineItemRequest(
+                                lineItemId,
+                                new BigDecimal("12000.00"),
+                                List.of(participantUserId)
+                        )
+                )
+        );
+
+        when(receiptOcrResultRepository.findById(receiptId.toString())).thenReturn(Optional.of(receiptOcrResult));
+        when(expenseRepository.findByReceiptId(receiptId.toString())).thenReturn(Optional.empty());
+        when(paymentImportRepository.findByPaymentImportId(paymentImportId)).thenReturn(Optional.of(paymentImport));
+        when(tripRepository.findByTripIdAndDeletedAtIsNullAndStatusNot(tripId, TripStatus.DELETED)).thenReturn(Optional.of(trip));
+        when(tripMemberRepository.existsByTripIdAndUserIdAndInviteStatusAndLeftAtIsNull(
+                tripId, requesterUserId, TripMemberInviteStatus.ACCEPTED
+        )).thenReturn(true);
+        when(tripMemberRepository.findCurrentUserIdsByTripId(tripId))
+                .thenReturn(List.of(requesterUserId, payerUserId, participantUserId));
+        when(receiptOcrLineItemRepository.findByReceiptIdOrderBySortOrderAsc(receiptId.toString()))
+                .thenReturn(List.of(lineItem));
+
+        assertThatThrownBy(() -> receiptOcrSelectService.selectReceiptOcr(requesterUserId, receiptId, request))
+                .isInstanceOf(BaseException.class)
+                .extracting(exception -> ((BaseException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(expenseRepository, never()).save(any());
     }
 
     private ReceiptOcrResult receiptOcrResult(UUID receiptId, UUID tripId, String status) {
@@ -305,6 +417,36 @@ class ReceiptOcrSelectServiceTest {
                 .createdAt(now)
                 .updatedAt(now)
                 .deletedAt(null)
+                .build();
+    }
+
+    private PaymentImport paymentImport(
+            UUID paymentImportId,
+            UUID userId,
+            UUID tripId,
+            String approvedAmount,
+            PaymentImportStatus status
+    ) {
+        Instant now = Instant.parse("2026-03-27T00:00:00Z");
+        return PaymentImport.builder()
+                .paymentImportId(paymentImportId)
+                .userId(userId)
+                .tripId(tripId)
+                .sourceType(PaymentImportSourceType.CREDIT_CARD)
+                .merchantName("merchant")
+                .transactionSummary(null)
+                .approvedAmount(new BigDecimal(approvedAmount))
+                .currencyCode("KRW")
+                .approvedAt(now)
+                .cardName(null)
+                .accountNo(null)
+                .approvalNo(null)
+                .externalTransactionUniqueNo("ext-" + paymentImportId)
+                .rawPayloadJson(null)
+                .status(status)
+                .linkedExpenseId(null)
+                .createdAt(now)
+                .updatedAt(now)
                 .build();
     }
 }

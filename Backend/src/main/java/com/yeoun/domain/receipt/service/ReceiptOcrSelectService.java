@@ -11,6 +11,9 @@ import com.yeoun.domain.expense.repository.ExpenseItemRepository;
 import com.yeoun.domain.expense.repository.ExpenseItemSplitRepository;
 import com.yeoun.domain.expense.repository.ExpenseRepository;
 import com.yeoun.domain.expense.repository.ExpenseSplitRepository;
+import com.yeoun.domain.paymentimport.entity.PaymentImport;
+import com.yeoun.domain.paymentimport.entity.PaymentImportStatus;
+import com.yeoun.domain.paymentimport.repository.PaymentImportRepository;
 import com.yeoun.domain.receipt.dto.request.ReceiptOcrSelectRequest;
 import com.yeoun.domain.receipt.dto.response.ReceiptOcrSelectResponse;
 import com.yeoun.domain.receipt.entity.ReceiptOcrLineItem;
@@ -62,6 +65,7 @@ public class ReceiptOcrSelectService {
     private final ExpenseItemRepository expenseItemRepository;
     private final ExpenseItemSplitRepository expenseItemSplitRepository;
     private final ExpenseSplitRepository expenseSplitRepository;
+    private final PaymentImportRepository paymentImportRepository;
     private final TimelineDayRepository timelineDayRepository;
     private final EventRepository eventRepository;
     private final TripRepository tripRepository;
@@ -74,6 +78,7 @@ public class ReceiptOcrSelectService {
             ExpenseItemRepository expenseItemRepository,
             ExpenseItemSplitRepository expenseItemSplitRepository,
             ExpenseSplitRepository expenseSplitRepository,
+            PaymentImportRepository paymentImportRepository,
             TimelineDayRepository timelineDayRepository,
             EventRepository eventRepository,
             TripRepository tripRepository,
@@ -85,6 +90,7 @@ public class ReceiptOcrSelectService {
         this.expenseItemRepository = expenseItemRepository;
         this.expenseItemSplitRepository = expenseItemSplitRepository;
         this.expenseSplitRepository = expenseSplitRepository;
+        this.paymentImportRepository = paymentImportRepository;
         this.timelineDayRepository = timelineDayRepository;
         this.eventRepository = eventRepository;
         this.tripRepository = tripRepository;
@@ -113,6 +119,12 @@ public class ReceiptOcrSelectService {
         validateUsersAreTripParticipants(tripId, requesterUserId, request.payerUserId(), participantUserIds);
 
         SelectionData selectionData = buildSelectionData(receiptOcrResult.getReceiptId(), request.lineItems());
+        PaymentImport linkedPaymentImport = resolveLinkedPaymentImport(
+                requesterUserId,
+                tripId,
+                request.paymentImportId(),
+                selectionData.totalAmount()
+        );
 
         String merchantName = normalizeRequiredText(receiptOcrResult.getMerchantName());
         String currencyCode = normalizeCurrencyCode(receiptOcrResult.getCurrencyCode());
@@ -125,7 +137,7 @@ public class ReceiptOcrSelectService {
                 .createdByUserId(requesterUserId)
                 .payerUserId(request.payerUserId())
                 .sourceType(ExpenseSourceType.RECEIPT_OCR)
-                .paymentImportId(null)
+                .paymentImportId(linkedPaymentImport == null ? null : linkedPaymentImport.getPaymentImportId())
                 .receiptId(receiptOcrResult.getReceiptId())
                 .merchantName(merchantName)
                 .category(request.category())
@@ -143,6 +155,9 @@ public class ReceiptOcrSelectService {
         saveExpenseItems(expense.getExpenseId(), selectionData.selectedItems(), now);
         saveExpenseItemSplits(selectionData.selectedItems(), now);
         replaceSplits(expense.getExpenseId(), selectionData.userTotals(), now);
+        if (linkedPaymentImport != null) {
+            linkedPaymentImport.markSelected(tripId, expense.getExpenseId(), now);
+        }
         createTimelineEventIfPossible(tripId, merchantName, selectionData.totalAmount(), receiptOcrResult, now);
 
         return new ReceiptOcrSelectResponse(
@@ -219,6 +234,41 @@ public class ReceiptOcrSelectService {
         }
 
         return new SelectionData(selectedItems, userTotals, totalAmount);
+    }
+
+    private PaymentImport resolveLinkedPaymentImport(
+            UUID requesterUserId,
+            UUID tripId,
+            UUID paymentImportId,
+            BigDecimal totalAmount
+    ) {
+        if (paymentImportId == null) {
+            return null;
+        }
+
+        PaymentImport paymentImport = paymentImportRepository.findByPaymentImportId(paymentImportId)
+                .orElseThrow(() -> new BaseException(ErrorCode.PAYMENT_IMPORT_NOT_FOUND));
+        if (!paymentImport.getUserId().equals(requesterUserId)) {
+            throw new BaseException(ErrorCode.PAYMENT_IMPORT_FORBIDDEN);
+        }
+        if (paymentImport.getTripId() != null && !paymentImport.getTripId().equals(tripId)) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Payment import belongs to a different trip.");
+        }
+        if (paymentImport.getStatus() != PaymentImportStatus.CANDIDATE || paymentImport.getLinkedExpenseId() != null) {
+            throw new BaseException(ErrorCode.PAYMENT_IMPORT_SELECTION_NOT_ALLOWED);
+        }
+
+        BigDecimal approvedAmount = validateAndNormalizeAmount(paymentImport.getApprovedAmount());
+        if (approvedAmount.compareTo(totalAmount) != 0) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Payment import amount must match selected OCR amount.");
+        }
+
+        String currencyCode = normalizeCurrencyCode(paymentImport.getCurrencyCode());
+        if (!SUPPORTED_CURRENCY_CODE.equals(currencyCode)) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Only KRW is supported for now.");
+        }
+
+        return paymentImport;
     }
 
     private Trip findNonDeletedTripOrThrow(UUID tripId) {

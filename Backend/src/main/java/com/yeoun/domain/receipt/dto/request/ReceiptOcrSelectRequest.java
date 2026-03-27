@@ -15,6 +15,8 @@ public record ReceiptOcrSelectRequest(
         @NotNull(message = "Payer user id is required.")
         UUID payerUserId,
 
+        UUID paymentImportId,
+
         @NotNull(message = "Category is required.")
         ExpenseCategory category,
 
