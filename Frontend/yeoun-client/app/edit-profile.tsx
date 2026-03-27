@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Modal, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,8 +7,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useUserStore } from '@/src/store';
 import { useAuthStore } from '@/src/store/auth.store';
-import { updateMyInfo, updatePassword, UpdateProfileRequest } from '@/src/api/user';
+import { updateMyInfo, updatePassword, uploadProfileImage, UpdateProfileRequest } from '@/src/api/user';
 import { stringToColor } from '@/src/utils/colors';
+import { getProfileImageUrl } from '@/src/utils/image-utils';
 
 // Password requirement checkers
 const hasLength = (pw: string) => pw.length >= 8 && pw.length <= 20;
@@ -31,6 +32,13 @@ export default function EditProfileScreen() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Sync state if profile updates (e.g. after save or background fetch)
+  useEffect(() => {
+    if (profile?.profileImageUrl) {
+      setAvatarUrl(profile.profileImageUrl);
+    }
+  }, [profile?.profileImageUrl]);
   const pickImage = async () => {
     let permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -75,21 +83,33 @@ export default function EditProfileScreen() {
     setIsSaving(true);
     try {
       const isLocalUri = avatarUrl && (avatarUrl.startsWith('file://') || avatarUrl.startsWith('content://'));
-      
-      const response = await updateMyInfo(
-        { nickname },
-        isLocalUri ? avatarUrl : undefined
-      );
+      let finalNickname = profile?.nickname || '';
+      let finalProfileImageUrl = profile?.profileImageUrl || null;
 
-      if (response.success) {
-        updateProfile({
-          nickname: response.data.nickname,
-          profileImageUrl: response.data.profileImageUrl,
-        });
-        
-        if (password === INITIAL_PASSWORD) {
-          router.back();
+      // 1. Upload image if it's a new local file
+      if (isLocalUri && avatarUrl) {
+        const imgResponse = await uploadProfileImage(avatarUrl);
+        if (imgResponse.success) {
+          finalProfileImageUrl = imgResponse.data.profileImageUrl;
         }
+      }
+
+      // 2. Update nickname if it changed
+      if (nickname !== profile?.nickname) {
+        const infoResponse = await updateMyInfo({ nickname });
+        if (infoResponse.success) {
+          finalNickname = infoResponse.data.nickname;
+        }
+      }
+
+      // Update global state
+      updateProfile({
+        nickname: finalNickname,
+        profileImageUrl: finalProfileImageUrl,
+      });
+      
+      if (password === INITIAL_PASSWORD) {
+        router.back();
       }
     } catch (error: any) {
       console.error('Failed to update profile info:', error);
@@ -160,14 +180,24 @@ export default function EditProfileScreen() {
             {/* 프로필 사진 섹션 */}
             <View className="items-center mb-8">
               <View 
-                style={{ backgroundColor: avatarUrl ? 'transparent' : bgColor }} 
-                className="w-24 h-24 rounded-full items-center justify-center mb-4 overflow-hidden border border-[#E5E5E5]"
+                style={{ 
+                  backgroundColor: avatarUrl ? '#F0F0F0' : bgColor,
+                  width: 96,
+                  height: 96,
+                  borderRadius: 48,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  overflow: 'hidden',
+                  borderWidth: 1,
+                  borderColor: '#E5E5E5',
+                  marginBottom: 16
+                }}
               >
                 {avatarUrl ? (
                   <Image 
                     key={avatarUrl}
-                    source={{ uri: avatarUrl }} 
-                    className="w-full h-full" 
+                    source={{ uri: getProfileImageUrl(avatarUrl) as string }} 
+                    style={{ width: '100%', height: '100%' }}
                     contentFit="cover" 
                   />
                 ) : (

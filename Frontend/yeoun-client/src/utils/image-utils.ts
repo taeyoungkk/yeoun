@@ -17,3 +17,20 @@ export const getTripPlaceholder = (tripId: string) => {
     ? require('@/assets/images/trip_placeholder_1.png') 
     : require('@/assets/images/trip_placeholder_2.png');
 };
+
+const BASE_URL = 'https://j14b105.p.ssafy.io/api/v1';
+
+export const getProfileImageUrl = (url?: string | null) => {
+  if (!url) return null;
+  if (url.startsWith('http') || url.startsWith('file://') || url.startsWith('content://') || url.startsWith('data:')) {
+    return url;
+  }
+  
+  // If the url already starts with /api/v1, use the domain only
+  if (url.startsWith('/api/v1')) {
+    return `https://j14b105.p.ssafy.io${url}`;
+  }
+  
+  // Otherwise, prefix with the full API BASE_URL
+  return `${BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+};

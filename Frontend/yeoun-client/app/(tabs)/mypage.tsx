@@ -197,7 +197,7 @@ export default function MyPageScreen() {
         />
 
         <TripList
-          title="다녀온 여행"
+          title="지난 여행"
           trips={pastTrips}
           onViewMore={() => router.push('/trip/past')}
           onToggleFavorite={handleToggleFavorite}
