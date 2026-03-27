@@ -305,6 +305,10 @@ public class SettlementCalculationService {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("tripId", tripId);
         snapshot.put("currencyCode", currencyCode);
+        snapshot.put("confirmedExpenseIds", expenses.stream()
+                .map(Expense::getExpenseId)
+                .sorted()
+                .toList());
         snapshot.put("memberCount", memberCount);
         snapshot.put("confirmedExpenseCount", expenses.size());
         snapshot.put("totalConfirmedAmount", normalizeMoney(totalConfirmedAmount));
