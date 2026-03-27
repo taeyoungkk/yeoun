@@ -30,6 +30,8 @@ public record TripDetailResponse(
         UUID ownerUserId,
         @Schema(description = "리포트 상태")
         TripReportStatus reportStatus,
+        @Schema(description = "여행 대표 이미지 URL")
+        String imageUrl,
         @Schema(description = "현재 참여 멤버 수")
         long memberCount,
         @Schema(description = "생성 일시")

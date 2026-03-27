@@ -1,8 +1,10 @@
 package com.yeoun.domain.trip.controller;
 
 import com.yeoun.domain.trip.dto.request.TripCreateRequest;
+import com.yeoun.domain.trip.dto.request.TripCoverPhotoUpdateRequest;
 import com.yeoun.domain.trip.dto.request.TripInviteUsersRequest;
 import com.yeoun.domain.trip.dto.request.TripUpdateRequest;
+import com.yeoun.domain.trip.dto.response.TripCoverPhotoUpdateResponse;
 import com.yeoun.domain.trip.dto.response.TripCreateResponse;
 import com.yeoun.domain.trip.dto.response.TripDeleteResponse;
 import com.yeoun.domain.trip.dto.response.TripDetailResponse;
@@ -114,6 +116,17 @@ public class TripController {
             @Valid @RequestBody TripUpdateRequest request
     ) {
         TripUpdateResponse response = tripService.updateTrip(principal.userId(), tripId, request);
+        return ApiResponse.ok(response);
+    }
+
+    @PatchMapping("/{tripId}/cover-photo")
+    @Operation(summary = "여행 대표 사진 변경", description = "여행 대표 사진을 설정하거나 해제합니다.")
+    public ApiResponse<TripCoverPhotoUpdateResponse> updateTripCoverPhoto(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") UUID tripId,
+            @RequestBody TripCoverPhotoUpdateRequest request
+    ) {
+        TripCoverPhotoUpdateResponse response = tripService.updateTripCoverPhoto(principal.userId(), tripId, request);
         return ApiResponse.ok(response);
     }
 

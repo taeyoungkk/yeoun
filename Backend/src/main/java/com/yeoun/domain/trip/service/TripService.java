@@ -1,8 +1,10 @@
 package com.yeoun.domain.trip.service;
 
 import com.yeoun.domain.trip.dto.request.TripCreateRequest;
+import com.yeoun.domain.trip.dto.request.TripCoverPhotoUpdateRequest;
 import com.yeoun.domain.trip.dto.request.TripInviteUsersRequest;
 import com.yeoun.domain.trip.dto.request.TripUpdateRequest;
+import com.yeoun.domain.trip.dto.response.TripCoverPhotoUpdateResponse;
 import com.yeoun.domain.trip.dto.response.TripCreateResponse;
 import com.yeoun.domain.trip.dto.response.TripDeleteResponse;
 import com.yeoun.domain.trip.dto.response.TripDetailResponse;
@@ -34,11 +36,14 @@ import com.yeoun.domain.trip.repository.TripInviteUserSummaryProjection;
 import com.yeoun.domain.tripsync.entity.SyncStatus;
 import com.yeoun.domain.tripsync.entity.TripSyncStatus;
 import com.yeoun.domain.tripsync.repository.TripSyncStatusRepository;
-import com.yeoun.domain.user.repository.UserRepository;
-import com.yeoun.domain.user.service.UserProfileImageUrlService;
 import com.yeoun.domain.notification.entity.NotificationType;
 import com.yeoun.domain.notification.service.NotificationService;
+import com.yeoun.domain.photo.entity.Photo;
+import com.yeoun.domain.photo.repository.PhotoRepository;
+import com.yeoun.domain.photo.service.PhotoProcessingImageUrlService;
 import com.yeoun.domain.user.entity.User;
+import com.yeoun.domain.user.repository.UserRepository;
+import com.yeoun.domain.user.service.UserProfileImageUrlService;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.springframework.beans.factory.annotation.Value;
@@ -66,6 +71,8 @@ public class TripService {
     private final TripSyncStatusRepository tripSyncStatusRepository;
     private final NotificationService notificationService;
     private final UserProfileImageUrlService userProfileImageUrlService;
+    private final PhotoRepository photoRepository;
+    private final PhotoProcessingImageUrlService photoProcessingImageUrlService;
     private final String inviteBaseUrl;
 
     public TripService(
@@ -76,6 +83,8 @@ public class TripService {
             TripSyncStatusRepository tripSyncStatusRepository,
             NotificationService notificationService,
             UserProfileImageUrlService userProfileImageUrlService,
+            PhotoRepository photoRepository,
+            PhotoProcessingImageUrlService photoProcessingImageUrlService,
             @Value("${app.invite.base-url}") String inviteBaseUrl
     ) {
         this.tripRepository = tripRepository;
@@ -85,6 +94,8 @@ public class TripService {
         this.tripSyncStatusRepository = tripSyncStatusRepository;
         this.notificationService = notificationService;
         this.userProfileImageUrlService = userProfileImageUrlService;
+        this.photoRepository = photoRepository;
+        this.photoProcessingImageUrlService = photoProcessingImageUrlService;
         this.inviteBaseUrl = inviteBaseUrl;
     }
 
@@ -298,6 +309,7 @@ public class TripService {
                         trip.getStartedAt(),
                         trip.getActualEndedAt(),
                         trip.getStatus(),
+                        resolveTripImageUrl(trip),
                         memberCountByTripId.getOrDefault(trip.getTripId(), 0L)
                 ))
                 .toList();
@@ -326,6 +338,7 @@ public class TripService {
                 trip.getVisibility(),
                 trip.getOwnerUserId(),
                 trip.getReportStatus(),
+                resolveTripImageUrl(trip),
                 memberCount,
                 trip.getCreatedAt()
         );
@@ -405,6 +418,38 @@ public class TripService {
                 trip.getStartDate(),
                 trip.getEndDate(),
                 trip.getVisibility(),
+                trip.getUpdatedAt()
+        );
+    }
+
+    @Transactional
+    public TripCoverPhotoUpdateResponse updateTripCoverPhoto(
+            UUID requesterUserId,
+            UUID tripId,
+            TripCoverPhotoUpdateRequest request
+    ) {
+        Trip trip = findNonDeletedTripOrThrow(tripId);
+        validateTripOwner(requesterUserId, trip);
+
+        UUID requestedPhotoId = request == null ? null : request.photoId();
+        if (requestedPhotoId != null) {
+            Photo photo = photoRepository.findById(requestedPhotoId)
+                    .orElseThrow(() -> new BaseException(ErrorCode.PHOTO_NOT_FOUND));
+            if (!tripId.equals(photo.getTripId())) {
+                throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Cover photo must belong to the same trip.");
+            }
+            if (photo.isExcluded()) {
+                throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Excluded photo cannot be selected as cover photo.");
+            }
+        }
+
+        Instant now = Instant.now();
+        trip.updateCoverPhoto(requestedPhotoId, now);
+
+        return new TripCoverPhotoUpdateResponse(
+                trip.getTripId(),
+                trip.getCoverPhotoId(),
+                resolveTripImageUrl(trip),
                 trip.getUpdatedAt()
         );
     }
@@ -492,6 +537,38 @@ public class TripService {
             memberCountByTripId.put(count.getTripId(), count.getMemberCount());
         }
         return memberCountByTripId;
+    }
+
+    private String resolveTripImageUrl(Trip trip) {
+        Photo coverPhoto = resolveCoverPhoto(trip);
+        if (coverPhoto == null) {
+            return null;
+        }
+
+        String thumbnailUrl = photoProcessingImageUrlService.createThumbnailUrl(coverPhoto.getThumbnailKey());
+        if (thumbnailUrl != null && !thumbnailUrl.isBlank()) {
+            return thumbnailUrl;
+        }
+
+        return photoProcessingImageUrlService.createOriginalUrl(coverPhoto.getStorageKey());
+    }
+
+    private Photo resolveCoverPhoto(Trip trip) {
+        if (trip.getCoverPhotoId() != null) {
+            Photo coverPhoto = photoRepository.findById(trip.getCoverPhotoId()).orElse(null);
+            if (isValidCoverPhoto(trip, coverPhoto)) {
+                return coverPhoto;
+            }
+        }
+
+        return photoRepository.findFirstByTripIdAndExcludedFalseOrderByTakenAtAscCreatedAtAsc(trip.getTripId())
+                .orElse(null);
+    }
+
+    private boolean isValidCoverPhoto(Trip trip, Photo photo) {
+        return photo != null
+                && trip.getTripId().equals(photo.getTripId())
+                && !photo.isExcluded();
     }
 
     private Trip findNonDeletedTripOrThrow(UUID tripId) {
