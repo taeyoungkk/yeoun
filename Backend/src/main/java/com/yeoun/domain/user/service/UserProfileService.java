@@ -21,6 +21,7 @@ import com.yeoun.global.util.PasswordPolicyValidator;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -40,6 +41,8 @@ public class UserProfileService {
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenRedisRepository refreshTokenRedisRepository;
     private final LocalLoginService localLoginService;
+    private final UserProfileImageStorageService userProfileImageStorageService;
+    private final UserProfileImageUrlService userProfileImageUrlService;
 
     public UserProfileService(
             UserRepository userRepository,
@@ -47,7 +50,9 @@ public class UserProfileService {
             PasswordEncoder passwordEncoder,
             JwtTokenProvider jwtTokenProvider,
             RefreshTokenRedisRepository refreshTokenRedisRepository,
-            LocalLoginService localLoginService
+            LocalLoginService localLoginService,
+            UserProfileImageStorageService userProfileImageStorageService,
+            UserProfileImageUrlService userProfileImageUrlService
     ) {
         this.userRepository = userRepository;
         this.userAuthAccountRepository = userAuthAccountRepository;
@@ -55,6 +60,8 @@ public class UserProfileService {
         this.jwtTokenProvider = jwtTokenProvider;
         this.refreshTokenRedisRepository = refreshTokenRedisRepository;
         this.localLoginService = localLoginService;
+        this.userProfileImageStorageService = userProfileImageStorageService;
+        this.userProfileImageUrlService = userProfileImageUrlService;
     }
 
     public MeResponse getMe(UUID userId) {
@@ -77,9 +84,22 @@ public class UserProfileService {
         User user = getUserOrThrow(userId);
 
         String nextNickname = resolveNickname(user, request.nickname());
-        String nextProfileImageUrl = resolveProfileImageUrl(user, request.profileImageUrl());
 
-        user.updateProfile(nextNickname, nextProfileImageUrl, Instant.now());
+        user.updateProfile(nextNickname, Instant.now());
+        return toMeResponse(user);
+    }
+
+    @Transactional
+    public MeResponse uploadProfileImage(UUID userId, MultipartFile file) {
+        User user = getUserOrThrow(userId);
+        String previousProfileImageKey = user.getProfileImageKey();
+        String uploadedProfileImageKey = userProfileImageStorageService.uploadProfileImage(userId, file);
+
+        user.updateProfileImage(user.getProfileImageUrl(), uploadedProfileImageKey, Instant.now());
+        if (previousProfileImageKey != null && !previousProfileImageKey.equals(uploadedProfileImageKey)) {
+            userProfileImageStorageService.deleteProfileImage(previousProfileImageKey);
+        }
+
         return toMeResponse(user);
     }
 
@@ -152,20 +172,12 @@ public class UserProfileService {
         return nickname;
     }
 
-    private String resolveProfileImageUrl(User user, String requestedProfileImageUrl) {
-        if (requestedProfileImageUrl == null) {
-            return user.getProfileImageUrl();
-        }
-        String profileImageUrl = requestedProfileImageUrl.trim();
-        return profileImageUrl.isEmpty() ? null : profileImageUrl;
-    }
-
     private MeResponse toMeResponse(User user) {
         return new MeResponse(
                 user.getUserId(),
                 user.getEmail(),
                 user.getNickname(),
-                user.getProfileImageUrl(),
+                userProfileImageUrlService.resolveProfileImageUrl(user.getProfileImageKey(), user.getProfileImageUrl()),
                 user.getTimezone(),
                 user.getCreatedAt(),
                 user.getRole(),

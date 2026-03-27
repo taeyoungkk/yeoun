@@ -36,6 +36,9 @@ public class User {
     @Column(name = "profile_image_url")
     private String profileImageUrl;
 
+    @Column(name = "profile_image_key")
+    private String profileImageKey;
+
     @Column(name = "timezone", nullable = false)
     @Builder.Default
     private String timezone = "Asia/Seoul";
@@ -58,9 +61,14 @@ public class User {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
-    public void updateProfile(String nickname, String profileImageUrl, Instant now) {
+    public void updateProfile(String nickname, Instant now) {
         this.nickname = nickname;
+        this.updatedAt = now;
+    }
+
+    public void updateProfileImage(String profileImageUrl, String profileImageKey, Instant now) {
         this.profileImageUrl = profileImageUrl;
+        this.profileImageKey = profileImageKey;
         this.updatedAt = now;
     }
 

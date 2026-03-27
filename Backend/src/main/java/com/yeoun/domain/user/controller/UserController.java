@@ -16,13 +16,17 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -39,7 +43,7 @@ public class UserController {
     }
 
     @GetMapping("/check-nickname")
-    @Operation(summary = "닉네임 중복 확인", description = "입력한 닉네임이 사용 가능한지 확인합니다.")
+    @Operation(summary = "닉네임 중복 확인", description = "입력한 닉네임을 사용할 수 있는지 확인합니다.")
     public ApiResponse<AvailabilityCheckResponse> checkNicknameAvailability(
             @RequestParam("nickname") String nickname
     ) {
@@ -48,7 +52,7 @@ public class UserController {
     }
 
     @GetMapping("/check-email")
-    @Operation(summary = "이메일 중복 확인", description = "입력한 이메일이 사용 가능한지 확인합니다.")
+    @Operation(summary = "이메일 중복 확인", description = "입력한 이메일을 사용할 수 있는지 확인합니다.")
     public ApiResponse<AvailabilityCheckResponse> checkEmailAvailability(
             @RequestParam("email") String email
     ) {
@@ -64,12 +68,22 @@ public class UserController {
     }
 
     @PatchMapping("/me")
-    @Operation(summary = "내 정보 수정", description = "현재 로그인한 사용자의 닉네임/프로필 이미지를 수정합니다.")
+    @Operation(summary = "내 정보 수정", description = "현재 로그인한 사용자의 닉네임을 수정합니다.")
     public ApiResponse<MeResponse> updateMe(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @Valid @RequestBody UpdateMeRequest request
     ) {
         MeResponse response = userProfileService.updateMe(principal.userId(), request);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping(value = "/me/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "프로필 이미지 업로드", description = "현재 로그인한 사용자의 프로필 이미지를 업로드합니다.")
+    public ApiResponse<MeResponse> uploadProfileImage(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @RequestPart("file") MultipartFile file
+    ) {
+        MeResponse response = userProfileService.uploadProfileImage(principal.userId(), file);
         return ApiResponse.ok(response);
     }
 
@@ -85,7 +99,7 @@ public class UserController {
     }
 
     @PatchMapping("/me/password")
-    @Operation(summary = "비밀번호 변경", description = "현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다.")
+    @Operation(summary = "비밀번호 변경", description = "현재 로그인한 사용자의 비밀번호를 변경합니다.")
     public ApiResponse<AuthTokenResponse> changePassword(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @Valid @RequestBody ChangePasswordRequest changePasswordRequest

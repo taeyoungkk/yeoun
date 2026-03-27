@@ -20,6 +20,7 @@ import com.yeoun.domain.notification.entity.NotificationType;
 import com.yeoun.domain.notification.service.NotificationService;
 import com.yeoun.domain.user.entity.User;
 import com.yeoun.domain.user.repository.UserRepository;
+import com.yeoun.domain.user.service.UserProfileImageUrlService;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -38,19 +39,22 @@ public class TripInviteService {
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final UserProfileImageUrlService userProfileImageUrlService;
 
     public TripInviteService(
             TripInviteRepository tripInviteRepository,
             TripMemberRepository tripMemberRepository,
             TripRepository tripRepository,
             UserRepository userRepository,
-            NotificationService notificationService
+            NotificationService notificationService,
+            UserProfileImageUrlService userProfileImageUrlService
     ) {
         this.tripInviteRepository = tripInviteRepository;
         this.tripMemberRepository = tripMemberRepository;
         this.tripRepository = tripRepository;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
+        this.userProfileImageUrlService = userProfileImageUrlService;
     }
 
     public ReceivedTripInviteListResponse getReceivedInvites(UUID userId) {
@@ -245,7 +249,10 @@ public class TripInviteService {
                 new ReceivedTripInviteItemResponse.Inviter(
                         projection.getInviterUserId(),
                         projection.getInviterNickname(),
-                        projection.getInviterProfileImageUrl()
+                        userProfileImageUrlService.resolveProfileImageUrl(
+                                projection.getInviterProfileImageKey(),
+                                projection.getInviterProfileImageUrl()
+                        )
                 ),
                 projection.getStatus(),
                 projection.getExpiresAt(),

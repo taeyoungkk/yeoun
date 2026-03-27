@@ -44,6 +44,7 @@ public interface TripMemberRepository extends JpaRepository<TripMember, UUID> {
             SELECT tm.tripMemberId AS tripMemberId,
                    tm.userId AS userId,
                    u.nickname AS nickname,
+                   u.profileImageKey AS profileImageKey,
                    u.profileImageUrl AS profileImageUrl,
                    tm.inviteStatus AS inviteStatus,
                    tm.joinedAt AS joinedAt
