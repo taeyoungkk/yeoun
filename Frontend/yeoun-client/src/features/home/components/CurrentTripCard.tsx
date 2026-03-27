@@ -62,9 +62,9 @@ export const CurrentTripCard = ({
         <View className="absolute bottom-4 left-4 right-4 bg-white/85 rounded-[32px] p-5 gap-1.5">
           <Text className="text-xl font-pretendard-bold text-[#101018]">{title}</Text>
 
-          <View className="flex-row items-center gap-1.5">
-            <IconSymbol name="location.fill" size={12} color="#828F9C" />
-            <Text className="text-[13px] text-[#828F9C] font-pretendard-medium">{location}</Text>
+          <View className="flex-row items-center">
+            <Ionicons name="location" size={12} color="#828F9C" />
+            <Text className="text-[13px] text-[#828F9C] font-pretendard-medium ml-1">{location}</Text>
           </View>
 
           <View className="flex-row items-center gap-3">

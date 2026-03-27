@@ -416,7 +416,7 @@ export default function MockTripRecordingScreen({
               typeof params.memberCount === 'string' && Number.isFinite(Number(params.memberCount))
                 ? Number(params.memberCount)
                 : 2,
-            origin: typeof params.origin === 'string' ? params.origin : 'Korea',
+            origin: typeof params.origin === 'string' ? params.origin : '대한민국',
             destination: typeof params.destination === 'string' ? params.destination : '',
           }
         : null,

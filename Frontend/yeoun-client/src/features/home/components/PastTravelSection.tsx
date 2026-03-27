@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { TripListItem } from '@/src/api/trip';
 import { getTripImage, getTripPlaceholder } from '@/src/utils/image-utils';
 import { useTripStore, useFavoriteStore } from '@/src/store';
+import { useCurrentAddress } from '@/src/hooks/useCurrentAddress';
 
 import { CurrentTripCard } from './CurrentTripCard';
 import { TripCard } from './TripCard';
@@ -53,6 +54,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
   const fetchTrips = useTripStore((state) => state.fetchTrips);
   const setReviewTrip = useTripStore((state) => state.setReviewTrip);
   const { favoriteIds, toggleFavorite } = useFavoriteStore();
+  const currentAddress = useCurrentAddress(isTripActive);
 
   const [isLoading, setIsLoading] = useState(true);
   const currentDisplayedTripId = isTripActive ? activeTrip?.tripId ?? currentTrip?.tripId ?? null : null;
@@ -86,7 +88,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
 
       return {
         title: activeTrip.title,
-        location: locationParts.length > 0 ? locationParts.join(', ') : activeTrip.title,
+        location: currentAddress || (locationParts.length > 0 ? locationParts.join(', ') : '위치 확인 중...'),
         date: `${activeTrip.startDate} ~ ${activeTrip.endDate}`,
         participants: participantCandidates.length > 0 ? Math.max(...participantCandidates) : 0,
         imageUrl: activeTrip.imageUrl,
@@ -97,7 +99,9 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
     if (currentTrip) {
       return {
         title: currentTrip.tripName,
-        location: `${currentTrip.origin}, ${currentTrip.destination}`,
+        location: currentAddress || (currentTrip.origin && currentTrip.destination 
+          ? `${currentTrip.origin} → ${currentTrip.destination}` 
+          : currentTrip.destination || '위치 확인 중...'),
         date: formatRange(currentTrip.startDate, currentTrip.endDate),
         participants: currentTrip.memberCount,
         imageUrl: undefined,
@@ -106,7 +110,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
     }
 
     return null;
-  }, [activeTrip, currentTrip, currentTripListItem]);
+  }, [activeTrip, currentTrip, currentTripListItem, currentAddress]);
 
   useEffect(() => {
     const loadPastTrips = async () => {
