@@ -54,6 +54,7 @@ import {
   getTripMembersApi,
   getTripRouteByDayApi,
   leaveTripApi,
+  type TripDetail,
   type TripMemberItem,
 } from '@/src/api/trip';
 import { useTripStore, useUserStore } from '@/src/store';
@@ -1265,6 +1266,7 @@ function RealTripRecordingScreen({
       appStateRef.current = nextAppState;
 
       if ((previousAppState === 'background' || previousAppState === 'inactive') && nextAppState === 'active') {
+        void locationService.ensureForegroundCollector();
         void runAutoPhotoSync(false);
       }
     });
