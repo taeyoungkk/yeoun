@@ -186,6 +186,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
             date={currentTripCard.date}
             participants={currentTripCard.participants}
             imageUrl={currentTripCard.imageUrl}
+            showHeart={false}
             isFavorite={!!currentDisplayedTripId && favoriteIds.includes(currentDisplayedTripId)}
             onPressHeart={() => currentDisplayedTripId && toggleFavorite(currentDisplayedTripId)}
             onPress={handleOpenCurrentTrip}
@@ -211,6 +212,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
                       location="여행지 정보"
                       date={`${trip.startDate} ~ ${trip.endDate}`}
                       imageUrl={getTripImage(trip.tripId, trip.imageUrl)}
+                      showHeart={false}
                       isFavorite={favoriteIds.includes(trip.tripId)}
                       onPressHeart={() => toggleFavorite(trip.tripId)}
                       onPress={() => handleTripPress(trip)}
