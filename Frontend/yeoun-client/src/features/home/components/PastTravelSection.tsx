@@ -178,17 +178,18 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
         </Text>
       </View>
 
-      {isTripActive && currentTripCard ? (
+      {isTripActive && currentTripCard && currentDisplayedTripId ? (
         <View className="w-full mb-10">
           <CurrentTripCard
+            tripId={currentDisplayedTripId}
             title={currentTripCard.title}
             location={currentTripCard.location}
             date={currentTripCard.date}
             participants={currentTripCard.participants}
-            imageUrl={currentTripCard.imageUrl}
+            imageUrl={getTripImage(currentDisplayedTripId, currentTripCard.imageUrl)}
             showHeart={false}
-            isFavorite={!!currentDisplayedTripId && favoriteIds.includes(currentDisplayedTripId)}
-            onPressHeart={() => currentDisplayedTripId && toggleFavorite(currentDisplayedTripId)}
+            isFavorite={favoriteIds.includes(currentDisplayedTripId)}
+            onPressHeart={() => toggleFavorite(currentDisplayedTripId)}
             onPress={handleOpenCurrentTrip}
           />
         </View>

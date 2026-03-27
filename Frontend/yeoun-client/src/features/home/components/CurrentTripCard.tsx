@@ -5,9 +5,10 @@ import { Image } from 'expo-image';
 
 import { IconSymbol } from '@/src/components/ui/icon-symbol';
 
-const defaultTripImage = require('@/assets/images/trip_placeholder_1.png');
+import { getTripImage } from '@/src/utils/image-utils';
 
 interface CurrentTripCardProps {
+  tripId: string;
   title: string;
   location: string;
   date: string;
@@ -20,6 +21,7 @@ interface CurrentTripCardProps {
 }
 
 export const CurrentTripCard = ({
+  tripId,
   title,
   location,
   date,
@@ -39,8 +41,8 @@ export const CurrentTripCard = ({
         style={{ elevation: 5 }}
       >
         <Image
-          source={imageUrl || defaultTripImage}
-          className="w-full h-full"
+          source={imageUrl || require('@/assets/images/trip_placeholder_1.png')}
+          style={{ width: '100%', height: '100%' }}
           contentFit="cover"
         />
 

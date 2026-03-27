@@ -23,7 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { configureMapbox } from '@/src/lib/mapbox';
 import { getTripExpensesApi } from '@/src/api/expense';
 import { getTimelineDayDetailApi, getTripTimelineDaysApi, type TimelineDayDetail } from '@/src/api/timeline';
-import { getTripDetailApi, startTripApi, endTripApi, leaveTripApi, deleteTripApi } from '@/src/api/trip';
+import { getTripDetailApi, startTripApi, endTripApi, leaveTripApi, deleteTripApi, type TripDetail } from '@/src/api/trip';
 import { useTripStore, useUserStore } from '@/src/store';
 import {
   CURRENT_USER_ID,
@@ -354,6 +354,8 @@ export default function MockTripRecordingScreen({
   const endTrip = useTripStore((state) => state.endTrip);
   const clearTrip = useTripStore((state) => state.clearTrip);
   const clearReviewTrip = useTripStore((state) => state.clearReviewTrip);
+  const removeTrip = useTripStore((state) => state.removeTrip);
+  const fetchTrips = useTripStore((state) => state.fetchTrips);
   const isTripActive = useTripStore((state) => state.isTripActive);
   const currentTrip = useTripStore((state) => state.currentTrip);
   const reviewTrip = useTripStore((state) => state.reviewTrip);
@@ -878,6 +880,8 @@ export default function MockTripRecordingScreen({
       }
 
       InteractionManager.runAfterInteractions(() => {
+        removeTrip(activeTripId);
+        void fetchTrips(true);
         clearTrip();
         clearReviewTrip();
         router.replace('/(tabs)');
@@ -893,6 +897,8 @@ export default function MockTripRecordingScreen({
     }
 
     InteractionManager.runAfterInteractions(() => {
+      removeTrip(activeTripId);
+      void fetchTrips(true);
       clearTrip();
       clearReviewTrip();
       router.replace('/(tabs)');

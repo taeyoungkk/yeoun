@@ -42,6 +42,7 @@ interface TripState {
   resetLocationSyncState: () => void;
   endTrip: () => void;
   clearTrip: () => void;
+  removeTrip: (tripId: string) => void;
 }
 
 export const useTripStore = create<TripState>()(
@@ -219,6 +220,11 @@ export const useTripStore = create<TripState>()(
           locationSyncMessage: null,
           locationSyncUpdatedAt: null,
         }),
+      removeTrip: (tripId) =>
+        set((state) => ({
+          trips: state.trips.filter((t) => t.tripId !== tripId),
+          tripsFetchedAt: 0, // Force fresh fetch on next call
+        })),
     }),
     {
       name: 'trip-storage',

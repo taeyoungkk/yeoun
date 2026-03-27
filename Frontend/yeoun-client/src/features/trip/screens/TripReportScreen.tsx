@@ -1,6 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -133,7 +134,16 @@ export default function TripReportScreen() {
   const receiptAppear = useRef(new Animated.Value(0)).current;
 
   const handleGoHome = () => router.replace('/(tabs)');
-  const handleBackToTimeline = () => router.back();
+  const handleBackToTimeline = () => {
+    if (trip?.tripId) {
+      router.push({
+        pathname: '/trip/recording',
+        params: { tripId: trip.tripId, mode: isReviewMode ? 'review' : undefined },
+      });
+    } else {
+      router.back();
+    }
+  };
   const handleOpenSettlementDetail = () => {
     if (!trip?.tripId) return;
     router.push({
@@ -296,7 +306,11 @@ export default function TripReportScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.headerRow}>
             <TouchableOpacity style={styles.headerButton} onPress={handleBackToTimeline}>
-              <MaterialIcons name="arrow-back" size={22} color="#3852D6" />
+              <Image 
+                source={require('@/assets/images/timeline_nav_icon.svg')} 
+                style={{ width: 28, height: 28 }} 
+                contentFit="contain" 
+              />
             </TouchableOpacity>
             <View style={styles.headerCopy}>
               <Text style={styles.headerTitle}>{reportTitle}</Text>

@@ -55,6 +55,7 @@ import {
   getTripRouteByDayApi,
   leaveTripApi,
   type TripMemberItem,
+  type TripDetail,
 } from '@/src/api/trip';
 import { useTripStore, useUserStore } from '@/src/store';
 import { locationService } from '../../../services/locationService';
@@ -524,6 +525,8 @@ function RealTripRecordingScreen({
   const resetLocationSyncState = useTripStore((state) => state.resetLocationSyncState);
   const currentUserId = useUserStore((state) => state.profile?.userId);
   const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
+  const removeTrip = useTripStore((state) => state.removeTrip);
+  const fetchTrips = useTripStore((state) => state.fetchTrips);
 
   const [activeFilter, setActiveFilter] = useState<DayFilter>('all');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -1364,6 +1367,7 @@ function RealTripRecordingScreen({
 
         await locationService.stopTracking();
         endTrip();
+        void fetchTrips(true);
         router.push(`${reportRoute}?mode=review`);
       } finally {
         setIsSyncing(false);
@@ -1387,6 +1391,8 @@ function RealTripRecordingScreen({
 
       InteractionManager.runAfterInteractions(() => {
         stopAutoPhotoSync();
+        removeTrip(activeTripId);
+        void fetchTrips(true);
         clearTrip();
         clearReviewTrip();
         router.replace('/(tabs)');
@@ -1403,6 +1409,8 @@ function RealTripRecordingScreen({
 
     InteractionManager.runAfterInteractions(() => {
       stopAutoPhotoSync();
+      removeTrip(activeTripId);
+      void fetchTrips(true);
       clearTrip();
       clearReviewTrip();
       router.replace('/(tabs)');
