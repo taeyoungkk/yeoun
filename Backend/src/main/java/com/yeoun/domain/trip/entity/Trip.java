@@ -60,6 +60,9 @@ public class Trip {
     @Builder.Default
     private TripReportStatus reportStatus = TripReportStatus.PENDING;
 
+    @Column(name = "cover_photo_id")
+    private UUID coverPhotoId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -74,6 +77,11 @@ public class Trip {
         this.startDate = startDate;
         this.endDate = endDate;
         this.visibility = visibility;
+        this.updatedAt = now;
+    }
+
+    public void updateCoverPhoto(UUID coverPhotoId, Instant now) {
+        this.coverPhotoId = coverPhotoId;
         this.updatedAt = now;
     }
 
