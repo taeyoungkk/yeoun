@@ -10,6 +10,7 @@ import com.yeoun.domain.friend.repository.FriendshipRepository;
 import com.yeoun.domain.user.entity.User;
 import com.yeoun.domain.user.entity.UserStatus;
 import com.yeoun.domain.user.repository.UserRepository;
+import com.yeoun.domain.user.service.UserProfileImageUrlService;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -29,13 +30,16 @@ public class FriendQueryService {
 
     private final UserRepository userRepository;
     private final FriendshipRepository friendshipRepository;
+    private final UserProfileImageUrlService userProfileImageUrlService;
 
     public FriendQueryService(
             UserRepository userRepository,
-            FriendshipRepository friendshipRepository
+            FriendshipRepository friendshipRepository,
+            UserProfileImageUrlService userProfileImageUrlService
     ) {
         this.userRepository = userRepository;
         this.friendshipRepository = friendshipRepository;
+        this.userProfileImageUrlService = userProfileImageUrlService;
     }
 
     public List<FriendSearchResponse> searchFriends(UUID currentUserId, String keyword) {
@@ -68,7 +72,7 @@ public class FriendQueryService {
                 .map(user -> new FriendSearchResponse(
                         user.getUserId(),
                         user.getNickname(),
-                        user.getProfileImageUrl(),
+                        userProfileImageUrlService.resolveProfileImageUrl(user.getProfileImageKey(), user.getProfileImageUrl()),
                         resolveRelationshipStatus(currentUserId, friendshipMap.get(user.getUserId()))
                 ))
                 .toList();
@@ -102,7 +106,10 @@ public class FriendQueryService {
                             friendship.getFriendshipId(),
                             friendUser.getUserId(),
                             friendUser.getNickname(),
-                            friendUser.getProfileImageUrl()
+                            userProfileImageUrlService.resolveProfileImageUrl(
+                                    friendUser.getProfileImageKey(),
+                                    friendUser.getProfileImageUrl()
+                            )
                     );
                 })
                 .toList();
@@ -167,7 +174,10 @@ public class FriendQueryService {
                             friendship.getFriendshipId(),
                             user.getUserId(),
                             user.getNickname(),
-                            user.getProfileImageUrl(),
+                            userProfileImageUrlService.resolveProfileImageUrl(
+                                    user.getProfileImageKey(),
+                                    user.getProfileImageUrl()
+                            ),
                             friendship.getStatus().name()
                     );
                 })

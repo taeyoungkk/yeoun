@@ -12,6 +12,8 @@ public interface TripMemberSummaryProjection {
 
     String getNickname();
 
+    String getProfileImageKey();
+
     String getProfileImageUrl();
 
     TripMemberInviteStatus getInviteStatus();

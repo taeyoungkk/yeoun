@@ -36,6 +36,7 @@ import com.yeoun.domain.tripprocessing.entity.TripProcessingStatusType;
 import com.yeoun.domain.tripprocessing.repository.TripProcessingStatusRepository;
 import com.yeoun.domain.user.entity.User;
 import com.yeoun.domain.user.repository.UserRepository;
+import com.yeoun.domain.user.service.UserProfileImageUrlService;
 import com.yeoun.global.exception.BaseException;
 import com.yeoun.global.exception.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -72,6 +73,7 @@ public class SharedAlbumService {
     private final TripProcessingStatusRepository tripProcessingStatusRepository;
     private final PhotoProcessingImageUrlService photoProcessingImageUrlService;
     private final UserRepository userRepository;
+    private final UserProfileImageUrlService userProfileImageUrlService;
 
     public SharedAlbumService(
             SharedAlbumRepository sharedAlbumRepository,
@@ -86,7 +88,8 @@ public class SharedAlbumService {
             ExpenseRepository expenseRepository,
             TripProcessingStatusRepository tripProcessingStatusRepository,
             PhotoProcessingImageUrlService photoProcessingImageUrlService,
-            UserRepository userRepository
+            UserRepository userRepository,
+            UserProfileImageUrlService userProfileImageUrlService
     ) {
         this.sharedAlbumRepository = sharedAlbumRepository;
         this.sharedAlbumMemberRepository = sharedAlbumMemberRepository;
@@ -101,6 +104,7 @@ public class SharedAlbumService {
         this.tripProcessingStatusRepository = tripProcessingStatusRepository;
         this.photoProcessingImageUrlService = photoProcessingImageUrlService;
         this.userRepository = userRepository;
+        this.userProfileImageUrlService = userProfileImageUrlService;
     }
 
     public SharedAlbumTripResponse getSharedAlbumByTrip(UUID requesterUserId, UUID tripId) {
@@ -464,7 +468,7 @@ public class SharedAlbumService {
             members.add(new SharedAlbumMemberItemResponse(
                     user.getUserId(),
                     user.getNickname(),
-                    user.getProfileImageUrl()
+                    userProfileImageUrlService.resolveProfileImageUrl(user.getProfileImageKey(), user.getProfileImageUrl())
             ));
         }
         return new SharedAlbumMemberListResponse(sharedAlbumId, members);

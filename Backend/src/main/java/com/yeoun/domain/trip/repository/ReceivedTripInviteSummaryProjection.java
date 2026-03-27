@@ -18,6 +18,8 @@ public interface ReceivedTripInviteSummaryProjection {
 
     String getInviterNickname();
 
+    String getInviterProfileImageKey();
+
     String getInviterProfileImageUrl();
 
     TripInviteStatus getStatus();

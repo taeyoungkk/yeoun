@@ -35,6 +35,7 @@ import com.yeoun.domain.tripsync.entity.SyncStatus;
 import com.yeoun.domain.tripsync.entity.TripSyncStatus;
 import com.yeoun.domain.tripsync.repository.TripSyncStatusRepository;
 import com.yeoun.domain.user.repository.UserRepository;
+import com.yeoun.domain.user.service.UserProfileImageUrlService;
 import com.yeoun.domain.notification.entity.NotificationType;
 import com.yeoun.domain.notification.service.NotificationService;
 import com.yeoun.domain.user.entity.User;
@@ -64,6 +65,7 @@ public class TripService {
     private final UserRepository userRepository;
     private final TripSyncStatusRepository tripSyncStatusRepository;
     private final NotificationService notificationService;
+    private final UserProfileImageUrlService userProfileImageUrlService;
     private final String inviteBaseUrl;
 
     public TripService(
@@ -73,6 +75,7 @@ public class TripService {
             UserRepository userRepository,
             TripSyncStatusRepository tripSyncStatusRepository,
             NotificationService notificationService,
+            UserProfileImageUrlService userProfileImageUrlService,
             @Value("${app.invite.base-url}") String inviteBaseUrl
     ) {
         this.tripRepository = tripRepository;
@@ -81,6 +84,7 @@ public class TripService {
         this.userRepository = userRepository;
         this.tripSyncStatusRepository = tripSyncStatusRepository;
         this.notificationService = notificationService;
+        this.userProfileImageUrlService = userProfileImageUrlService;
         this.inviteBaseUrl = inviteBaseUrl;
     }
 
@@ -339,7 +343,10 @@ public class TripService {
                         member.getTripMemberId(),
                         member.getUserId(),
                         member.getNickname(),
-                        member.getProfileImageUrl(),
+                        userProfileImageUrlService.resolveProfileImageUrl(
+                                member.getProfileImageKey(),
+                                member.getProfileImageUrl()
+                        ),
                         member.getInviteStatus(),
                         member.getJoinedAt()
                 ))
@@ -351,7 +358,10 @@ public class TripService {
                         null,
                         invite.getUserId(),
                         invite.getNickname(),
-                        invite.getProfileImageUrl(),
+                        userProfileImageUrlService.resolveProfileImageUrl(
+                                invite.getProfileImageKey(),
+                                invite.getProfileImageUrl()
+                        ),
                         TripMemberInviteStatus.INVITED,
                         null
                 ))

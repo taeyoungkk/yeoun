@@ -9,5 +9,7 @@ public interface TripInviteUserSummaryProjection {
 
     String getNickname();
 
+    String getProfileImageKey();
+
     String getProfileImageUrl();
 }

@@ -30,6 +30,7 @@ public interface TripInviteRepository extends JpaRepository<TripInvite, UUID> {
             SELECT ti.tripInviteId AS tripInviteId,
                    ti.targetUserId AS userId,
                    u.nickname AS nickname,
+                   u.profileImageKey AS profileImageKey,
                    u.profileImageUrl AS profileImageUrl
             FROM TripInvite ti
             JOIN User u ON u.userId = ti.targetUserId
@@ -48,6 +49,7 @@ public interface TripInviteRepository extends JpaRepository<TripInvite, UUID> {
                    t.title AS tripTitle,
                    inviter.userId AS inviterUserId,
                    inviter.nickname AS inviterNickname,
+                   inviter.profileImageKey AS inviterProfileImageKey,
                    inviter.profileImageUrl AS inviterProfileImageUrl,
                    ti.status AS status,
                    ti.expiresAt AS expiresAt,
