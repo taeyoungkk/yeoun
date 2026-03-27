@@ -17,6 +17,12 @@ import com.yeoun.domain.receipt.entity.ReceiptOcrLineItem;
 import com.yeoun.domain.receipt.entity.ReceiptOcrResult;
 import com.yeoun.domain.receipt.repository.ReceiptOcrLineItemRepository;
 import com.yeoun.domain.receipt.repository.ReceiptOcrResultRepository;
+import com.yeoun.domain.timeline.entity.Event;
+import com.yeoun.domain.timeline.entity.EventCreatedBy;
+import com.yeoun.domain.timeline.entity.EventType;
+import com.yeoun.domain.timeline.entity.TimelineDay;
+import com.yeoun.domain.timeline.repository.EventRepository;
+import com.yeoun.domain.timeline.repository.TimelineDayRepository;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripMemberInviteStatus;
 import com.yeoun.domain.trip.entity.TripStatus;
@@ -30,6 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -46,6 +54,7 @@ public class ReceiptOcrSelectService {
 
     private static final String COMPLETED_STATUS = "COMPLETED";
     private static final String SUPPORTED_CURRENCY_CODE = "KRW";
+    private static final ZoneId DEFAULT_ZONE_ID = ZoneId.of("Asia/Seoul");
 
     private final ReceiptOcrResultRepository receiptOcrResultRepository;
     private final ReceiptOcrLineItemRepository receiptOcrLineItemRepository;
@@ -53,6 +62,8 @@ public class ReceiptOcrSelectService {
     private final ExpenseItemRepository expenseItemRepository;
     private final ExpenseItemSplitRepository expenseItemSplitRepository;
     private final ExpenseSplitRepository expenseSplitRepository;
+    private final TimelineDayRepository timelineDayRepository;
+    private final EventRepository eventRepository;
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
 
@@ -63,6 +74,8 @@ public class ReceiptOcrSelectService {
             ExpenseItemRepository expenseItemRepository,
             ExpenseItemSplitRepository expenseItemSplitRepository,
             ExpenseSplitRepository expenseSplitRepository,
+            TimelineDayRepository timelineDayRepository,
+            EventRepository eventRepository,
             TripRepository tripRepository,
             TripMemberRepository tripMemberRepository
     ) {
@@ -72,6 +85,8 @@ public class ReceiptOcrSelectService {
         this.expenseItemRepository = expenseItemRepository;
         this.expenseItemSplitRepository = expenseItemSplitRepository;
         this.expenseSplitRepository = expenseSplitRepository;
+        this.timelineDayRepository = timelineDayRepository;
+        this.eventRepository = eventRepository;
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
     }
@@ -128,6 +143,7 @@ public class ReceiptOcrSelectService {
         saveExpenseItems(expense.getExpenseId(), selectionData.selectedItems(), now);
         saveExpenseItemSplits(selectionData.selectedItems(), now);
         replaceSplits(expense.getExpenseId(), selectionData.userTotals(), now);
+        createTimelineEventIfPossible(tripId, merchantName, selectionData.totalAmount(), receiptOcrResult, now);
 
         return new ReceiptOcrSelectResponse(
                 receiptId,
@@ -336,6 +352,82 @@ public class ReceiptOcrSelectService {
             return receiptOcrResult.getRequestedAt();
         }
         return Instant.now();
+    }
+
+    private void createTimelineEventIfPossible(
+            UUID tripId,
+            String merchantName,
+            BigDecimal totalAmount,
+            ReceiptOcrResult receiptOcrResult,
+            Instant now
+    ) {
+        Instant paidAt = parsePaidAtForTimeline(receiptOcrResult.getPaidAtRaw());
+        if (paidAt == null) {
+            return;
+        }
+
+        TimelineDay timelineDay = getOrCreateTimelineDay(tripId, paidAt, now);
+        Event event = Event.builder()
+                .eventId(UUID.randomUUID())
+                .tripId(tripId)
+                .timelineDayId(timelineDay.getTimelineDayId())
+                .createdBy(EventCreatedBy.SYSTEM)
+                .eventType(EventType.OTHER)
+                .title(buildExpenseEventTitle(merchantName, totalAmount))
+                .placeName(merchantName)
+                .startAt(paidAt)
+                .endAt(paidAt)
+                .centerLatitude(null)
+                .centerLongitude(null)
+                .radiusM(null)
+                .hidden(false)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        eventRepository.save(event);
+        recalculateTimelineDayEventCount(timelineDay, now);
+    }
+
+    private Instant parsePaidAtForTimeline(String paidAtRaw) {
+        if (paidAtRaw == null || paidAtRaw.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(paidAtRaw.trim());
+        } catch (DateTimeParseException ignored) {
+            return null;
+        }
+    }
+
+    private TimelineDay getOrCreateTimelineDay(UUID tripId, Instant paidAt, Instant now) {
+        LocalDate dayDate = paidAt.atZone(DEFAULT_ZONE_ID).toLocalDate();
+        return timelineDayRepository.findByTripIdAndDayDate(tripId, dayDate)
+                .orElseGet(() -> timelineDayRepository.save(TimelineDay.builder()
+                        .timelineDayId(UUID.randomUUID())
+                        .tripId(tripId)
+                        .dayDate(dayDate)
+                        .summaryText(null)
+                        .distanceM(null)
+                        .photoCount(0)
+                        .eventCount(0)
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build()));
+    }
+
+    private void recalculateTimelineDayEventCount(TimelineDay timelineDay, Instant now) {
+        int visibleEventCount = Math.toIntExact(eventRepository.countByTimelineDayIdAndHiddenFalse(timelineDay.getTimelineDayId()));
+        timelineDay.updateSummary(
+                timelineDay.getSummaryText(),
+                timelineDay.getDistanceM(),
+                timelineDay.getPhotoCount(),
+                visibleEventCount,
+                now
+        );
+    }
+
+    private String buildExpenseEventTitle(String merchantName, BigDecimal totalAmount) {
+        return "지출 · " + merchantName + " · " + totalAmount.toPlainString() + " KRW";
     }
 
     private void saveExpenseItems(UUID expenseId, List<SelectedExpenseItem> selectedItems, Instant now) {

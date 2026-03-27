@@ -16,6 +16,12 @@ import com.yeoun.domain.receipt.entity.ReceiptOcrLineItem;
 import com.yeoun.domain.receipt.entity.ReceiptOcrResult;
 import com.yeoun.domain.receipt.repository.ReceiptOcrLineItemRepository;
 import com.yeoun.domain.receipt.repository.ReceiptOcrResultRepository;
+import com.yeoun.domain.timeline.entity.Event;
+import com.yeoun.domain.timeline.entity.EventCreatedBy;
+import com.yeoun.domain.timeline.entity.EventType;
+import com.yeoun.domain.timeline.entity.TimelineDay;
+import com.yeoun.domain.timeline.repository.EventRepository;
+import com.yeoun.domain.timeline.repository.TimelineDayRepository;
 import com.yeoun.domain.trip.entity.Trip;
 import com.yeoun.domain.trip.entity.TripMemberInviteStatus;
 import com.yeoun.domain.trip.entity.TripReportStatus;
@@ -69,6 +75,12 @@ class ReceiptOcrSelectServiceTest {
     private ExpenseSplitRepository expenseSplitRepository;
 
     @Mock
+    private TimelineDayRepository timelineDayRepository;
+
+    @Mock
+    private EventRepository eventRepository;
+
+    @Mock
     private TripRepository tripRepository;
 
     @Mock
@@ -120,6 +132,10 @@ class ReceiptOcrSelectServiceTest {
                 .thenReturn(List.of(requesterUserId, payerUserId, participantA, participantB));
         when(receiptOcrLineItemRepository.findByReceiptIdOrderBySortOrderAsc(receiptId.toString()))
                 .thenReturn(List.of(lineItem1, lineItem2));
+        when(timelineDayRepository.findByTripIdAndDayDate(eq(tripId), any()))
+                .thenReturn(Optional.empty());
+        when(timelineDayRepository.save(any(TimelineDay.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         ReceiptOcrSelectResponse response = receiptOcrSelectService.selectReceiptOcr(requesterUserId, receiptId, request);
 
@@ -165,6 +181,23 @@ class ReceiptOcrSelectServiceTest {
                 .findFirst()
                 .orElseThrow()
                 .getAmount()).isEqualByComparingTo("9000.00");
+
+        ArgumentCaptor<TimelineDay> timelineDayCaptor = ArgumentCaptor.forClass(TimelineDay.class);
+        verify(timelineDayRepository).save(timelineDayCaptor.capture());
+        TimelineDay savedTimelineDay = timelineDayCaptor.getValue();
+        assertThat(savedTimelineDay.getTripId()).isEqualTo(tripId);
+        assertThat(savedTimelineDay.getDayDate()).isEqualTo(LocalDate.of(2026, 3, 27));
+
+        ArgumentCaptor<Event> eventCaptor = ArgumentCaptor.forClass(Event.class);
+        verify(eventRepository).save(eventCaptor.capture());
+        Event savedEvent = eventCaptor.getValue();
+        assertThat(savedEvent.getTripId()).isEqualTo(tripId);
+        assertThat(savedEvent.getTimelineDayId()).isEqualTo(savedTimelineDay.getTimelineDayId());
+        assertThat(savedEvent.getCreatedBy()).isEqualTo(EventCreatedBy.SYSTEM);
+        assertThat(savedEvent.getEventType()).isEqualTo(EventType.OTHER);
+        assertThat(savedEvent.getPlaceName()).isEqualTo("스타벅스");
+        assertThat(savedEvent.getStartAt()).isEqualTo(Instant.parse("2026-03-27T12:30:00Z"));
+        assertThat(savedEvent.getEndAt()).isEqualTo(Instant.parse("2026-03-27T12:30:00Z"));
 
         assertThat(response.tripId()).isEqualTo(tripId);
         assertThat(response.receiptId()).isEqualTo(receiptId);
