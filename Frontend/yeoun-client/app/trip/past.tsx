@@ -5,6 +5,7 @@ import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { TripListItem } from '@/src/api/trip';
+import { getTripPlaceholder } from '@/src/utils/image-utils';
 import { TripCard } from '@/src/features/home/components/TripCard';
 import { useTripStore, useFavoriteStore } from '@/src/store';
 
@@ -21,7 +22,7 @@ const formatRange = (start?: string, end?: string) => {
 
 const getTripLocation = (trip: TripListItem) => {
   const locationParts = [trip.region, trip.country].filter(Boolean);
-  return locationParts.length > 0 ? locationParts.join(', ') : '';
+  return locationParts.length > 0 ? locationParts.join(', ') : '여행지 정보';
 };
 
 export default function PastTripsScreen() {
@@ -76,12 +77,13 @@ export default function PastTripsScreen() {
     router.push('/trip/report?mode=review');
   };
 
-  const renderItem = ({ item }: { item: TripListItem }) => (
+  const renderItem = ({ item, index }: { item: TripListItem, index: number }) => (
     <View style={{ marginBottom: 16 }}>
       <TripCard
         title={item.title}
         location={getTripLocation(item)}
         date={formatRange(item.startDate, item.endDate)}
+        imageUrl={getTripPlaceholder(item.tripId)}
         isFavorite={favoriteIds.includes(item.tripId)}
         onPressHeart={() => toggleFavorite(item.tripId)}
         onPress={() => handleTripPress(item)}

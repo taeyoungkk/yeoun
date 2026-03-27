@@ -15,6 +15,7 @@ import { TravelMap } from '@/src/components/profile/TravelMap';
 import { UserInfoCard } from '@/src/components/profile/UserInfoCard';
 import { useFavoriteStore, useTripStore, useUserStore } from '@/src/store';
 import { reverseGeocodeKo } from '@/src/api/mapbox';
+import { getTripPlaceholder } from '@/src/utils/image-utils';
 
 const formatDate = (dateString?: string) => {
   if (!dateString) {
@@ -40,7 +41,7 @@ export default function MyPageScreen() {
         ? `${trip.region}, ${trip.country}`
         : trip.region || trip.country || '대한민국',
     dates: `${trip.startDate.replace(/-/g, '.')} ~ ${trip.endDate.split('-').pop()}`,
-    imageSource: require('@/assets/images/trip_placeholder_1.png'),
+    imageSource: getTripPlaceholder(trip.tripId),
     isFavorite: favoriteIds.includes(trip.tripId),
   });
 

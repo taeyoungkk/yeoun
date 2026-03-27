@@ -16,31 +16,46 @@ interface TripCardProps {
 
 export const TripCard = ({ title, location, date, imageUrl, isFavorite, onPressHeart, onPress }: TripCardProps) => {
     return (
-        <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
-            <View className="flex-row bg-[#DAE5DB] rounded-[32px] p-4 gap-4 items-center">
+        <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+            <View 
+                className="flex-row bg-white rounded-[32px] overflow-hidden"
+                style={{
+                  height: 120,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 10,
+                  elevation: 5,
+                  marginBottom: 8,
+                }}
+            >
                 <Image
                     source={imageUrl || require('@/assets/images/base.png')}
-                    className="w-[115px] h-[134px] rounded-[24px]"
+                    style={{
+                        width: 120,
+                        height: '100%',
+                    }}
                     contentFit="cover"
                 />
-                <View className="flex-1 justify-center gap-2">
+
+                <View className="flex-1 justify-center px-6 py-3 ml-1" style={{ flexShrink: 1 }}>
                     <View className="flex-row justify-between items-start">
-                        <Text className="flex-1 text-black text-sm font-pretendard-bold" numberOfLines={1}>{title}</Text>
+                        <Text className="flex-1 text-black text-lg font-pretendard-bold" numberOfLines={1}>{title}</Text>
                         <Pressable onPress={onPressHeart} className="ml-2">
                            <Ionicons 
                              name={isFavorite ? "heart" : "heart-outline"} 
-                             size={20} 
+                             size={24} 
                              color={isFavorite ? "#E74C3C" : "#828F9C"} 
                            />
                         </Pressable>
                     </View>
-                    <View className="flex-row items-center gap-1">
-                        <IconSymbol name="location.fill" size={10} color="#828F9C" />
-                        <Text className="text-[#828F9C] text-[10px] font-pretendard-medium">{location}</Text>
+                    <View className="flex-row items-center gap-1.5">
+                        <Ionicons name="location" size={16} color="#828F9C" />
+                        <Text className="text-[#828F9C] text-sm font-pretendard-medium" numberOfLines={1}>{location}</Text>
                     </View>
-                    <View className="flex-row items-center gap-1">
-                        <IconSymbol name="calendar" size={10} color="#828F9C" />
-                        <Text className="text-[#828F9C] text-[10px] font-pretendard-medium">{date}</Text>
+                    <View className="flex-row items-center gap-1.5">
+                        <Ionicons name="calendar-outline" size={16} color="#828F9C" />
+                        <Text className="text-[#828F9C] text-sm font-pretendard-medium">{date}</Text>
                     </View>
                 </View>
             </View>

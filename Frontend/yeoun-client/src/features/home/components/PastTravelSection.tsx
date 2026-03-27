@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { TripListItem } from '@/src/api/trip';
+import { getTripPlaceholder } from '@/src/utils/image-utils';
 import { useTripStore, useFavoriteStore } from '@/src/store';
 
 import { CurrentTripCard } from './CurrentTripCard';
@@ -209,7 +210,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
                       title={trip.title}
                       location="여행지 정보"
                       date={`${trip.startDate} ~ ${trip.endDate}`}
-                      imageUrl={trip.tripId.includes('mock') ? require('@/assets/images/trip_placeholder_2.png') : undefined}
+                      imageUrl={getTripPlaceholder(trip.tripId)}
                       isFavorite={favoriteIds.includes(trip.tripId)}
                       onPressHeart={() => toggleFavorite(trip.tripId)}
                       onPress={() => handleTripPress(trip)}

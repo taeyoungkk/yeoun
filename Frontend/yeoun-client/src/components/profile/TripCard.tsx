@@ -37,10 +37,10 @@ export function TripCard({ data, onPress, onPressHeart }: Props) {
         </View>
         
         <View style={styles.infoOverlay}>
-          <Text style={styles.title}>{data.title}</Text>
+          <Text style={styles.title} numberOfLines={1}>{data.title}</Text>
           <View style={styles.row}>
             <Ionicons name="location" size={12} color="#8A8A8A" />
-            <Text style={styles.rowText}>{data.location}</Text>
+            <Text style={styles.rowText} numberOfLines={1}>{data.location}</Text>
           </View>
           <View style={styles.row}>
             <Ionicons name="calendar" size={12} color="#8A8A8A" />
