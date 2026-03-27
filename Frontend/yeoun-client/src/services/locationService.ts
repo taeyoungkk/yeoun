@@ -310,7 +310,6 @@ const syncCollectorsForAppState = async (nextAppState: AppStateStatus) => {
 
   if (trackingSessionConfig?.backgroundGranted) {
     activeCollectorMode = 'background';
-    await startBackgroundWatcher();
     return;
   }
 
