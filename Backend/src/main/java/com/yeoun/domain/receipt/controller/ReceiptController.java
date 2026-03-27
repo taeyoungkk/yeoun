@@ -97,7 +97,7 @@ public class ReceiptController {
     }
 
     @PostMapping("/receipts/{receiptId}/select")
-    @Operation(summary = "영수증 OCR 결과 선택", description = "처리 완료된 OCR 결과를 비용(정산용)으로 생성합니다.")
+    @Operation(summary = "영수증 OCR 결과 선택", description = "처리 완료된 OCR 결과를 비용(정산용)으로 생성하고, 선택한 항목별 참여자를 반영합니다.")
     public ApiResponse<ReceiptOcrSelectResponse> selectReceiptOcr(
             @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
             @PathVariable("receiptId") UUID receiptId,

@@ -76,7 +76,7 @@ public class ReceiptOcrSelectService {
         Trip trip = findNonDeletedTripOrThrow(tripId);
         validateTripAccessible(requesterUserId, trip);
 
-        List<UUID> participantUserIds = normalizeParticipantUserIds(request.participantUserIds());
+        List<UUID> participantUserIds = normalizeParticipantUserIds(request.lineItems());
         validateUsersAreTripParticipants(tripId, requesterUserId, request.payerUserId(), participantUserIds);
 
         String merchantName = normalizeRequiredText(receiptOcrResult.getMerchantName());
@@ -163,16 +163,30 @@ public class ReceiptOcrSelectService {
         }
     }
 
-    private List<UUID> normalizeParticipantUserIds(List<UUID> participantUserIds) {
-        if (participantUserIds == null || participantUserIds.isEmpty()) {
-            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "At least one participant is required.");
+    private List<UUID> normalizeParticipantUserIds(
+            List<ReceiptOcrSelectRequest.ReceiptOcrSelectLineItemRequest> lineItems
+    ) {
+        if (lineItems == null || lineItems.isEmpty()) {
+            throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "At least one line item is required.");
         }
         LinkedHashSet<UUID> deduplicated = new LinkedHashSet<>();
-        for (UUID userId : participantUserIds) {
-            if (userId == null) {
-                throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Participant user id cannot be null.");
+        for (ReceiptOcrSelectRequest.ReceiptOcrSelectLineItemRequest lineItem : lineItems) {
+            if (lineItem == null) {
+                throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Line item cannot be null.");
             }
-            deduplicated.add(userId);
+            if (lineItem.ocrLineItemId() == null) {
+                throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "OCR line item id is required.");
+            }
+            validateAndNormalizeAmount(lineItem.amount());
+            if (lineItem.participantUserIds() == null || lineItem.participantUserIds().isEmpty()) {
+                throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "At least one participant is required.");
+            }
+            for (UUID userId : lineItem.participantUserIds()) {
+                if (userId == null) {
+                    throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "Participant user id cannot be null.");
+                }
+                deduplicated.add(userId);
+            }
         }
         return new ArrayList<>(deduplicated);
     }
