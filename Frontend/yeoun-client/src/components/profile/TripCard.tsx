@@ -10,6 +10,7 @@ export interface TripData {
   imageSource: any;
   isFavorite?: boolean;
   showMoreOverlay?: boolean;
+  moreCount?: number;
 }
 
 interface Props {
@@ -50,7 +51,11 @@ export function TripCard({ data, onPress, onPressHeart }: Props) {
 
         {data.showMoreOverlay && (
           <View style={styles.moreOverlay}>
-            <Ionicons name="add" size={48} color="white" />
+            {data.moreCount && data.moreCount > 0 ? (
+              <Text style={styles.moreText}>+{data.moreCount}</Text>
+            ) : (
+              <Ionicons name="add" size={48} color="white" />
+            )}
           </View>
         )}
       </ImageBackground>
@@ -102,5 +107,10 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  moreText: {
+    color: 'white',
+    fontSize: 32,
+    fontWeight: 'bold',
   }
 });

@@ -5,7 +5,7 @@ import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { TripListItem } from '@/src/api/trip';
-import { getTripPlaceholder } from '@/src/utils/image-utils';
+import { getTripImage, getTripPlaceholder } from '@/src/utils/image-utils';
 import { TripCard } from '@/src/features/home/components/TripCard';
 import { useTripStore, useFavoriteStore } from '@/src/store';
 
@@ -83,7 +83,7 @@ export default function PastTripsScreen() {
         title={item.title}
         location={getTripLocation(item)}
         date={formatRange(item.startDate, item.endDate)}
-        imageUrl={getTripPlaceholder(item.tripId)}
+        imageUrl={getTripImage(item.tripId, item.imageUrl)}
         isFavorite={favoriteIds.includes(item.tripId)}
         onPressHeart={() => toggleFavorite(item.tripId)}
         onPress={() => handleTripPress(item)}

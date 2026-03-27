@@ -15,7 +15,7 @@ import { TravelMap } from '@/src/components/profile/TravelMap';
 import { UserInfoCard } from '@/src/components/profile/UserInfoCard';
 import { useFavoriteStore, useTripStore, useUserStore } from '@/src/store';
 import { reverseGeocodeKo } from '@/src/api/mapbox';
-import { getTripPlaceholder } from '@/src/utils/image-utils';
+import { getTripImage, getTripPlaceholder } from '@/src/utils/image-utils';
 
 const formatDate = (dateString?: string) => {
   if (!dateString) {
@@ -41,7 +41,7 @@ export default function MyPageScreen() {
         ? `${trip.region}, ${trip.country}`
         : trip.region || trip.country || '대한민국',
     dates: `${trip.startDate.replace(/-/g, '.')} ~ ${trip.endDate.split('-').pop()}`,
-    imageSource: getTripPlaceholder(trip.tripId),
+    imageSource: getTripImage(trip.tripId, trip.imageUrl),
     isFavorite: favoriteIds.includes(trip.tripId),
   });
 
@@ -202,7 +202,7 @@ export default function MyPageScreen() {
           onViewMore={() => router.push('/trip/past')}
           onToggleFavorite={handleToggleFavorite}
         />
-
+  
         <TravelMap tripIds={monitoredTripIds} />
         <TreeRingsChart />
       </ScrollView>

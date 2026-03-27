@@ -87,6 +87,7 @@ export interface TripListItem {
   memberCount: number;
   region?: string;
   country?: string;
+  imageUrl?: string;
 }
 
 export interface TripListData {

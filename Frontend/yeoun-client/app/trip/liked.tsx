@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TripDetail, TripListItem } from '@/src/api/trip';
-import { getTripPlaceholder } from '@/src/utils/image-utils';
+import { getTripImage, getTripPlaceholder } from '@/src/utils/image-utils';
 import { TripCard } from '@/src/features/home/components/TripCard';
 import { useFavoriteStore, useTripStore } from '@/src/store';
 
@@ -39,7 +39,7 @@ export default function LikedTripsScreen() {
             title={item.title}
             location={getTripLocation(item)}
             date={formatRange(item.startDate, item.endDate)}
-            imageUrl={getTripPlaceholder(item.tripId)}
+            imageUrl={getTripImage(item.tripId, item.imageUrl)}
             isFavorite={true}
             onPressHeart={() => toggleFavorite(item.tripId)}
             onPress={() => handleTripPress(item)}

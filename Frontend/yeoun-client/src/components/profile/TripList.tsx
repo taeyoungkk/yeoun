@@ -34,7 +34,8 @@ export function TripList({ title, trips, onViewMore, onToggleFavorite }: Props) 
               key={trip.id} 
               data={{
                 ...trip,
-                showMoreOverlay: isLastVisible
+                showMoreOverlay: isLastVisible,
+                moreCount: isLastVisible ? trips.length - 3 : 0
               }} 
               onPress={() => {
                 if (isLastVisible && onViewMore) {
