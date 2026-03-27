@@ -20,12 +20,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   deletePhotoMemoApi,
   getPhotoDetailApi,
+  getTripPhotosApi,
   type PhotoDetail,
   updatePhotoApi,
   upsertPhotoMemoApi,
 } from '@/src/api/photo';
 import { getEventDetailApi, type EventDetail, type EventPhoto } from '@/src/api/timeline';
-import { getTripMembersApi, type TripMemberItem } from '@/src/api/trip';
+import { getTripDetailApi, getTripMembersApi, type TripMemberItem } from '@/src/api/trip';
 import { useUIStore } from '@/src/store/ui.store';
 import { useUserStore } from '@/src/store/user.store';
 
@@ -68,6 +69,13 @@ const buildAlbumPhoto = (eventPhoto: EventPhoto, detail: PhotoDetail): AlbumPhot
   representative: eventPhoto.representative,
 });
 
+const buildTripAlbumPhoto = (detail: PhotoDetail, index: number): AlbumPhoto => ({
+  ...detail,
+  eventPhotoId: `trip-photo-${detail.photoId}`,
+  sortOrder: index,
+  representative: false,
+});
+
 const getContributorColor = (userId: string) => {
   let seed = 0;
 
@@ -80,7 +88,7 @@ const getContributorColor = (userId: string) => {
 
 export default function TripPhotoAlbumApiScreen() {
   const router = useRouter();
-  const { eventId } = useLocalSearchParams<{ eventId?: string }>();
+  const { eventId, tripId } = useLocalSearchParams<{ eventId?: string; tripId?: string }>();
   const showToast = useUIStore((state) => state.showToast);
   const currentUserId = useUserStore((state) => state.profile?.userId ?? null);
   const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
@@ -88,6 +96,9 @@ export default function TripPhotoAlbumApiScreen() {
   const [eventDetail, setEventDetail] = useState<EventDetail | null>(null);
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);
   const [memberMap, setMemberMap] = useState<Record<string, TripMemberItem>>({});
+  const [albumTitle, setAlbumTitle] = useState('공유 앨범');
+  const [albumSubtitle, setAlbumSubtitle] = useState<string | null>(null);
+  const [totalUploadedCount, setTotalUploadedCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
@@ -96,10 +107,13 @@ export default function TripPhotoAlbumApiScreen() {
 
   const loadAlbum = useCallback(
     async (mode: 'initial' | 'refresh' = 'initial') => {
-      if (!eventId) {
+      if (!eventId && !tripId) {
         setEventDetail(null);
         setAlbumPhotos([]);
         setMemberMap({});
+        setAlbumTitle('공유 앨범');
+        setAlbumSubtitle(null);
+        setTotalUploadedCount(0);
         setIsLoading(false);
         setIsRefreshing(false);
         return;
@@ -112,6 +126,58 @@ export default function TripPhotoAlbumApiScreen() {
       }
 
       try {
+        if (!eventId && tripId) {
+          let nextCursor: string | null = null;
+          let hasNext = true;
+          const photoIds: string[] = [];
+
+          while (hasNext) {
+            const response = await getTripPhotosApi(tripId, { cursor: nextCursor ?? undefined, limit: 100 });
+
+            if (!response.success) {
+              setEventDetail(null);
+              setAlbumPhotos([]);
+              setMemberMap({});
+              setAlbumTitle('공유 앨범');
+              setAlbumSubtitle(null);
+              setTotalUploadedCount(0);
+              showToast(response.message ?? '여행 사진을 불러오지 못했어요.', 'error');
+              return;
+            }
+
+            photoIds.push(...response.data.items.map((item) => item.photoId));
+            nextCursor = response.data.nextCursor;
+            hasNext = response.data.hasNext && Boolean(nextCursor);
+          }
+
+          const [detailResponses, membersResponse, tripDetailResponse] = await Promise.all([
+            Promise.all(
+              photoIds.map(async (photoId, index) => {
+                const detailResponse = await getPhotoDetailApi(photoId);
+                return detailResponse.success ? buildTripAlbumPhoto(detailResponse.data, index) : null;
+              }),
+            ),
+            getTripMembersApi(tripId),
+            getTripDetailApi(tripId),
+          ]);
+
+          setEventDetail(null);
+          setAlbumTitle(tripDetailResponse.success ? `${tripDetailResponse.data.title} 앨범` : '공유 앨범');
+          setAlbumSubtitle('이 여행에 속한 사진을 모두 모아봤어요.');
+          setTotalUploadedCount(photoIds.length);
+          setAlbumPhotos(detailResponses.filter((photo): photo is AlbumPhoto => Boolean(photo)));
+          setMemberMap(
+            membersResponse.success
+              ? Object.fromEntries(membersResponse.data.items.map((member) => [member.userId, member]))
+              : {},
+          );
+          return;
+        }
+
+        if (!eventId) {
+          return;
+        }
+
         const eventResponse = await getEventDetailApi(eventId);
         if (!eventResponse.success) {
           setEventDetail(null);
@@ -133,6 +199,9 @@ export default function TripPhotoAlbumApiScreen() {
         ]);
 
         setEventDetail(nextEventDetail);
+        setAlbumTitle(nextEventDetail.title || '공유 앨범');
+        setAlbumSubtitle(nextEventDetail.placeName ?? null);
+        setTotalUploadedCount(nextEventDetail.photos.length);
         setAlbumPhotos(
           detailResponses
             .filter((photo): photo is AlbumPhoto => Boolean(photo))
@@ -148,7 +217,7 @@ export default function TripPhotoAlbumApiScreen() {
         setIsRefreshing(false);
       }
     },
-    [eventId, showToast],
+    [eventId, showToast, tripId],
   );
 
   useEffect(() => {
@@ -293,7 +362,7 @@ export default function TripPhotoAlbumApiScreen() {
     );
   }
 
-  if (!eventDetail) {
+  if (!eventDetail && !tripId) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.defaultHeader}>
@@ -318,8 +387,8 @@ export default function TripPhotoAlbumApiScreen() {
           <MaterialIcons name="arrow-back" size={22} color="#17201A" />
         </TouchableOpacity>
         <View style={styles.headerCopy}>
-          <Text style={styles.headerTitle}>{eventDetail.title || '사진 앨범'}</Text>
-          {eventDetail.placeName ? <Text style={styles.headerSubtitle}>{eventDetail.placeName}</Text> : null}
+          <Text style={styles.headerTitle}>{albumTitle}</Text>
+          {albumSubtitle ? <Text style={styles.headerSubtitle}>{albumSubtitle}</Text> : null}
         </View>
         <TouchableOpacity style={styles.headerRefreshButton} onPress={() => void loadAlbum('refresh')} activeOpacity={0.85}>
           <MaterialIcons name="refresh" size={18} color="#244934" />
@@ -355,7 +424,7 @@ export default function TripPhotoAlbumApiScreen() {
               </View>
             </View>
           ) : (
-            <Text style={styles.albumSubMeta}>{eventDetail.photos.length}개 업로드됨</Text>
+            <Text style={styles.albumSubMeta}>{totalUploadedCount}개 업로드됨</Text>
           )}
         </View>
 
@@ -386,7 +455,7 @@ export default function TripPhotoAlbumApiScreen() {
           <Pressable style={styles.modalCard} onPress={() => undefined}>
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderCopy}>
-                <Text style={styles.modalTitle}>{eventDetail.title || '사진 상세'}</Text>
+                <Text style={styles.modalTitle}>{albumTitle || '사진 상세'}</Text>
                 {selectedContributor ? (
                   <View style={styles.modalMetaRow}>
                     <View style={[styles.modalAvatar, { backgroundColor: selectedContributor.color }]}>
@@ -437,8 +506,8 @@ export default function TripPhotoAlbumApiScreen() {
             ) : null}
             {selectedPhoto?.takenAt ? <Text style={styles.modalLabel}>촬영 시각</Text> : null}
             {selectedPhoto?.takenAt ? <Text style={styles.modalBody}>{formatTimestamp(selectedPhoto.takenAt)}</Text> : null}
-            {eventDetail.placeName ? <Text style={styles.modalLabel}>장소</Text> : null}
-            {eventDetail.placeName ? <Text style={styles.modalBody}>{eventDetail.placeName}</Text> : null}
+            {eventDetail?.placeName ? <Text style={styles.modalLabel}>장소</Text> : null}
+            {eventDetail?.placeName ? <Text style={styles.modalBody}>{eventDetail.placeName}</Text> : null}
             <Text style={styles.modalLabel}>사진 메모</Text>
             <Text style={styles.modalBody}>{selectedPhoto?.myMemo?.content ?? '아직 저장된 메모가 없어요.'}</Text>
           </Pressable>
