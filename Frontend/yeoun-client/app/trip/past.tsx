@@ -1,27 +1,40 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { TripCard, TripData } from '@/src/components/profile/TripCard';
-import { useFavoriteStore, useTripStore } from '@/src/store';
+import { TripListItem } from '@/src/api/trip';
+import { TripCard } from '@/src/features/home/components/TripCard';
+import { useTripStore } from '@/src/store';
 
 const toSortableDate = (value?: string) => new Date(value ?? '').getTime() || 0;
 
+const formatRange = (start?: string, end?: string) => {
+  if (!start || !end) {
+    return '';
+  }
+
+  const normalize = (value: string) => value.replace(/-/g, '.').slice(0, 10);
+  return `${normalize(start)} ~ ${normalize(end)}`;
+};
+
+const getTripLocation = (trip: TripListItem) => {
+  const locationParts = [trip.region, trip.country].filter(Boolean);
+  return locationParts.length > 0 ? locationParts.join(', ') : '';
+};
+
 export default function PastTripsScreen() {
-  const { favoriteIds, toggleFavorite } = useFavoriteStore();
-  const serverTrips = useTripStore((state) => state.trips);
   const loadTrips = useTripStore((state) => state.fetchTrips);
   const setReviewTrip = useTripStore((state) => state.setReviewTrip);
-  const [trips, setTrips] = useState<TripData[]>([]);
+  const [trips, setTrips] = useState<TripListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchPastTrips = useCallback(async () => {
     setIsLoading(true);
 
     try {
-      const items = serverTrips.length > 0 ? serverTrips : await loadTrips();
+      const items = await loadTrips(true);
       const pastTrips = [...items]
         .filter((item) => item.status === 'ENDED')
         .sort((a, b) => {
@@ -31,23 +44,16 @@ export default function PastTripsScreen() {
           }
 
           return toSortableDate(b.startDate) - toSortableDate(a.startDate);
-        })
-        .map((item) => ({
-          id: item.tripId,
-          title: item.title,
-          location: item.region && item.country ? `${item.region}, ${item.country}` : item.region || item.country || '여행지 정보 없음',
-          dates: `${item.startDate.replace(/-/g, '.')} ~ ${item.endDate.split('-').pop()}`,
-          imageSource: require('@/assets/images/trip_placeholder_1.png'),
-          isFavorite: favoriteIds.includes(item.tripId),
-        }));
+        });
 
       setTrips(pastTrips);
     } catch (error) {
       console.error('Failed to fetch past trips:', error);
+      setTrips([]);
     } finally {
       setIsLoading(false);
     }
-  }, [favoriteIds, loadTrips, serverTrips]);
+  }, [loadTrips]);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,30 +61,27 @@ export default function PastTripsScreen() {
     }, [fetchPastTrips]),
   );
 
-  const renderItem = ({ item }: { item: TripData }) => (
-    <View className="w-[48%]">
-      <TripCard
-        data={item}
-        onPress={() => {
-          const selectedTrip = serverTrips.find((trip) => trip.tripId === item.id);
-          if (selectedTrip) {
-            setReviewTrip({
-              tripId: selectedTrip.tripId,
-              tripName: selectedTrip.title,
-              startDate: selectedTrip.startDate,
-              endDate: selectedTrip.endDate,
-              memberCount: selectedTrip.memberCount,
-              origin: '---',
-              destination: selectedTrip.title,
-            });
-          }
+  const handleTripPress = (trip: TripListItem) => {
+    setReviewTrip({
+      tripId: trip.tripId,
+      tripName: trip.title,
+      startDate: trip.startDate,
+      endDate: trip.endDate,
+      memberCount: trip.memberCount,
+      origin: trip.country || '---',
+      destination: trip.region || trip.title,
+    });
 
-          router.push({
-            pathname: '/trip/report',
-            params: { mode: 'review', id: item.id },
-          });
-        }}
-        onPressHeart={() => toggleFavorite(item.id)}
+    router.push('/trip/report?mode=review');
+  };
+
+  const renderItem = ({ item }: { item: TripListItem }) => (
+    <View style={{ marginBottom: 16 }}>
+      <TripCard
+        title={item.title}
+        location={getTripLocation(item)}
+        date={formatRange(item.startDate, item.endDate)}
+        onPress={() => handleTripPress(item)}
       />
     </View>
   );
@@ -93,22 +96,24 @@ export default function PastTripsScreen() {
         <View className="w-9" />
       </View>
 
-      <FlatList
-        data={trips}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
-        columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: 16 }}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          !isLoading ? (
+      {isLoading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#DE7254" />
+        </View>
+      ) : (
+        <FlatList
+          data={trips}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.tripId}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
             <View className="flex-1 items-center justify-center pt-24">
               <Text className="text-base text-[#8A8A8A] font-medium">지난 여행이 없습니다.</Text>
             </View>
-          ) : null
-        }
-      />
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
