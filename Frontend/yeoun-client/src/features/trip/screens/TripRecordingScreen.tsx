@@ -1344,8 +1344,10 @@ function RealTripRecordingScreen({
 
         const photoResult = await syncTripPhotosForDateRange({
           tripId: activeTripId,
+          tripStartedAt: (displayTrip as { startedAt?: string | null } | null)?.startedAt ?? null,
           startDate: displayTrip.startDate,
           endDate: displayTrip.endDate,
+          syncRequestedAt: new Date().toISOString(),
         });
 
         if (!photoResult.success) {

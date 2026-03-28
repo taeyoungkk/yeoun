@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as MediaLibrary from 'expo-media-library';
 import { PermissionsAndroid, Platform } from 'react-native';
 
@@ -6,6 +7,7 @@ import { PhotoSyncItemRequest, syncTripPhotosApi } from '@/src/api/photo';
 const MEDIA_PAGE_SIZE = 100;
 const PHOTO_PERMISSIONS: MediaLibrary.GranularPermission[] = ['photo'];
 const PHOTO_SYNC_BATCH_SIZE = 2;
+const PHOTO_SYNC_CURSOR_KEY_PREFIX = 'trip_photo_sync_cursor_';
 
 type SyncFile = {
   uri: string;
@@ -76,6 +78,53 @@ const getStartOfDay = (value: string) => {
   const date = new Date(value);
   date.setHours(0, 0, 0, 0);
   return date;
+};
+
+const clampDate = (value: Date, min?: Date | null, max?: Date | null) => {
+  let next = value;
+  if (min && next < min) {
+    next = min;
+  }
+  if (max && next > max) {
+    next = max;
+  }
+  return next;
+};
+
+const parseIsoDate = (value?: string | null) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return isValidDate(parsed) ? parsed : null;
+};
+
+const getPhotoSyncCursorKey = (tripId: string) => `${PHOTO_SYNC_CURSOR_KEY_PREFIX}${tripId}`;
+
+const getStoredPhotoSyncCursor = async (tripId: string) => {
+  try {
+    const rawValue = await AsyncStorage.getItem(getPhotoSyncCursorKey(tripId));
+    return parseIsoDate(rawValue);
+  } catch (error) {
+    console.warn('[PhotoSync] Failed to read stored sync cursor.', {
+      tripId,
+      error,
+    });
+    return null;
+  }
+};
+
+const setStoredPhotoSyncCursor = async (tripId: string, value: Date) => {
+  try {
+    await AsyncStorage.setItem(getPhotoSyncCursorKey(tripId), value.toISOString());
+  } catch (error) {
+    console.warn('[PhotoSync] Failed to persist sync cursor.', {
+      tripId,
+      value: value.toISOString(),
+      error,
+    });
+  }
 };
 
 const getEndOfDay = (value: string) => {
@@ -180,23 +229,18 @@ const mapAssetToCandidate = async (asset: MediaLibrary.Asset): Promise<SyncCandi
 };
 
 const collectSyncCandidates = async (
-  startDate: string,
-  endDate: string,
+  createdAfter: Date,
+  createdBefore: Date,
 ): Promise<SyncCandidate[]> => {
-  const createdAfter = getStartOfDay(startDate);
-  const createdBefore = getEndOfDay(endDate);
-
   logPhotoSync('Collecting sync candidates.', {
-    startDate,
-    endDate,
     createdAfter: createdAfter.toISOString(),
     createdBefore: createdBefore.toISOString(),
   });
 
   if (!isValidDate(createdAfter) || !isValidDate(createdBefore)) {
     logPhotoSync('Invalid date range supplied.', {
-      startDate,
-      endDate,
+      createdAfter: createdAfter.toString(),
+      createdBefore: createdBefore.toString(),
     });
     return [];
   }
@@ -287,14 +331,43 @@ export const requestTripPhotoPermission = async (): Promise<TripPhotoPermissionR
 
 export const syncTripPhotosForDateRange = async ({
   tripId,
+  tripStartedAt,
   startDate,
   endDate,
+  syncRequestedAt,
 }: {
   tripId: string;
+  tripStartedAt?: string | null;
   startDate: string;
   endDate: string;
+  syncRequestedAt?: string;
 }): Promise<TripPhotoSyncResult> => {
-  const candidates = await collectSyncCandidates(startDate, endDate);
+  const tripStartBoundary = parseIsoDate(tripStartedAt) ?? getStartOfDay(startDate);
+  const tripEndBoundary = parseIsoDate(syncRequestedAt) ?? getEndOfDay(endDate);
+  const storedCursor = await getStoredPhotoSyncCursor(tripId);
+  const effectiveCursor = storedCursor && storedCursor > tripStartBoundary ? storedCursor : tripStartBoundary;
+  const createdAfter = clampDate(effectiveCursor, tripStartBoundary, tripEndBoundary);
+  const createdBefore = clampDate(tripEndBoundary, tripStartBoundary, tripEndBoundary);
+
+  logPhotoSync('Resolved sync candidate window.', {
+    tripId,
+    tripStartedAt: tripStartedAt ?? null,
+    startDate,
+    endDate,
+    storedCursor: storedCursor?.toISOString() ?? null,
+    createdAfter: createdAfter.toISOString(),
+    createdBefore: createdBefore.toISOString(),
+  });
+
+  if (createdAfter > createdBefore) {
+    return {
+      success: true,
+      syncedCount: 0,
+      candidateCount: 0,
+    };
+  }
+
+  const candidates = await collectSyncCandidates(createdAfter, createdBefore);
 
   logPhotoSync('Photo sync candidates collected.', {
     tripId,
@@ -359,6 +432,10 @@ export const syncTripPhotosForDateRange = async ({
     batchCount: candidateBatches.length,
     batchSize: PHOTO_SYNC_BATCH_SIZE,
   });
+
+  if (success) {
+    await setStoredPhotoSyncCursor(tripId, createdBefore);
+  }
 
   return {
     success,
