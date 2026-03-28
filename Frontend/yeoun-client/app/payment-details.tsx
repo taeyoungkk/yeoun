@@ -25,7 +25,7 @@ import {
   updateExpenseApi,
 } from '@/src/api/expense';
 import { ExpenseCategory } from '@/src/api/paymentImport';
-import { getTripMembersApi, getTripsApi, TripListItem, TripMemberItem } from '@/src/api/trip';
+import { filterAcceptedTripMembers, getTripMembersApi, getTripsApi, TripListItem, TripMemberItem } from '@/src/api/trip';
 import { useTripStore } from '@/src/store';
 
 const KRW_FORMATTER = new Intl.NumberFormat('ko-KR');
@@ -193,7 +193,7 @@ export default function PaymentDetailsScreen() {
       throw new Error(expensesResponse.message ?? '지출 내역을 불러오지 못했습니다.');
     }
 
-    setTripMembers(membersResponse.data.items);
+    setTripMembers(filterAcceptedTripMembers(membersResponse.data.items));
     setExpenses(expensesResponse.data.items);
   }, []);
 

@@ -144,6 +144,19 @@ export interface TripMemberItem {
   joinedAt?: string | null;
 }
 
+export const isAcceptedTripMember = (member: TripMemberItem) => {
+  const normalizedInviteStatus = member.inviteStatus?.trim().toUpperCase();
+
+  if (!normalizedInviteStatus) {
+    return true;
+  }
+
+  return normalizedInviteStatus === 'ACCEPTED' || Boolean(member.joinedAt);
+};
+
+export const filterAcceptedTripMembers = (members: TripMemberItem[]) =>
+  members.filter(isAcceptedTripMember);
+
 export type TripMembersResponse = CommonApiResponse<{ items: TripMemberItem[] }>;
 
 export interface TripInviteUsersRequest {

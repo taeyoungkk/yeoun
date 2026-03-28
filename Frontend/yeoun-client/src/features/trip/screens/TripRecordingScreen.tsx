@@ -50,6 +50,7 @@ import {
 import {
   deleteTripApi,
   endTripApi,
+  filterAcceptedTripMembers,
   getTripDetailApi,
   getTripMembersApi,
   getTripRouteByDayApi,
@@ -1031,12 +1032,13 @@ function RealTripRecordingScreen({
               .filter((photoDetail): photoDetail is PhotoDetail => Boolean(photoDetail))
               .map((photoDetail) => [photoDetail.photoId, photoDetail]),
           );
-          const memberMap = tripMembersResponse.success
-            ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
-            : {};
+          const acceptedTripMembers = tripMembersResponse.success
+            ? filterAcceptedTripMembers(tripMembersResponse.data.items)
+            : [];
+          const memberMap = Object.fromEntries(acceptedTripMembers.map((member) => [member.userId, member]));
 
           // Final State Updates
-          setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
+          setTripMembers(acceptedTripMembers);
           setRealTripDays(buildRealTripDays(
             timelineDays, 
             routeByDate, 

@@ -20,7 +20,7 @@ import {
   type ReceiptOcrResultData,
   type ReceiptOcrStatusData,
 } from '@/src/api/receipt';
-import { getTripMembersApi, type TripMemberItem } from '@/src/api/trip';
+import { filterAcceptedTripMembers, getTripMembersApi, type TripMemberItem } from '@/src/api/trip';
 import { useUIStore } from '@/src/store/ui.store';
 import { useUserStore } from '@/src/store';
 
@@ -226,7 +226,7 @@ export default function ReceiptOcrResultScreen() {
 
         if (!active) return;
 
-        const members = response.data.items;
+        const members = filterAcceptedTripMembers(response.data.items);
         setTripMembers(members);
 
         const defaultPayerUserId =

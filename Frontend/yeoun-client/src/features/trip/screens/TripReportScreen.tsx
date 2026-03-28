@@ -9,9 +9,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import { getTripExpensesApi, type TripExpenseItem } from '@/src/api/expense';
 import {
-  createSettlementApi,
-  getSettlementDetailApi,
-  getTripSettlementsApi,
+  getLatestSettlementApi,
   type SettlementDetail,
 } from '@/src/api/settlement';
 import {
@@ -20,7 +18,7 @@ import {
   type TimelineDayDetail,
   type TimelineDaySummary,
 } from '@/src/api/timeline';
-import { CommonApiResponse, getTripRouteDaysApi } from '@/src/api/trip';
+import { getTripRouteDaysApi } from '@/src/api/trip';
 import { useTripStore } from '@/src/store/trip.store';
 import { getTopDestinationName, calculateDistance } from '@/src/utils/trip-analysis-utils';
 
@@ -85,14 +83,6 @@ const shortenLocationName = (name: string) => {
     .replace(/(특별시|광역시|특별자치시|특별자치도|시|군|구)$/, '')
     .trim()
     .slice(0, 3);
-};
-
-const getExpenseSnapshot = (items: TripExpenseItem[]) => {
-  const confirmedExpenses = items.filter((expense) => expense.status !== 'DELETED');
-  return {
-    count: confirmedExpenses.length,
-    totalAmount: confirmedExpenses.reduce((sum, expense) => sum + expense.totalAmount, 0),
-  };
 };
 
 const buildFallbackDays = (startDate?: string, endDate?: string): ReportDay[] => {
@@ -221,9 +211,9 @@ export default function TripReportScreen() {
           setExpenses(nextExpenses);
         }
 
-        const [destinationName, settlementsResponse, timelineDetailResponses, _routeResponse] = await Promise.all([
+        const [destinationName, latestSettlementResponse, timelineDetailResponses] = await Promise.all([
           getTopDestinationName(trip.tripId),
-          getTripSettlementsApi(trip.tripId),
+          getLatestSettlementApi(trip.tripId),
           Promise.all(nextTimelineDays.map((day) => getTimelineDayDetailApi(day.timelineDayId))),
           getTripRouteDaysApi(trip.tripId),
         ]);
@@ -237,46 +227,7 @@ export default function TripReportScreen() {
 
           setTimelineDayDetails(settledTimelineDetails);
 
-          let nextSettlementDetail: SettlementDetail | null = null;
-          const expenseSnapshot = getExpenseSnapshot(nextExpenses);
-
-          if (settlementsResponse.success) {
-            let latestSettlement = [...settlementsResponse.data.items].sort((a, b) => {
-              const createdAtA = new Date(a.createdAt).getTime();
-              const createdAtB = new Date(b.createdAt).getTime();
-              return createdAtB - createdAtA;
-            })[0];
-
-            if (!latestSettlement && expenseSnapshot.count > 0) {
-              const createResponse = await createSettlementApi(trip.tripId, {});
-              if (createResponse.success) {
-                latestSettlement = createResponse.data;
-              }
-            }
-
-            if (latestSettlement) {
-              let detailResponse = await getSettlementDetailApi(latestSettlement.settlementId);
-
-              if (detailResponse.success) {
-                const needsRecalculation =
-                  expenseSnapshot.count > 0 &&
-                  (detailResponse.data.confirmedExpenseCount !== expenseSnapshot.count ||
-                    detailResponse.data.totalConfirmedAmount !== expenseSnapshot.totalAmount);
-
-                if (needsRecalculation) {
-                  const recreateResponse = await createSettlementApi(trip.tripId, {});
-                  if (recreateResponse.success) {
-                    detailResponse = await getSettlementDetailApi(recreateResponse.data.settlementId);
-                  }
-                }
-
-                if (detailResponse.success) {
-                  nextSettlementDetail = detailResponse.data;
-                }
-              }
-            }
-          }
-          setSettlementDetail(nextSettlementDetail);
+          setSettlementDetail(latestSettlementResponse.success ? latestSettlementResponse.data : null);
         }
       } catch (error) {
         console.error('[TripReport] Failed to load details:', error);
@@ -330,7 +281,7 @@ export default function TripReportScreen() {
             const cleaned = addr.replace(/대한민국\s*\d*/g, '').replace(/,/g, '').trim().split(' ')[0];
             setOriginAddress(cleaned);
           }
-        } catch (e) {}
+        } catch {}
       }
     };
 

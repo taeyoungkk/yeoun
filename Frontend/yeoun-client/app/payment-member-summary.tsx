@@ -14,13 +14,11 @@ import {
 
 import { getTripExpensesApi, TripExpenseItem } from '@/src/api/expense';
 import {
-  createSettlementApi,
-  getSettlementDetailApi,
-  getTripSettlementsApi,
+  getLatestSettlementApi,
   SettlementDetail,
   SettlementTransferItem,
 } from '@/src/api/settlement';
-import { getTripMembersApi, getTripsApi, TripListItem, TripMemberItem } from '@/src/api/trip';
+import { filterAcceptedTripMembers, getTripMembersApi, getTripsApi, TripListItem, TripMemberItem } from '@/src/api/trip';
 import { useTripStore } from '@/src/store';
 
 const KRW_FORMATTER = new Intl.NumberFormat('ko-KR');
@@ -54,14 +52,6 @@ const getShareAmountForMember = (expense: TripExpenseItem, memberId: string) => 
   const participantUserIds = expense.participantUserIds ?? [];
   if (!participantUserIds.includes(memberId)) return 0;
   return expense.totalAmount / Math.max(participantUserIds.length, 1);
-};
-
-const getExpenseSnapshot = (items: TripExpenseItem[]) => {
-  const confirmedExpenses = items.filter((expense) => expense.status !== 'DELETED');
-  return {
-    count: confirmedExpenses.length,
-    totalAmount: confirmedExpenses.reduce((sum, expense) => sum + expense.totalAmount, 0),
-  };
 };
 
 export default function PaymentMemberSummaryScreen() {
@@ -114,10 +104,10 @@ export default function PaymentMemberSummaryScreen() {
           return;
         }
 
-        const [membersResponse, expensesResponse, settlementsResponse] = await Promise.all([
+        const [membersResponse, expensesResponse, latestSettlementResponse] = await Promise.all([
           getTripMembersApi(nextTripId),
           getTripExpensesApi(nextTripId),
-          getTripSettlementsApi(nextTripId),
+          getLatestSettlementApi(nextTripId),
         ]);
 
         if (!membersResponse.success) {
@@ -128,57 +118,13 @@ export default function PaymentMemberSummaryScreen() {
           throw new Error(expensesResponse.message ?? '지출 정보를 불러오지 못했어요.');
         }
 
-        if (!settlementsResponse.success) {
-          throw new Error(settlementsResponse.message ?? '정산 정보를 불러오지 못했어요.');
+        if (!latestSettlementResponse.success) {
+          throw new Error(latestSettlementResponse.message ?? '정산 정보를 불러오지 못했어요.');
         }
 
-        setTripMembers(membersResponse.data.items);
+        setTripMembers(filterAcceptedTripMembers(membersResponse.data.items));
         setExpenses(expensesResponse.data.items);
-
-        const expenseSnapshot = getExpenseSnapshot(expensesResponse.data.items);
-
-        let latestSettlement = [...settlementsResponse.data.items].sort((a, b) => {
-          const createdAtA = new Date(a.createdAt).getTime();
-          const createdAtB = new Date(b.createdAt).getTime();
-          return createdAtB - createdAtA;
-        })[0];
-
-        if (!latestSettlement && expenseSnapshot.count > 0) {
-          const createResponse = await createSettlementApi(nextTripId, {});
-          if (!createResponse.success) {
-            throw new Error(createResponse.message ?? '정산을 생성하지 못했어요.');
-          }
-          latestSettlement = createResponse.data;
-        }
-
-        if (!latestSettlement) {
-          setSettlementDetail(null);
-          return;
-        }
-
-        let detailResponse = await getSettlementDetailApi(latestSettlement.settlementId);
-        if (!detailResponse.success) {
-          throw new Error(detailResponse.message ?? '정산 상세 정보를 불러오지 못했어요.');
-        }
-
-        const needsRecalculation =
-          expenseSnapshot.count > 0 &&
-          (detailResponse.data.confirmedExpenseCount !== expenseSnapshot.count ||
-            detailResponse.data.totalConfirmedAmount !== expenseSnapshot.totalAmount);
-
-        if (needsRecalculation) {
-          const recreateResponse = await createSettlementApi(nextTripId, {});
-          if (!recreateResponse.success) {
-            throw new Error(recreateResponse.message ?? '정산을 다시 계산하지 못했어요.');
-          }
-
-          detailResponse = await getSettlementDetailApi(recreateResponse.data.settlementId);
-          if (!detailResponse.success) {
-            throw new Error(detailResponse.message ?? '재계산된 정산 상세 정보를 불러오지 못했어요.');
-          }
-        }
-
-        setSettlementDetail(detailResponse.data);
+        setSettlementDetail(latestSettlementResponse.data);
       } catch (error) {
         setErrorMessage(resolveMessage(error, '정산 정보를 불러오지 못했어요.'));
       } finally {

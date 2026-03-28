@@ -27,12 +27,23 @@ const resolveErrorMessage = (error: unknown, fallback: string) =>
 
 type ExpenseCategories = 'FOOD' | 'CAFE' | 'TRANSPORT' | 'LODGING' | 'SHOPPING' | 'ETC';
 
-type CategoryMap = Record<ExpenseCategories, number>;
+type CategoryMap = Partial<Record<ExpenseCategories, number>>;
 
-type DailyExpense = {
-  date: string;
-  total: number;
-  categories: CategoryMap;
+type CategoryStatItem = {
+  key: ExpenseCategories;
+  label: string;
+  color: string;
+};
+
+const CATEGORY_ORDER: ExpenseCategories[] = ['FOOD', 'CAFE', 'TRANSPORT', 'LODGING', 'SHOPPING', 'ETC'];
+
+const CATEGORY_META: Record<ExpenseCategories, CategoryStatItem> = {
+  FOOD: { key: 'FOOD', label: '식비', color: '#B2C981' },
+  CAFE: { key: 'CAFE', label: '카페', color: '#C8DDA0' },
+  TRANSPORT: { key: 'TRANSPORT', label: '교통비', color: '#6F5D54' },
+  LODGING: { key: 'LODGING', label: '숙소비', color: '#AA866D' },
+  SHOPPING: { key: 'SHOPPING', label: '쇼핑', color: '#D7E6F5' },
+  ETC: { key: 'ETC', label: '기타', color: '#E2EAC7' },
 };
 
 export default function PaymentScreen() {
@@ -173,7 +184,7 @@ export default function PaymentScreen() {
 
     expenses.forEach((expense) => {
       const key = getDateKey(expense.paidAt);
-      const current = grouped.get(key) ?? { FOOD: 0, CAFE: 0, TRANSPORT: 0, LODGING: 0, SHOPPING: 0, ETC: 0 };
+      const current = grouped.get(key) ?? {};
       current[expense.category as ExpenseCategories] = (current[expense.category as ExpenseCategories] ?? 0) + expense.totalAmount;
       grouped.set(key, current);
     });
@@ -185,6 +196,14 @@ export default function PaymentScreen() {
       })
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [expenses]);
+
+  const visibleCategories = useMemo(
+    () =>
+      CATEGORY_ORDER.filter((category) =>
+        expenses.some((expense) => expense.category === category && expense.totalAmount > 0),
+      ).map((category) => CATEGORY_META[category]),
+    [expenses],
+  );
 
   const shouldUseMockExpensePreview = false;
   const displayExpensesByDate = expensesByDate;
@@ -332,11 +351,6 @@ export default function PaymentScreen() {
                     {displayExpensesByDate.map((item) => {
                     const maxY = yAxisValues[0] || 1;
                     const heightPercent = maxY > 0 ? Math.min((item.total / maxY) * 100, 100) : 0;
-                    
-                    const foodCafe = item.total > 0 ? (item.categories.FOOD + item.categories.CAFE) / item.total : 0;
-                    const lodging = item.total > 0 ? item.categories.LODGING / item.total : 0;
-                    const transport = item.total > 0 ? item.categories.TRANSPORT / item.total : 0;
-                    const etc = item.total > 0 ? (item.categories.SHOPPING + item.categories.ETC) / item.total : 0;
 
                     const isSelected = selectedDateKey === item.date;
 
@@ -350,10 +364,17 @@ export default function PaymentScreen() {
                         <View style={styles.chartBarTrack}>
                           {item.total > 0 && (
                             <View style={[styles.chartBarStackWrap, { height: `${heightPercent}%`, opacity: isSelected ? 1 : 0.5 }]}>
-                              {etc > 0 && <View style={[styles.chartBarSegment, { flex: etc, backgroundColor: '#E2EAC7' }]} />}
-                              {transport > 0 && <View style={[styles.chartBarSegment, { flex: transport, backgroundColor: '#6F5D54' }]} />}
-                              {lodging > 0 && <View style={[styles.chartBarSegment, { flex: lodging, backgroundColor: '#AA866D' }]} />}
-                              {foodCafe > 0 && <View style={[styles.chartBarSegment, { flex: foodCafe, backgroundColor: '#B2C981' }]} />}
+                              {[...visibleCategories].reverse().map((category) => {
+                                const amount = item.categories[category.key] ?? 0;
+                                if (amount <= 0) return null;
+
+                                return (
+                                  <View
+                                    key={`${item.date}-${category.key}`}
+                                    style={[styles.chartBarSegment, { flex: amount, backgroundColor: category.color }]}
+                                  />
+                                );
+                              })}
                             </View>
                           )}
                         </View>
@@ -370,10 +391,12 @@ export default function PaymentScreen() {
 
             {displayExpensesByDate.length > 0 && (
               <View style={styles.legendRow}>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#B2C981' }]} /><Text style={styles.legendText}>식비</Text></View>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#AA866D' }]} /><Text style={styles.legendText}>숙소비</Text></View>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#6F5D54' }]} /><Text style={styles.legendText}>교통비</Text></View>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#E2EAC7' }]} /><Text style={styles.legendText}>기타</Text></View>
+                {visibleCategories.map((category) => (
+                  <View key={category.key} style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: category.color }]} />
+                    <Text style={styles.legendText}>{category.label}</Text>
+                  </View>
+                ))}
               </View>
             )}
 
@@ -384,30 +407,19 @@ export default function PaymentScreen() {
                   <Text style={styles.detailCardTotal}>총 {KRW_FORMATTER.format(selectedDailyExpense.total)}원</Text>
                 </View>
                 <View style={styles.detailGrid}>
-                  <View style={styles.detailGridCol}>
-                    <View style={styles.detailGridItem}>
-                      <View style={[styles.legendDot, { backgroundColor: '#B2C981' }]} />
-                      <Text style={styles.detailItemLabel}>식비:</Text>
-                      <Text style={styles.detailItemValue}>{KRW_FORMATTER.format(selectedDailyExpense.categories.FOOD + selectedDailyExpense.categories.CAFE)}원</Text>
-                    </View>
-                    <View style={styles.detailGridItem}>
-                      <View style={[styles.legendDot, { backgroundColor: '#6F5D54' }]} />
-                      <Text style={styles.detailItemLabel}>교통비:</Text>
-                      <Text style={styles.detailItemValue}>{KRW_FORMATTER.format(selectedDailyExpense.categories.TRANSPORT)}원</Text>
-                    </View>
-                  </View>
-                  <View style={styles.detailGridCol}>
-                     <View style={styles.detailGridItem}>
-                      <View style={[styles.legendDot, { backgroundColor: '#AA866D' }]} />
-                      <Text style={styles.detailItemLabel}>숙소비:</Text>
-                      <Text style={styles.detailItemValue}>{KRW_FORMATTER.format(selectedDailyExpense.categories.LODGING)}원</Text>
-                    </View>
-                    <View style={styles.detailGridItem}>
-                      <View style={[styles.legendDot, { backgroundColor: '#E2EAC7' }]} />
-                      <Text style={styles.detailItemLabel}>기타:</Text>
-                      <Text style={styles.detailItemValue}>{KRW_FORMATTER.format(selectedDailyExpense.categories.SHOPPING + selectedDailyExpense.categories.ETC)}원</Text>
-                    </View>
-                  </View>
+                  {visibleCategories
+                    .filter((category) => (selectedDailyExpense.categories[category.key] ?? 0) > 0)
+                    .map((category) => (
+                      <View key={`${selectedDailyExpense.date}-${category.key}`} style={styles.detailGridCol}>
+                        <View style={styles.detailGridItem}>
+                          <View style={[styles.legendDot, { backgroundColor: category.color }]} />
+                          <Text style={styles.detailItemLabel}>{category.label}:</Text>
+                          <Text style={styles.detailItemValue}>
+                            {KRW_FORMATTER.format(selectedDailyExpense.categories[category.key] ?? 0)}원
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
                 </View>
               </View>
             )}
