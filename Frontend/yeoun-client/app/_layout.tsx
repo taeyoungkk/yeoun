@@ -1,5 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
@@ -25,6 +25,7 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const segments = useSegments();
+  const navigationState = useRootNavigationState();
   const accessToken = useAuthStore((s) => s.accessToken);
   const isHydrated = useAuthStore((s) => s.isHydrated);
 
@@ -41,28 +42,26 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    // Wait for fonts and store hydration
-    if (loaded && isHydrated) {
-      SplashScreen.hideAsync();
-
-      const inAuthGroup = segments[0] === '(auth)';
-      const isRedirectPage = segments[0] === 'oauthredirect';
-      const isLoggedIn = !!accessToken;
-
-      if (isRedirectPage) {
-        // Don't redirect if we are on the dedicated OAuth redirect page
-        return;
-      }
-
-      if (!isLoggedIn && !inAuthGroup) {
-        // Redirect to login if not logged in and not in auth group
-        router.replace('/(auth)/login');
-      } else if (isLoggedIn && inAuthGroup) {
-        // Redirect to tabs if logged in and in auth group
-        router.replace('/(tabs)');
-      }
+    if (!loaded || !isHydrated || !navigationState?.key) {
+      return;
     }
-  }, [loaded, isHydrated, accessToken, segments]);
+
+    SplashScreen.hideAsync();
+
+    const inAuthGroup = segments[0] === '(auth)';
+    const isRedirectPage = segments[0] === 'oauthredirect';
+    const isLoggedIn = !!accessToken;
+
+    if (isRedirectPage) {
+      return;
+    }
+
+    if (!isLoggedIn && !inAuthGroup) {
+      router.replace('/(auth)/login');
+    } else if (isLoggedIn && inAuthGroup) {
+      router.replace('/(tabs)');
+    }
+  }, [loaded, isHydrated, navigationState?.key, accessToken, segments, router]);
 
   if (!loaded || !isHydrated) {
     return null;
