@@ -154,7 +154,6 @@ export default function TripReportScreen() {
   const [settlementDetail, setSettlementDetail] = useState<SettlementDetail | null>(null);
   const [mainDestination, setMainDestination] = useState<string | null>(null);
   const [originAddress, setOriginAddress] = useState<string | null>(null);
-  const [fallbackDistance, setFallbackDistance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
 
   const isReviewMode = params.mode === 'review';
@@ -209,10 +208,9 @@ export default function TripReportScreen() {
         if (mounted) {
           setTimelineDays(nextTimelineDays);
           setExpenses(nextExpenses);
-          setIsLoading(false);
         }
 
-        const [destinationName, settlementsResponse, timelineDetailResponses, routeResponse] = await Promise.all([
+        const [destinationName, settlementsResponse, timelineDetailResponses, _routeResponse] = await Promise.all([
           getTopDestinationName(trip.tripId),
           getTripSettlementsApi(trip.tripId),
           Promise.all(nextTimelineDays.map((day) => getTimelineDayDetailApi(day.timelineDayId))),
@@ -227,30 +225,6 @@ export default function TripReportScreen() {
             .map((res) => res.data);
 
           setTimelineDayDetails(settledTimelineDetails);
-
-          const serverCoords = routeResponse.success 
-            ? routeResponse.data.routeDays.flatMap((rd) => (rd.coordinates || []).map(c => c as [number, number]))
-            : [];
-          
-          const inFlightCoords = inFlightLogs.map(l => [l.longitude, l.latitude] as [number, number]);
-          const allCoords = [...serverCoords, ...inFlightCoords];
-          
-          if (allCoords.length > 0) {
-            const calculated = calculateDistance(allCoords);
-            setFallbackDistance(calculated);
-
-            if (!trip.origin) {
-              const [lon, lat] = allCoords[0];
-              import('@/src/api/mapbox').then(({ reverseGeocodeKo }) => {
-                reverseGeocodeKo(lon, lat).then((addr) => {
-                  if (mounted && addr) {
-                    const cleaned = addr.replace(/대한민국\s*\d*/g, '').replace(/,/g, '').trim().split(' ')[0];
-                    setOriginAddress(cleaned);
-                  }
-                });
-              });
-            }
-          }
 
           let nextSettlementDetail: SettlementDetail | null = null;
           const expenseSnapshot = getExpenseSnapshot(nextExpenses);
@@ -307,7 +281,50 @@ export default function TripReportScreen() {
     return () => {
       mounted = false;
     };
-  }, [trip?.tripId, inFlightLogs]);
+  }, [trip?.tripId]); // Only load server data when trip changes
+
+  // Derive current distance locally to avoid loop
+  const totalInFlightDistance = useMemo(() => {
+    if (inFlightLogs.length < 2) return 0;
+    const coords = inFlightLogs.map(l => [l.longitude, l.latitude] as [number, number]);
+    return calculateDistance(coords);
+  }, [inFlightLogs]);
+
+  // Geocode origin address once per trip
+  useEffect(() => {
+    if (!trip?.tripId || originAddress || trip.origin) return;
+
+    const findOrigin = async () => {
+      let coords: [number, number] | null = null;
+      
+      // Try server route first
+      const routeRes = await getTripRouteDaysApi(trip.tripId);
+      if (routeRes.success && routeRes.data.routeDays.length > 0) {
+        const firstDay = routeRes.data.routeDays[0];
+        if (firstDay.coordinates && firstDay.coordinates.length > 0) {
+          coords = firstDay.coordinates[0] as [number, number];
+        }
+      }
+
+      // Fallback to in-flight
+      if (!coords && inFlightLogs.length > 0) {
+        coords = [inFlightLogs[0].longitude, inFlightLogs[0].latitude] as [number, number];
+      }
+
+      if (coords) {
+        try {
+          const { reverseGeocodeKo } = await import('@/src/api/mapbox');
+          const addr = await reverseGeocodeKo(coords[0], coords[1]);
+          if (addr) {
+            const cleaned = addr.replace(/대한민국\s*\d*/g, '').replace(/,/g, '').trim().split(' ')[0];
+            setOriginAddress(cleaned);
+          }
+        } catch (e) {}
+      }
+    };
+
+    void findOrigin();
+  }, [trip?.tripId]);
 
   useEffect(() => {
     Animated.spring(receiptAppear, {
@@ -327,8 +344,8 @@ export default function TripReportScreen() {
 
   const totalDistance = useMemo(() => {
     const serverDist = reportDays.reduce((sum, day) => sum + day.distanceKm, 0);
-    return serverDist > 0 ? serverDist : fallbackDistance;
-  }, [reportDays, fallbackDistance]);
+    return serverDist > 0 ? serverDist : totalInFlightDistance;
+  }, [reportDays, totalInFlightDistance]);
   const totalPhotos = useMemo(() => reportDays.reduce((sum, day) => sum + day.photoCount, 0), [reportDays]);
   const totalLogs = timelineRows.length;
   const totalUsed = settlementDetail?.totalConfirmedAmount ?? expenses.reduce((sum, expense) => sum + expense.totalAmount, 0);

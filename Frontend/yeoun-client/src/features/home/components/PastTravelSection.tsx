@@ -54,7 +54,9 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
   const fetchTrips = useTripStore((state) => state.fetchTrips);
   const setReviewTrip = useTripStore((state) => state.setReviewTrip);
   const { favoriteIds, toggleFavorite } = useFavoriteStore();
-  const currentAddress = useCurrentAddress(isTripActive);
+  const currentAddress = useTripStore((state) => state.currentAddress);
+  const locationStatus = useTripStore((state) => state.locationStatus);
+  useCurrentAddress(isTripActive); // Still call the hook to keep updates running
 
   const [isLoading, setIsLoading] = useState(true);
   const currentDisplayedTripId = isTripActive ? activeTrip?.tripId ?? currentTrip?.tripId ?? null : null;
@@ -88,7 +90,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
 
       return {
         title: activeTrip.title,
-        location: currentAddress || (locationParts.length > 0 ? locationParts.join(', ') : '위치 확인 중...'),
+        location: currentAddress || (locationStatus === 'DENIED' ? '위치 권한 필요' : (locationParts.length > 0 ? locationParts.join(', ') : '위치 확인 중...')),
         date: `${activeTrip.startDate} ~ ${activeTrip.endDate}`,
         participants: participantCandidates.length > 0 ? Math.max(...participantCandidates) : 0,
         imageUrl: activeTrip.imageUrl,
@@ -105,7 +107,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
         date: formatRange(currentTrip.startDate, currentTrip.endDate),
         participants: currentTrip.memberCount,
         imageUrl: undefined,
-        region: currentAddress || currentTrip.destination,
+        region: currentAddress || (locationStatus === 'DENIED' ? '위치 권한 필요' : currentTrip.destination),
       };
     }
 

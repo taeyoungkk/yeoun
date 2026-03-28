@@ -33,6 +33,8 @@ interface TripState {
   locationSyncUpdatedAt: string | null;
   lastSyncedLogUuid: string | null;
   inFlightLogs: LocationLog[];
+  currentAddress: string | null;
+  locationStatus: 'LOADING' | 'SUCCESS' | 'DENIED' | 'GPS_OFF';
   startTrip: (trip: CurrentTrip) => void;
   updateCurrentTrip: (trip: CurrentTrip) => void;
   setReviewTrip: (trip: CurrentTrip) => void;
@@ -50,6 +52,7 @@ interface TripState {
   endTrip: () => void;
   clearTrip: () => void;
   removeTrip: (tripId: string) => void;
+  setCurrentAddress: (address: string | null, status?: 'LOADING' | 'SUCCESS' | 'DENIED' | 'GPS_OFF') => void;
 }
 
 export const useTripStore = create<TripState>()(
@@ -69,6 +72,8 @@ export const useTripStore = create<TripState>()(
       locationSyncUpdatedAt: null,
       lastSyncedLogUuid: null,
       inFlightLogs: [],
+      currentAddress: null,
+      locationStatus: 'LOADING',
       startTrip: (trip) =>
         set({
           isTripActive: true,
@@ -150,6 +155,16 @@ export const useTripStore = create<TripState>()(
         } finally {
           set({ isTripsLoading: false });
         }
+      },
+      setCurrentAddress: (address, status = 'SUCCESS') => {
+        const current = get();
+        if (current.currentAddress === address && current.locationStatus === status) {
+          return;
+        }
+        set({ 
+          currentAddress: address,
+          locationStatus: status 
+        });
       },
       restoreActiveTripFromServer: async () => {
         const persistedTripId = get().currentTripId;

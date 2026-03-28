@@ -13,6 +13,8 @@ import { useTripStore, useUserStore } from '@/src/store';
 import { locationService } from '../../services/locationService';
 import { LocationMarker, PhotoMarker } from './EventMarkers';
 import { PastRoutesLayer } from './PastRoutesLayer';
+import { useFogData } from '@/src/hooks/useFogData';
+import { FogOverlay } from './FogOverlay';
 
 configureMapbox();
 
@@ -55,6 +57,7 @@ export function ActiveTripMap() {
   const [isLoadingMarkers, setIsLoadingMarkers] = useState(false);
   const [markerLoadFailed, setMarkerLoadFailed] = useState(false);
   const [isFollowing, setIsFollowing] = useState(true);
+  const { fogFeature } = useFogData(currentCoordinate);
 
   useEffect(() => {
     let isMounted = true;
@@ -380,7 +383,11 @@ export function ActiveTripMap() {
           }}
         />
 
-        <PastRoutesLayer routes={hasRouteCoordinates ? [combinedRoute] : []} isFogEnabled={isFogEnabled} />
+        <PastRoutesLayer routes={hasRouteCoordinates ? [combinedRoute] : []} isFogEnabled={false} />
+ 
+        {isFogEnabled && fogFeature && (
+          <FogOverlay feature={fogFeature} radiusKm={1} />
+        )}
 
         {routeShape ? (
           <Mapbox.ShapeSource id="active-trip-route" shape={routeShape}>
