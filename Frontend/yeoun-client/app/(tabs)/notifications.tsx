@@ -13,17 +13,30 @@ import { Notification, useNotificationStore } from '@/src/store/notification.sto
 import { useTripStore } from '@/src/store/trip.store';
 import { useUIStore } from '@/src/store/ui.store';
 
-const isFriendRequestNotification = (type: string) => type.includes('FRIEND_REQUEST');
-const isTripInviteNotification = (type: string) => type.includes('TRIP_INVITE');
+const isFriendRequestNotification = (type: string) => type.startsWith('FRIEND_REQUEST');
+const isTripInviteNotification = (type: string) => type.startsWith('TRIP_INVITE');
+const isFriendRequestReceivedNotification = (type: string) => type === 'FRIEND_REQUEST_RECEIVED';
+const isTripInviteReceivedNotification = (type: string) => type === 'TRIP_INVITE_RECEIVED';
 const isReceiptReminderNotification = (type: string) => type.includes('RECEIPT_REMINDER');
 const isPaymentRequestNotification = (type: string) => type.includes('PAYMENT_REQUEST');
+const hasPendingDecisionAction = (notification: Notification) =>
+  !notification.decisionStatus &&
+  (isFriendRequestReceivedNotification(notification.type) || isTripInviteReceivedNotification(notification.type));
 
 const getApiErrorCode = (error: unknown) => {
   if (!axios.isAxiosError(error)) {
     return null;
   }
 
-  return error.response?.data?.code ?? null;
+  return error.response?.data?.code ?? error.response?.data?.error?.code ?? null;
+};
+
+const getApiStatusCode = (error: unknown) => {
+  if (!axios.isAxiosError(error)) {
+    return null;
+  }
+
+  return error.response?.status ?? null;
 };
 
 const getNotificationIcon = (type: string) => {
@@ -48,15 +61,15 @@ const getNotificationIcon = (type: string) => {
 
 const getDecisionLabel = (status?: Notification['decisionStatus']) => {
   if (status === 'accept') {
-    return '수락됨';
+    return '수락함';
   }
 
   if (status === 'decline') {
-    return '거절됨';
+    return '거절함';
   }
 
   if (status === 'unavailable') {
-    return '처리 불가';
+    return '응답 불가';
   }
 
   return null;
@@ -73,10 +86,15 @@ export default function NotificationsScreen() {
   const markAllAsRead = useNotificationStore((state) => state.markAllAsRead);
   const markAsRead = useNotificationStore((state) => state.markAsRead);
   const archiveNotification = useNotificationStore((state) => state.archiveNotification);
+  const isTripActive = useTripStore((state) => state.isTripActive);
+  const currentTripId = useTripStore((state) => state.currentTripId);
+  const currentTrip = useTripStore((state) => state.currentTrip);
+  const activeTrip = useTripStore((state) => state.activeTrip);
   const fetchTrips = useTripStore((state) => state.fetchTrips);
   const syncAcceptedTrip = useTripStore((state) => state.syncAcceptedTrip);
   const showToast = useUIStore((state) => state.showToast);
   const setLoading = useUIStore((state) => state.setLoading);
+  const activeTripId = currentTripId ?? currentTrip?.tripId ?? activeTrip?.tripId ?? null;
 
   const visibleNotifications = useMemo(
     () => (activeTab === 'active' ? notifications : archivedNotifications),
@@ -152,8 +170,14 @@ export default function NotificationsScreen() {
 
   const handleTripInvite = async (notification: Notification, action: 'accept' | 'decline') => {
     const tripInviteId = notification.data?.tripInviteId ?? notification.data?.resourceId;
+    const invitedTripId = notification.data?.tripId;
     if (!tripInviteId) {
       showToast('여행 초대 정보를 찾을 수 없습니다.', 'error');
+      return;
+    }
+
+    if (action === 'accept' && isTripActive && activeTripId && invitedTripId && activeTripId !== invitedTripId) {
+      openNoticeModal('진행 중인 여행이 있어요', '현재 진행 중인 여행이 있어 초대받은 여행으로 바로 참여할 수 없습니다.');
       return;
     }
 
@@ -166,9 +190,16 @@ export default function NotificationsScreen() {
 
       if (response.success) {
         if (action === 'accept' && response.data.tripId) {
-          const tripDetailResponse = await getTripDetailApi(response.data.tripId);
-          if (tripDetailResponse.success) {
-            syncAcceptedTrip(tripDetailResponse.data);
+          try {
+            const tripDetailResponse = await getTripDetailApi(response.data.tripId);
+            if (tripDetailResponse.success) {
+              syncAcceptedTrip(tripDetailResponse.data);
+            }
+          } catch (detailError) {
+            // Accept succeeded, but the detail may not be immediately available.
+            if (!axios.isAxiosError(detailError) || detailError.response?.status !== 404) {
+              console.error('[Notifications] Failed to fetch accepted trip detail.', detailError);
+            }
           }
           await fetchTrips(true);
         }
@@ -186,14 +217,15 @@ export default function NotificationsScreen() {
       }
     } catch (error) {
       const errorCode = getApiErrorCode(error);
+      const statusCode = getApiStatusCode(error);
 
       if (errorCode === 'TRIP_NOT_FOUND') {
         await moveNotificationToHistory(notification);
-        openNoticeModal('여행을 확인할 수 없어요', '이미 삭제된 여행이라 더 이상 참여할 수 없습니다.');
+        openNoticeModal('응답할 수 없는 초대예요', '이미 삭제되었거나 확인할 수 없는 여행이라 더 이상 수락하거나 거절할 수 없습니다.');
         return;
       }
 
-      if (errorCode === 'TRIP_INVITE_ACCEPT_NOT_ALLOWED') {
+      if (errorCode === 'TRIP_INVITE_ACCEPT_NOT_ALLOWED' || statusCode === 409) {
         const tripId = notification.data?.tripId;
 
         if (tripId) {
@@ -202,16 +234,13 @@ export default function NotificationsScreen() {
 
           if (tripDetailResponse.success && tripDetailResponse.data.status === 'ENDED') {
             await moveNotificationToHistory(notification);
-            openNoticeModal('여행이 종료되었어요', '이미 종료된 여행입니다. 지난 여행 기록에서 내용을 확인해 주세요.');
+            openNoticeModal('응답할 수 없는 초대예요', '이미 종료된 여행이라 더 이상 수락하거나 거절할 수 없습니다.');
             return;
           }
         }
 
         await moveNotificationToHistory(notification);
-        openNoticeModal(
-          action === 'accept' ? '수락할 수 없는 초대예요' : '거절할 수 없는 초대예요',
-          '이 초대는 더 이상 유효하지 않거나 이미 처리되었습니다.',
-        );
+        openNoticeModal('응답할 수 없는 초대예요', '이 초대는 더 이상 유효하지 않거나 이미 처리된 상태입니다.');
         return;
       }
 
@@ -294,8 +323,7 @@ export default function NotificationsScreen() {
         ) : (
           visibleNotifications.map((item) => {
             const icon = getNotificationIcon(item.type);
-            const hasDecisionAction =
-              activeTab === 'active' && (isFriendRequestNotification(item.type) || isTripInviteNotification(item.type));
+            const hasDecisionAction = hasPendingDecisionAction(item);
             const hasNavigationAction =
               activeTab === 'active' &&
               !hasDecisionAction &&
@@ -305,7 +333,7 @@ export default function NotificationsScreen() {
             return (
               <View
                 key={item.id}
-                className={`mb-4 rounded-3xl border border-gray-100 p-4 ${item.isRead ? 'bg-white' : 'bg-blue-50/40'}`}
+                className="mb-4 rounded-3xl bg-white p-4"
                 style={{
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 2 },
@@ -319,9 +347,9 @@ export default function NotificationsScreen() {
                     <MaterialIcons name={icon.name} size={22} color={icon.color} />
                   </View>
                   <View className="flex-1">
-                    <View className="flex-row justify-between items-center">
-                      <Text className="text-base font-bold text-gray-900">{item.title}</Text>
-                      {activeTab === 'active' && !item.isRead ? <View className="w-2 h-2 rounded-full bg-[#2563EB]" /> : null}
+                    <View className="flex-row items-center gap-2 pr-3">
+                      <Text className="flex-1 text-base font-bold text-gray-900">{item.title}</Text>
+                      {activeTab === 'active' && !item.isRead ? <View className="w-2 h-2 rounded-full bg-[#EF4444]" /> : null}
                     </View>
                     <Text className="text-sm text-gray-600 mt-1 leading-5">{item.message}</Text>
                   </View>
@@ -329,7 +357,7 @@ export default function NotificationsScreen() {
 
                 <View className="flex-row justify-between items-center mt-2">
                   <Text className="text-xs text-gray-400">
-                    {new Date(item.decisionStatus ? item.decidedAt ?? item.timestamp : item.timestamp).toLocaleString([], {
+                    {new Date(item.timestamp).toLocaleString([], {
                       month: 'numeric',
                       day: 'numeric',
                       hour: '2-digit',

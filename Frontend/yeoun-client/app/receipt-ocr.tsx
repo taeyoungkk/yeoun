@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
 import axios from 'axios';
-import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 
 import { requestReceiptOcrApi, uploadReceiptImageApi } from '@/src/api/receipt';
 import { useTripStore } from '@/src/store';
@@ -15,6 +15,12 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FRAME_SIZE = SCREEN_WIDTH * 0.78;
 const CORNER_SIZE = 28;
 const CORNER_THICKNESS = 4;
+const GALLERY_PAGE_SIZE = 60;
+
+type GalleryAsset = {
+  id: string;
+  uri: string;
+};
 
 function ScanFrame() {
   const hStyle = {
@@ -63,6 +69,9 @@ export default function ReceiptOcrScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [capturedUri, setCapturedUri] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [galleryVisible, setGalleryVisible] = useState(false);
+  const [galleryAssets, setGalleryAssets] = useState<GalleryAsset[]>([]);
+  const [isGalleryLoading, setIsGalleryLoading] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const showToast = useUIStore((state) => state.showToast);
   const currentTripId = useTripStore((state) => state.currentTripId);
@@ -94,15 +103,42 @@ export default function ReceiptOcrScreen() {
   };
 
   const pickFromGallery = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.8,
-    });
+    setIsGalleryLoading(true);
 
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      setCapturedUri(result.assets[0].uri);
+    try {
+      const permissionStatus = await MediaLibrary.getPermissionsAsync(false, ['photo']);
+      const grantedPermission = permissionStatus.granted
+        ? permissionStatus
+        : await MediaLibrary.requestPermissionsAsync(false, ['photo']);
+
+      if (!grantedPermission.granted) {
+        Alert.alert('?ã…»ìªŸ', '?ê°¤ëŸ¬ë¦¬ ?ì ‘ê·¼ ê¶Œí•œì´ í•„ìš”í•©ë‹ˆë‹¤.');
+        return;
+      }
+
+      const page = await MediaLibrary.getAssetsAsync({
+        mediaType: [MediaLibrary.MediaType.photo],
+        first: GALLERY_PAGE_SIZE,
+        sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+      });
+
+      setGalleryAssets(
+        page.assets
+          .filter((asset) => typeof asset.uri === 'string' && asset.uri.length > 0)
+          .map((asset) => ({ id: asset.id, uri: asset.uri })),
+      );
+      setGalleryVisible(true);
+    } catch (error) {
+      console.error('[ReceiptOCR] Failed to load gallery assets.', error);
+      Alert.alert('?ã…»ìªŸ', '?ê°¤ëŸ¬ë¦¬ ì‚¬ì§„ì„ ë¶ˆëŸ¬ì˜¤ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.');
+    } finally {
+      setIsGalleryLoading(false);
     }
+  };
+
+  const handleSelectGalleryAsset = (assetUri: string) => {
+    setCapturedUri(assetUri);
+    setGalleryVisible(false);
   };
 
   const handleRetake = () => setCapturedUri(null);
@@ -264,7 +300,7 @@ export default function ReceiptOcrScreen() {
 
       <View style={styles.controls}>
         <TouchableOpacity onPress={pickFromGallery} style={styles.sideBtn}>
-          <Ionicons name="images-outline" size={28} color="white" />
+          {isGalleryLoading ? <ActivityIndicator color="#FFFFFF" /> : <Ionicons name="images-outline" size={28} color="white" />}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={takePicture} style={styles.shutter}>
@@ -273,6 +309,38 @@ export default function ReceiptOcrScreen() {
 
         <View style={styles.sideBtn} />
       </View>
+
+      <Modal animationType="slide" transparent visible={galleryVisible} onRequestClose={() => setGalleryVisible(false)}>
+        <View style={styles.galleryBackdrop}>
+          <View style={styles.gallerySheet}>
+            <View style={styles.galleryHeader}>
+              <Text style={styles.galleryTitle}>?ê°¤ëŸ¬ë¦¬ì—ì„œ ì„ íƒ</Text>
+              <TouchableOpacity onPress={() => setGalleryVisible(false)} style={styles.galleryCloseButton}>
+                <Ionicons name="close" size={22} color="#111111" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.galleryGrid} showsVerticalScrollIndicator={false}>
+              {galleryAssets.map((asset) => (
+                <TouchableOpacity
+                  key={asset.id}
+                  style={styles.galleryItem}
+                  activeOpacity={0.85}
+                  onPress={() => handleSelectGalleryAsset(asset.uri)}
+                >
+                  <Image source={{ uri: asset.uri }} style={styles.galleryImage} contentFit="cover" />
+                </TouchableOpacity>
+              ))}
+
+              {galleryAssets.length === 0 && !isGalleryLoading ? (
+                <View style={styles.galleryEmpty}>
+                  <Text style={styles.galleryEmptyText}>ì„ íƒí•  ì‚¬ì§„ì´ ì—†ìŠµë‹ˆë‹¤.</Text>
+                </View>
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -425,5 +493,64 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
     marginBottom: 24,
+  },
+  galleryBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  gallerySheet: {
+    maxHeight: '75%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 28,
+  },
+  galleryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  galleryTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111111',
+  },
+  galleryCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  galleryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingBottom: 12,
+  },
+  galleryItem: {
+    width: '31%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#E5E7EB',
+  },
+  galleryImage: {
+    width: '100%',
+    height: '100%',
+  },
+  galleryEmpty: {
+    width: '100%',
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  galleryEmptyText: {
+    color: '#6B7280',
+    fontSize: 14,
   },
 });

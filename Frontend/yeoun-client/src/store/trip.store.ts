@@ -6,6 +6,8 @@ export { LocationLog, TripDetail, TripListItem } from '../api/trip';
 import { getTripDetailApi, getTripsApi, LocationLog, TripDetail, TripListItem } from '../api/trip';
 import { useUserStore } from './user.store';
 
+const isTerminalTripStatus = (status?: string | null) => status === 'ENDED' || status === 'DELETED';
+
 export interface CurrentTrip {
   tripId: string;
   tripName: string;
@@ -109,8 +111,10 @@ export const useTripStore = create<TripState>()(
             origin: trip.country ?? state.currentTrip?.origin ?? '',
             destination: trip.region ?? trip.country ?? '',
           };
+          const hasDifferentActiveTrip =
+            state.isTripActive && state.currentTripId !== null && state.currentTripId !== trip.tripId;
 
-          if (trip.status === 'ACTIVE') {
+          if (trip.status === 'ACTIVE' && !hasDifferentActiveTrip) {
             return {
               isTripActive: true,
               currentTripId: trip.tripId,
@@ -122,7 +126,7 @@ export const useTripStore = create<TripState>()(
           return {
             currentTripId: state.currentTripId === trip.tripId ? trip.tripId : state.currentTripId,
             currentTrip: state.currentTrip?.tripId === trip.tripId ? nextCurrentTrip : state.currentTrip,
-            activeTrip: trip,
+            activeTrip: state.activeTrip?.tripId === trip.tripId ? trip : state.activeTrip,
           };
         }),
       fetchTrips: async (force = false) => {
@@ -194,13 +198,7 @@ export const useTripStore = create<TripState>()(
             return null;
           }
 
-          if (tripData.status === 'ACTIVE') {
-            get().syncAcceptedTrip(tripData);
-            void get().fetchTrips(true);
-            return tripData;
-          }
-
-          if (get().currentTripId === tripData.tripId || get().isTripActive) {
+          if (isTerminalTripStatus(detailResponse.data.status) && get().currentTripId === detailResponse.data.tripId) {
             get().clearTrip();
           }
           void get().fetchTrips(true);
@@ -212,9 +210,8 @@ export const useTripStore = create<TripState>()(
         const activeTripListItem = trips.find((trip) => trip.tripId === persistedTripId && trip.status === 'ACTIVE');
 
         if (!activeTripListItem) {
-          // If the list fetch is successful but our "Active" trip isn't there, it's a ghost.
-          if (get().isTripActive) {
-            console.warn('[TripStore] Active trip not found in trip list. Assuming stale and clearing.');
+          const matchingTripListItem = trips.find((trip) => trip.tripId === persistedTripId);
+          if (matchingTripListItem && isTerminalTripStatus(matchingTripListItem.status) && get().currentTripId === persistedTripId) {
             get().clearTrip();
           }
           return null;
@@ -226,7 +223,7 @@ export const useTripStore = create<TripState>()(
         }
 
         if (activeDetailResponse.data.status !== 'ACTIVE') {
-          if (get().currentTripId === activeDetailResponse.data.tripId || get().isTripActive) {
+          if (isTerminalTripStatus(activeDetailResponse.data.status) && get().currentTripId === activeDetailResponse.data.tripId) {
             get().clearTrip();
           }
           return activeDetailResponse.data;

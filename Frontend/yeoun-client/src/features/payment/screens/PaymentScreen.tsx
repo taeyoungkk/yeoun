@@ -35,14 +35,6 @@ type DailyExpense = {
   categories: CategoryMap;
 };
 
-const MOCK_EXPENSES_BY_DATE: DailyExpense[] = [
-  { date: '03/07', total: 60000, categories: { FOOD: 45000, CAFE: 0, TRANSPORT: 15000, LODGING: 0, SHOPPING: 0, ETC: 0 } },
-  { date: '03/08', total: 25000, categories: { FOOD: 0, CAFE: 0, TRANSPORT: 0, LODGING: 0, SHOPPING: 25000, ETC: 0 } },
-  { date: '03/09', total: 121000, categories: { FOOD: 0, CAFE: 0, TRANSPORT: 0, LODGING: 121000, SHOPPING: 0, ETC: 0 } },
-  { date: '03/10', total: 42000, categories: { FOOD: 42000, CAFE: 0, TRANSPORT: 0, LODGING: 0, SHOPPING: 0, ETC: 0 } },
-  { date: '03/11', total: 102500, categories: { FOOD: 35000, CAFE: 0, TRANSPORT: 0, LODGING: 0, SHOPPING: 0, ETC: 67500 } },
-];
-
 export default function PaymentScreen() {
   const router = useRouter();
   const isTripActive = useTripStore((state) => state.isTripActive);
@@ -85,16 +77,17 @@ export default function PaymentScreen() {
       if (!tripsResponse.success) {
         throw new Error(tripsResponse.message ?? '여행 목록을 불러오지 못했습니다.');
       }
-      setTripOptions(tripsResponse.data.items);
+      const availableTrips = tripsResponse.data.items.filter((trip) => trip.status !== 'DELETED');
+      setTripOptions(availableTrips);
 
       const fallbackTripId = isTripActive
-        ? tripsResponse.data.items.find((trip) => trip.tripId === currentTripId)?.tripId ??
-          tripsResponse.data.items.find((trip) => trip.status === 'ACTIVE')?.tripId ??
+        ? availableTrips.find((trip) => trip.tripId === currentTripId)?.tripId ??
+          availableTrips.find((trip) => trip.status === 'ACTIVE')?.tripId ??
           null
         : null;
 
       const nextSelectedTripId =
-        selectedTripId && tripsResponse.data.items.some((trip) => trip.tripId === selectedTripId)
+        selectedTripId && availableTrips.some((trip) => trip.tripId === selectedTripId)
           ? selectedTripId
           : fallbackTripId;
 
@@ -193,11 +186,9 @@ export default function PaymentScreen() {
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [expenses]);
 
-  const shouldUseMockExpensePreview = __DEV__ && expensesByDate.length === 0;
-  const displayExpensesByDate = shouldUseMockExpensePreview ? MOCK_EXPENSES_BY_DATE : expensesByDate;
-  const displayExpensesTotal = shouldUseMockExpensePreview
-    ? MOCK_EXPENSES_BY_DATE.reduce((sum, item) => sum + item.total, 0)
-    : expensesTotal;
+  const shouldUseMockExpensePreview = false;
+  const displayExpensesByDate = expensesByDate;
+  const displayExpensesTotal = expensesTotal;
   const displayMaxExpenseByDate = useMemo(
     () => displayExpensesByDate.reduce((max, item) => Math.max(max, item.total), 0),
     [displayExpensesByDate],
