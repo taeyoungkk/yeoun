@@ -49,6 +49,7 @@ export interface ReceiptOcrStatusData {
 }
 
 export interface ReceiptOcrLineItem {
+  ocrLineItemId: string;
   sortOrder: number;
   name: string;
   quantity: number | null;
@@ -79,7 +80,11 @@ export interface ReceiptOcrSelectRequest {
   payerUserId: string;
   category: ReceiptExpenseCategory;
   memo?: string;
-  participantUserIds: string[];
+  lineItems: Array<{
+    ocrLineItemId: string;
+    amount: number;
+    participantUserIds: string[];
+  }>;
 }
 
 export interface ReceiptOcrSelectData {
@@ -141,6 +146,7 @@ const mapReceiptOcrStatusData = (item: any): ReceiptOcrStatusData => ({
 });
 
 const mapReceiptOcrLineItem = (item: any): ReceiptOcrLineItem => ({
+  ocrLineItemId: String(item.ocrLineItemId ?? ''),
   sortOrder: typeof item.sortOrder === 'number' ? item.sortOrder : Number(item.sortOrder ?? 0),
   name: item.name ?? '',
   quantity: toNullableNumber(item.quantity),

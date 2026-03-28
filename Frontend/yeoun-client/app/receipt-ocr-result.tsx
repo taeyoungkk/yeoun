@@ -117,6 +117,7 @@ export default function ReceiptOcrResultScreen() {
     setStatusData(statusResponse.data);
 
     if (isSuccessStatus(statusResponse.data.status)) {
+      setErrorMessage(null);
       await fetchResult(targetReceiptId);
       if (!hasShownCompletionToastRef.current) {
         showToast('영수증 OCR 결과가 준비되었습니다.', 'success');
@@ -290,12 +291,23 @@ export default function ReceiptOcrResultScreen() {
       return;
     }
 
+    if (!resultData || resultData.lineItems.length === 0) {
+      showToast('?ê³¸ë‹”ï§ line item ?ëº£ë‚«åª›Â€ ?ë†ë’¿?ëˆë–Ž.', 'error');
+      return;
+    }
+
     setIsSelecting(true);
     try {
       const response = await selectReceiptOcrApi(receiptId, {
         payerUserId: selectedPayerUserId,
         category: selectedCategory,
-        participantUserIds: selectedParticipantUserIds,
+        lineItems: resultData.lineItems
+          .filter((item) => item.ocrLineItemId && item.amount != null && item.amount > 0)
+          .map((item) => ({
+            ocrLineItemId: item.ocrLineItemId,
+            amount: item.amount as number,
+            participantUserIds: selectedParticipantUserIds,
+          })),
       });
 
       if (!response.success) {

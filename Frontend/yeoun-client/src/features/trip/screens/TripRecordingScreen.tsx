@@ -1631,7 +1631,7 @@ function RealTripRecordingScreen({
         resetLocationSyncState(); // CLEAR SYNC TOAST BEFORE NAVIGATING
         endTrip();
         void fetchTrips(true);
-        router.push(`${reportRoute}?mode=review`);
+        router.replace(`${reportRoute}?mode=review`);
       } finally {
         setIsSyncing(false);
         setIsSubmittingAction(false);

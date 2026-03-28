@@ -52,7 +52,18 @@ const formatWon = (value: number) => `${Math.round(value).toLocaleString('ko-KR'
 const formatTripDate = (date?: string) => (date ? date.slice(2, 10).replace(/-/g, '.') : '--.--.--');
 const formatDayLabel = (date: Date) =>
   `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
-const formatTime = (date?: string | null) => (date ? date.slice(11, 16) : '--:--');
+const formatTime = (value?: string | null) => {
+  if (!value) {
+    return '--:--';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '--:--';
+  }
+
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+};
 
 const shortenLocationName = (name: string) => {
   if (!name) return '';
