@@ -1,5 +1,6 @@
 package com.yeoun.domain.auth.service;
 
+import com.yeoun.domain.auth.dto.response.EmailVerificationResponse;
 import com.yeoun.domain.auth.dto.response.PasswordResetConfirmResponse;
 import com.yeoun.domain.auth.dto.response.PasswordResetRequestResponse;
 import com.yeoun.domain.auth.repository.EmailVerificationRedisRepository;
@@ -75,12 +76,34 @@ public class PasswordResetService {
     }
 
     @Transactional
+    public EmailVerificationResponse verifyResetCode(String rawEmail, String rawCode) {
+        String normalizedEmail = normalizeAndValidateEmail(rawEmail);
+        String code = validateCodeFormat(rawCode);
+        getLocalAccountOrThrow(normalizedEmail);
+
+        validateStoredCode(normalizedEmail, code);
+
+        return new EmailVerificationResponse(true, "Password reset verification completed.");
+    }
+
+    @Transactional
     public PasswordResetConfirmResponse confirmReset(String rawEmail, String rawCode, String newPassword) {
         String normalizedEmail = normalizeAndValidateEmail(rawEmail);
         String code = validateCodeFormat(rawCode);
         PasswordPolicyValidator.validateOrThrow(newPassword);
         UserAuthAccount localAccount = getLocalAccountOrThrow(normalizedEmail);
 
+        validateStoredCode(normalizedEmail, code);
+
+        localAccount.updatePassword(passwordEncoder.encode(newPassword), Instant.now());
+        refreshTokenRedisRepository.delete(localAccount.getUser().getUserId());
+        emailVerificationRedisRepository.deleteCodeAndFailCount(normalizedEmail);
+        emailVerificationRedisRepository.deleteResendBlock(normalizedEmail);
+
+        return new PasswordResetConfirmResponse(true, "Password has been reset.");
+    }
+
+    private void validateStoredCode(String normalizedEmail, String code) {
         String savedCode = emailVerificationRedisRepository.getCode(normalizedEmail)
                 .orElseThrow(() -> new BaseException(ErrorCode.EMAIL_CODE_EXPIRED));
 
@@ -96,13 +119,6 @@ public class PasswordResetService {
                 );
             }
         }
-
-        localAccount.updatePassword(passwordEncoder.encode(newPassword), Instant.now());
-        refreshTokenRedisRepository.delete(localAccount.getUser().getUserId());
-        emailVerificationRedisRepository.deleteCodeAndFailCount(normalizedEmail);
-        emailVerificationRedisRepository.deleteResendBlock(normalizedEmail);
-
-        return new PasswordResetConfirmResponse(true, "Password has been reset.");
     }
 
     private UserAuthAccount getLocalAccountOrThrow(String normalizedEmail) {
