@@ -15,8 +15,11 @@ const HomeScreen = () => {
     const restoreActiveTripFromServer = useTripStore((state) => state.restoreActiveTripFromServer);
 
     useEffect(() => {
-        void restoreActiveTripFromServer();
-    }, [restoreActiveTripFromServer]);
+        console.log('[HomeScreen] Restoring active trip from server...');
+        restoreActiveTripFromServer().then((result) => {
+            console.log(`[HomeScreen] Restore complete. result=${result?.title ?? 'null'}, active=${isTripActive}`);
+        });
+    }, [restoreActiveTripFromServer, isTripActive]);
 
     return (
         <View style={styles.container}>

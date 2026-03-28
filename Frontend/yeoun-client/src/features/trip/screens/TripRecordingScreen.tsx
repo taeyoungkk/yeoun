@@ -758,7 +758,7 @@ function RealTripRecordingScreen({
   );
 
   const updateRealTimelinePhotoMemo = useCallback((eventId: string, photoId: string, memo?: string) => {
-    setTripEvents((prev) =>
+    setTripEvents((prev: TimelineEvent[]) =>
       prev.map((event) => {
         if (event.id !== eventId || !event.photoItems) {
           return event;
@@ -780,7 +780,7 @@ function RealTripRecordingScreen({
   }, []);
 
   const removeRealTimelinePhoto = useCallback((eventId: string, photoId: string) => {
-    setTripEvents((prev) =>
+    setTripEvents((prev: TimelineEvent[]) =>
       prev.flatMap((event) => {
         if (event.id !== eventId || !event.photoItems) {
           return [event];
@@ -812,7 +812,7 @@ function RealTripRecordingScreen({
 
   const updateRealTimelineEvent = useCallback(
     (eventId: string, updates: Partial<Pick<TimelineEvent, 'title' | 'placeName' | 'subtitle' | 'eventMemo'>>) => {
-      setTripEvents((prev) =>
+      setTripEvents((prev: TimelineEvent[]) =>
         prev.map((event) =>
           event.id === eventId
             ? {
@@ -827,7 +827,7 @@ function RealTripRecordingScreen({
   );
 
   const removeRealTimelineEvent = useCallback((eventId: string) => {
-    setTripEvents((prev) => prev.filter((event) => event.id !== eventId));
+    setTripEvents((prev: TimelineEvent[]) => prev.filter((event) => event.id !== eventId));
   }, []);
 
   const updateRealExpenseEvent = useCallback(
@@ -845,7 +845,7 @@ function RealTripRecordingScreen({
         >
       >,
     ) => {
-      setTripEvents((prev) =>
+      setTripEvents((prev: TimelineEvent[]) =>
         prev.map((event) =>
           event.id === eventId
             ? {
@@ -909,6 +909,7 @@ function RealTripRecordingScreen({
     let cancelled = false;
 
     const loadRealTripData = async () => {
+      console.log(`[TripRecording] Loading data for ${activeTripId}. Current user: ${currentUserId}`);
       try {
         const [tripDetailResponse, timelineDaysResponse, expensesResponse, tripMembersResponse] = await Promise.all([
           getTripDetailApi(activeTripId),
@@ -921,10 +922,21 @@ function RealTripRecordingScreen({
 
         // 1. Set Trip Detail immediately for UI titles and 'End Trip' button visibility
         if (tripDetailResponse.success) {
-          setLoadedTripDetail(tripDetailResponse.data);
+          const tripData = tripDetailResponse.data;
+          setLoadedTripDetail(tripData);
+
+          // OWNERSHIP CHECK: If we are in recording mode but don't own this trip
+          // and it's not a trip we should be recording, treat as ghost data.
+          if (!isReviewMode && tripData.ownerUserId && currentUserId && tripData.ownerUserId !== currentUserId) {
+             console.warn('Trip ownership mismatch. Clearing stale trip state.');
+             clearTrip();
+             router.replace('/(tabs)');
+             return;
+          }
+
           if (!isReviewMode) {
-            setActiveTrip(tripDetailResponse.data);
-            if (tripDetailResponse.data.status !== 'ACTIVE') {
+            setActiveTrip(tripData);
+            if (tripData.status !== 'ACTIVE') {
               router.replace({
                 pathname: '/trip/recording',
                 params: { mode: 'review', tripId: activeTripId },
@@ -1037,26 +1049,38 @@ function RealTripRecordingScreen({
         // 3. Prune session trail based on the last synced log.
         const lastSyncedUuid = useTripStore.getState().lastSyncedLogUuid;
         if (lastSyncedUuid) {
-          setSessionTrail(prev => {
+          setSessionTrail((prev: LocationLog[]) => {
             const syncedIndex = prev.findIndex(l => l.clientLogUuid === lastSyncedUuid);
             return syncedIndex !== -1 ? prev.slice(syncedIndex + 1) : prev;
           });
         } else {
-          setSessionTrail(prev => {
+          setSessionTrail((prev: LocationLog[]) => {
             const twoMinsAgo = new Date(Date.now() - 120000).toISOString();
             return prev.filter(l => l.recordedAt > twoMinsAgo);
           });
         }
         setMatchedSessionTrail([]);
         lastMatchedIndexRef.current = 0;
+      } catch (err: any) {
+        if (cancelled) return;
 
-      } catch (error) {
-        if (!cancelled) {
-          console.error('Failed to load real trip data', error);
-          Alert.alert('Trip data partially failed', 'Could not load your full travel history.');
+        console.error('Failed to load real trip data', err);
+
+        // SELF-HEALING: If the Trip ID is not found on the server (404),
+        // it means our local storage is stale (e.g. from a different account).
+        if (err?.response?.status === 404 || err?.status === 404) {
+          Alert.alert(
+            '여행을 찾을 수 없음',
+            '해당 여행 정보를 찾을 수 없습니다. 홈화면으로 이동합니다.',
+            [{ text: '확인', onPress: () => {
+              clearTrip();
+              router.replace('/(tabs)');
+            }}]
+          );
+          return;
         }
-      } finally {
-        // No setIsLoading(false) needed as state not found
+
+        Alert.alert('Trip data partially failed', 'Could not load your full travel history.');
       }
     };
 
@@ -1065,7 +1089,7 @@ function RealTripRecordingScreen({
     return () => {
       cancelled = true;
     };
-  }, [activeTripId, currentUserId, currentUserNickname, isReviewMode, routeRefreshKey, setActiveTrip]);
+  }, [activeTripId, currentUserId, currentUserNickname, isReviewMode, routeRefreshKey, setActiveTrip, router, clearTrip]);
 
 
   useEffect(() => {
@@ -1079,7 +1103,7 @@ function RealTripRecordingScreen({
       const coord: Coordinate = [location.longitude, location.latitude];
       setLiveCurrentLocation(coord);
       if (!isReviewMode) {
-        setSessionTrail((prev) => {
+        setSessionTrail((prev: LocationLog[]) => {
           // Avoid duplicates
           if (prev.length > 0 && prev[prev.length - 1].recordedAt === location.recordedAt) return prev;
           return [...prev, location];
@@ -1092,9 +1116,9 @@ function RealTripRecordingScreen({
       
       const refreshPendingLogs = () => {
         locationService.getPendingLogs().then((logs) => {
-          setSessionTrail((prev) => {
+          setSessionTrail((prev: LocationLog[]) => {
             const combined = [...logs, ...prev];
-            const unique = Array.from(new Map(combined.map(l => [l.recordedAt, l])).values())
+            const unique = Array.from(new Map(combined.map((l: LocationLog) => [l.recordedAt, l] as const)).values())
               .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
             return unique;
           });
@@ -1153,22 +1177,22 @@ function RealTripRecordingScreen({
         try {
           const matched = await matchMapTrace(chunkToMatch, 'walking');
           if (matched && matched.length > 0) {
-            setMatchedSessionTrail(prev => {
+            setMatchedSessionTrail((prev: Coordinate[]) => {
               const nextBase = startIndex === 0 ? [] : prev;
               return [...nextBase, ...matched];
             });
           } else {
             // Fallback: use raw points if matching fails (e.g. non-road path like a train)
-            setMatchedSessionTrail(prev => {
+            setMatchedSessionTrail((prev: Coordinate[]) => {
               const nextBase = startIndex === 0 ? [] : prev;
               return [...nextBase, ...chunkToMatch];
             });
           }
           // Advance index regardless to avoid infinite retries of failing segments
           lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
-        } catch (error) {
-          console.warn('[Map Matching] Failed to match segment, falling back to raw:', error);
-          setMatchedSessionTrail(prev => {
+        } catch (err) {
+          console.warn('[Map Matching] Failed to match segment, falling back to raw:', err);
+          setMatchedSessionTrail((prev: Coordinate[]) => {
             const nextBase = startIndex === 0 ? [] : prev;
             return [...nextBase, ...chunkToMatch];
           });
@@ -1876,13 +1900,13 @@ function RealTripRecordingScreen({
   };
 
   const togglePaymentMember = (memberUserId: string) => {
-    setPaymentImportDialog((prev) => {
+    setPaymentImportDialog((prev: any) => {
       if (!prev) {
         return prev;
       }
 
       const nextMembers = prev.selectedMemberUserIds.includes(memberUserId)
-        ? prev.selectedMemberUserIds.filter((member) => member !== memberUserId)
+        ? prev.selectedMemberUserIds.filter((member: string) => member !== memberUserId)
         : [...prev.selectedMemberUserIds, memberUserId];
 
       return {
@@ -2015,7 +2039,7 @@ function RealTripRecordingScreen({
               <Text style={styles.syncHeaderButtonText}>{syncActionInFlight ? '동기화 중' : '동기화'}</Text>
             </TouchableOpacity>
           ) : null}
-          <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev) => !prev)} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev: boolean) => !prev)} activeOpacity={0.85}>
             <MaterialIcons name="more-horiz" size={22} color="#274232" />
           </TouchableOpacity>
           </View>

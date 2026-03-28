@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { getTripDetailApi, getTripsApi, TripDetail, TripListItem } from '../api/trip';
+import { useUserStore } from './user.store';
 
 export interface CurrentTrip {
   tripId: string;
@@ -152,24 +153,50 @@ export const useTripStore = create<TripState>()(
         }
 
         const detailResponse = await getTripDetailApi(persistedTripId);
+        
+        // Handle 404 (Not Found) - Clear the stale state
+        // The API returns success: false and code: 'NOT_FOUND' (from getErrorCode) for 404s
+        if (!detailResponse.success && detailResponse.code === 'NOT_FOUND') {
+          console.warn('[TripStore] Active trip not found on server (404). Cleaning up stale state.');
+          get().clearTrip();
+          return null;
+        }
+
         if (detailResponse.success) {
-          if (detailResponse.data.status === 'ACTIVE') {
-            get().syncAcceptedTrip(detailResponse.data);
+          const tripData = detailResponse.data;
+          const currentUserId = useUserStore.getState().profile?.userId;
+
+          // Ownership check: If the trip belongs to someone else, don't restore it as ACTIVE
+          if (tripData.ownerUserId && currentUserId && tripData.ownerUserId !== currentUserId) {
+            console.warn('[TripStore] Active trip ownership mismatch. Cleaning up stale state.');
+            get().clearTrip();
             void get().fetchTrips(true);
-            return detailResponse.data;
+            return null;
           }
 
-          if (get().currentTripId === detailResponse.data.tripId || get().isTripActive) {
+          if (tripData.status === 'ACTIVE') {
+            get().syncAcceptedTrip(tripData);
+            void get().fetchTrips(true);
+            return tripData;
+          }
+
+          if (get().currentTripId === tripData.tripId || get().isTripActive) {
             get().clearTrip();
           }
           void get().fetchTrips(true);
-          return detailResponse.data;
+          return tripData;
         }
 
+        // Fallback: Check trip list if detail fetch failed for reasons other than 404
         const trips = await get().fetchTrips(true);
         const activeTripListItem = trips.find((trip) => trip.tripId === persistedTripId && trip.status === 'ACTIVE');
 
         if (!activeTripListItem) {
+          // If the list fetch is successful but our "Active" trip isn't there, it's a ghost.
+          if (get().isTripActive) {
+            console.warn('[TripStore] Active trip not found in trip list. Assuming stale and clearing.');
+            get().clearTrip();
+          }
           return null;
         }
 
