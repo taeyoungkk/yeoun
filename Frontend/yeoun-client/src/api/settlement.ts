@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { isAxiosError } from 'axios';
 
 import apiClient from './client';
 
@@ -81,7 +81,7 @@ const shouldMockInDev = (error: unknown) => {
     return false;
   }
 
-  return axios.isAxiosError(error) && !error.response;
+  return isAxiosError(error) && !error.response;
 };
 
 const mapListItem = (item: any): SettlementListItem => ({
@@ -156,6 +156,38 @@ export const getTripSettlementsApi = async (
     if (shouldMockInDev(error)) {
       return { success: true, data: { items: [] }, timestamp: new Date().toISOString() };
     }
+    throw error;
+  }
+};
+
+export const getLatestSettlementApi = async (
+  tripId: string,
+): Promise<ApiResponse<SettlementDetail | null>> => {
+  try {
+    const response = await apiClient.get<ApiResponse<any>>(`/trips/${tripId}/settlements/latest`);
+    return {
+      ...response.data,
+      data: mapDetail(response.data.data),
+    };
+  } catch (error) {
+    if (
+      isAxiosError(error) &&
+      error.response?.status === 404 &&
+      error.response?.data?.code === 'SETTLEMENT_LATEST_NOT_AVAILABLE'
+    ) {
+      return {
+        success: true,
+        code: error.response.data.code,
+        message: error.response.data.message,
+        data: null,
+        timestamp: error.response.data.timestamp ?? new Date().toISOString(),
+      };
+    }
+
+    if (shouldMockInDev(error)) {
+      return { success: true, data: null, timestamp: new Date().toISOString() };
+    }
+
     throw error;
   }
 };
