@@ -96,12 +96,13 @@ export default function PaymentMemberSummaryScreen() {
           throw new Error(tripsResponse.message ?? '여행 정보를 불러오지 못했어요.');
         }
 
-        setTripOptions(tripsResponse.data.items);
+        const availableTrips = tripsResponse.data.items.filter((item) => item.status !== 'DELETED');
+        setTripOptions(availableTrips);
 
         const nextTripId =
-          (tripId && tripsResponse.data.items.some((item) => item.tripId === tripId) ? tripId : null) ??
-          (routeTripId && tripsResponse.data.items.some((item) => item.tripId === routeTripId) ? routeTripId : null) ??
-          (currentTripId && tripsResponse.data.items.some((item) => item.tripId === currentTripId) ? currentTripId : null) ??
+          (tripId && availableTrips.some((item) => item.tripId === tripId) ? tripId : null) ??
+          (routeTripId && availableTrips.some((item) => item.tripId === routeTripId) ? routeTripId : null) ??
+          (currentTripId && availableTrips.some((item) => item.tripId === currentTripId) ? currentTripId : null) ??
           null;
 
         setTripId(nextTripId);
