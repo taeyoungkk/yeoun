@@ -44,6 +44,8 @@ public enum ErrorCode {
     SHARED_ALBUM_NOT_FOUND(HttpStatus.NOT_FOUND, "Shared album not found."),
     TRIP_INVITE_NOT_ALLOWED(HttpStatus.CONFLICT, "Invites are not allowed for this trip status."),
     TRIP_INVITE_ACCEPT_NOT_ALLOWED(HttpStatus.CONFLICT, "This invite cannot be accepted."),
+    TRIP_INVITE_EXPIRED(HttpStatus.CONFLICT, "This invite has expired."),
+    TRIP_INVITE_ALREADY_PROCESSED(HttpStatus.CONFLICT, "This invite has already been processed."),
     TIMELINE_DAY_NOT_FOUND(HttpStatus.NOT_FOUND, "Timeline day not found."),
     EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "Event not found."),
     PHOTO_NOT_FOUND(HttpStatus.NOT_FOUND, "Photo not found."),
