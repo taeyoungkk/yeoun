@@ -529,7 +529,7 @@ function RealTripRecordingScreen({
   const scrollRef = useRef<ScrollView | null>(null);
   const photoPagerRef = useRef<ScrollView | null>(null);
   const cardPositionsRef = useRef<Record<string, number>>({});
-  const [scrollOffset, setScrollOffset] = useState(0);
+  const scrollY = useRef(new Animated.Value(0)).current;
   const [tripEvents, setTripEvents] = useState<TimelineEvent[]>([]);
   const [tripMembers, setTripMembers] = useState<TripMemberItem[]>([]);
   const params = useLocalSearchParams();
@@ -725,10 +725,21 @@ function RealTripRecordingScreen({
     selectedPhotoEvent?.emotionOwnerId === currentUserId && selectedPhotoEvent?.emotionEmoji && selectedPhotoEvent?.emotionLabel
       ? `${selectedPhotoEvent.emotionEmoji} ${selectedPhotoEvent.emotionLabel}`
       : null;
-  const collapseProgress = Math.min(scrollOffset / MAP_COLLAPSE_DISTANCE, 1);
-  const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
-  const mapRadius = 32 - 8 * collapseProgress;
-  const panelLift = -145 * collapseProgress;
+  const mapHeight = scrollY.interpolate({
+    inputRange: [0, MAP_COLLAPSE_DISTANCE],
+    outputRange: [MAX_MAP_HEIGHT, MIN_MAP_HEIGHT],
+    extrapolate: 'clamp',
+  });
+  const mapRadius = scrollY.interpolate({
+    inputRange: [0, MAP_COLLAPSE_DISTANCE],
+    outputRange: [32, 24],
+    extrapolate: 'clamp',
+  });
+  const panelLift = scrollY.interpolate({
+    inputRange: [0, MAP_COLLAPSE_DISTANCE],
+    outputRange: [0, -145],
+    extrapolate: 'clamp',
+  });
   const routeTripId = typeof params.tripId === 'string' ? params.tripId.trim() : '';
   const storeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
   const activeTripId = (routeTripId || storeTripId || '').trim();
@@ -738,6 +749,7 @@ function RealTripRecordingScreen({
   );
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
   const canUseActiveTripActions = !isReviewMode && loadedTripDetail?.status === 'ACTIVE';
+  const canEndActiveTrip = canUseActiveTripActions && isTripOwner;
 
   const syncActionInFlight =
     isSyncing || locationSyncStatus === 'uploading' || locationSyncStatus === 'processing';
@@ -2068,7 +2080,7 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>앨범 보기</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, !canEndActiveTrip && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
@@ -2476,7 +2488,7 @@ function RealTripRecordingScreen({
         </Pressable>
       </Modal>
 
-      <View style={[styles.floatingMapWrap, { height: mapHeight, borderRadius: mapRadius }]}>
+      <Animated.View style={[styles.floatingMapWrap, { height: mapHeight, borderRadius: mapRadius }]}>
         <Mapbox.MapView
           style={StyleSheet.absoluteFill}
           styleURL={Mapbox.StyleURL.Outdoors}
@@ -2608,16 +2620,17 @@ function RealTripRecordingScreen({
             );
           })}
         </ScrollView>
-      </View>
+      </Animated.View>
 
       <Animated.ScrollView
         ref={scrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
-        onScroll={(event) => {
-          setScrollOffset(event.nativeEvent.contentOffset.y);
-        }}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false },
+        )}
         refreshControl={
           <RefreshControl
             refreshing={false}
@@ -2630,7 +2643,7 @@ function RealTripRecordingScreen({
           />
         }
       >
-        <View
+        <Animated.View
           style={[
             styles.panel,
             {
@@ -2853,13 +2866,13 @@ function RealTripRecordingScreen({
               </TouchableOpacity>
             </View>
           ) : null}
-          <View style={[styles.bottomActions, !canUseActiveTripActions && styles.hiddenAction]}>
+          <View style={[styles.bottomActions, !canEndActiveTrip && styles.hiddenAction]}>
             <TouchableOpacity style={styles.endButton} onPress={handleEndTrip} activeOpacity={0.88}>
               <Text style={styles.endButtonText}>여행 종료</Text>
             </TouchableOpacity>
           </View>
           </View>
-        </View>
+        </Animated.View>
       </Animated.ScrollView>
     </SafeAreaView>
   );
