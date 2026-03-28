@@ -5,7 +5,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { getEventDetailApi, getTimelineDayDetailApi, getTripTimelineDaysApi } from '@/src/api/timeline';
-import { getTripRouteByDayApi } from '@/src/api/trip';
+import { matchMapTrace } from '@/src/api/mapbox';
+import { getTripRouteByDayApi, type LocationLog } from '@/src/api/trip';
 import { configureMapbox } from '@/src/lib/mapbox';
 import { useTripStore, useUserStore } from '@/src/store';
 
@@ -25,6 +26,8 @@ type MapMarkerItem = {
   photoUrls?: string[];
 };
 
+type Coordinate = [number, number];
+
 const getTodayDateString = () => {
   const now = new Date();
   const year = now.getFullYear();
@@ -41,6 +44,10 @@ export function ActiveTripMap() {
 
   const [currentCoordinate, setCurrentCoordinate] = useState<[number, number] | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
+  const [liveTrail, setLiveTrail] = useState<LocationLog[]>([]);
+  const [matchedLiveTrail, setMatchedLiveTrail] = useState<[number, number][]>([]);
+  const lastMatchedIndexRef = useRef(0);
+  const isMatchingRef = useRef(false);
   const [markers, setMarkers] = useState<MapMarkerItem[]>([]);
   const [isFogEnabled, setIsFogEnabled] = useState(true);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
@@ -75,6 +82,9 @@ export function ActiveTripMap() {
       }
 
       setCurrentCoordinate([location.longitude, location.latitude]);
+      if (tripId) {
+        setLiveTrail((prev) => [...prev, location]);
+      }
     });
 
     return () => {
@@ -108,6 +118,23 @@ export function ActiveTripMap() {
             .map(([longitude, latitude]) => [longitude, latitude] as [number, number]),
         );
         setRouteCoordinates(nextCoordinates);
+        
+        // Prune live trail based on the last synced log.
+        const lastSyncedUuid = useTripStore.getState().lastSyncedLogUuid;
+        if (lastSyncedUuid) {
+          setLiveTrail(prev => {
+            const syncedIndex = prev.findIndex(l => l.clientLogUuid === lastSyncedUuid);
+            if (syncedIndex !== -1) {
+              return prev.slice(syncedIndex + 1);
+            }
+            return prev;
+          });
+        } else {
+          setLiveTrail([]);
+        }
+        
+        setMatchedLiveTrail([]);
+        lastMatchedIndexRef.current = 0;
         setRouteLoadFailed(false);
       } else {
         setRouteCoordinates([]);
@@ -221,6 +248,59 @@ export function ActiveTripMap() {
     };
   }, [tripId, routeRefreshKey]);
 
+  useEffect(() => {
+    if (!tripId || isMatchingRef.current) {
+      return;
+    }
+
+    const rawCoords = liveTrail.map(l => [l.longitude, l.latitude] as Coordinate);
+    const unMatchedCount = rawCoords.length - lastMatchedIndexRef.current;
+    if (unMatchedCount < 5) {
+      return;
+    }
+
+    const processMatching = async () => {
+      isMatchingRef.current = true;
+      try {
+        const startIndex = Math.max(0, lastMatchedIndexRef.current - 1);
+        const chunkToMatch = rawCoords.slice(startIndex, startIndex + 100);
+
+        if (chunkToMatch.length < 2) {
+          isMatchingRef.current = false;
+          return;
+        }
+
+        try {
+          const matched = await matchMapTrace(chunkToMatch, 'walking');
+          if (matched && matched.length > 0) {
+            setMatchedLiveTrail((prev) => {
+              const nextBase = startIndex === 0 ? [] : prev;
+              return [...nextBase, ...matched];
+            });
+          } else {
+            // Fallback for NoMatch or empty results
+            setMatchedLiveTrail((prev) => {
+              const nextBase = startIndex === 0 ? [] : prev;
+              return [...nextBase, ...chunkToMatch];
+            });
+          }
+          lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
+        } catch (error) {
+          console.warn('[ActiveTripMap Matching] Failed, falling back to raw:', error);
+          setMatchedLiveTrail((prev) => {
+            const nextBase = startIndex === 0 ? [] : prev;
+            return [...nextBase, ...chunkToMatch];
+          });
+          lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
+        }
+      } finally {
+        isMatchingRef.current = false;
+      }
+    };
+
+    void processMatching();
+  }, [liveTrail, tripId]);
+
   const filteredMarkers = markers.filter((marker) => {
     if (marker.type === 'photo') {
       return showPhotoPins;
@@ -228,10 +308,14 @@ export function ActiveTripMap() {
     return true;
   });
 
-  const hasRouteCoordinates = routeCoordinates.length >= 2;
-  const hasEmptyRoute = !isLoadingRoute && !routeLoadFailed && routeCoordinates.length === 0;
+  const combinedRoute = useMemo(() => {
+    const rawLiveCoords = liveTrail.slice(lastMatchedIndexRef.current).map(l => [l.longitude, l.latitude] as [number, number]);
+    return [...routeCoordinates, ...matchedLiveTrail, ...rawLiveCoords];
+  }, [routeCoordinates, liveTrail, matchedLiveTrail]);
+  const hasRouteCoordinates = combinedRoute.length >= 2;
+  const hasEmptyRoute = !isLoadingRoute && !routeLoadFailed && combinedRoute.length === 0;
   const hasEmptyMarkers = !isLoadingMarkers && !markerLoadFailed && filteredMarkers.length === 0;
-  const centerCoordinate = routeCoordinates[routeCoordinates.length - 1] ?? currentCoordinate ?? [126.9784, 37.5667];
+  const centerCoordinate = combinedRoute[combinedRoute.length - 1] ?? currentCoordinate ?? [126.9784, 37.5667];
 
   const routeShape: GeoJSON.FeatureCollection<GeoJSON.LineString> | null = useMemo(() => {
     if (!hasRouteCoordinates) {
@@ -246,7 +330,7 @@ export function ActiveTripMap() {
           properties: {},
           geometry: {
             type: 'LineString',
-            coordinates: routeCoordinates,
+            coordinates: combinedRoute,
           },
         },
       ],
@@ -296,7 +380,7 @@ export function ActiveTripMap() {
           }}
         />
 
-        <PastRoutesLayer routes={hasRouteCoordinates ? [routeCoordinates] : []} isFogEnabled={isFogEnabled} />
+        <PastRoutesLayer routes={hasRouteCoordinates ? [combinedRoute] : []} isFogEnabled={isFogEnabled} />
 
         {routeShape ? (
           <Mapbox.ShapeSource id="active-trip-route" shape={routeShape}>

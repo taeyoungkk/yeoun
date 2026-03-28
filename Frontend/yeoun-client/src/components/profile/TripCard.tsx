@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ImageBackground, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useMainDestination } from '@/src/hooks/useMainDestination';
 
 export interface TripData {
   id: string;
@@ -20,6 +21,9 @@ interface Props {
 }
 
 export function TripCard({ data, onPress, onPressHeart }: Props) {
+  const analyzedLocation = useMainDestination(data.id, data.location);
+  const location = data.id.startsWith('mock-') ? data.location : analyzedLocation;
+
   return (
     <Pressable onPress={onPress}>
       <ImageBackground 
@@ -41,7 +45,7 @@ export function TripCard({ data, onPress, onPressHeart }: Props) {
           <Text style={styles.title} numberOfLines={1}>{data.title}</Text>
           <View style={styles.row}>
             <Ionicons name="location" size={12} color="#8A8A8A" />
-            <Text style={styles.rowText} numberOfLines={1}>{data.location}</Text>
+            <Text style={styles.rowText} numberOfLines={1}>{location}</Text>
           </View>
           <View style={styles.row}>
             <Ionicons name="calendar" size={12} color="#8A8A8A" />

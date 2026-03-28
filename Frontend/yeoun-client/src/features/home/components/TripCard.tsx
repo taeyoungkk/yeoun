@@ -1,20 +1,24 @@
-import { Ionicons } from '@expo/vector-icons';
-import { IconSymbol } from '@/src/components/ui/icon-symbol';
-import { Image } from 'expo-image';
 import React from 'react';
 import { Text, View, TouchableOpacity, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { useMainDestination } from '@/src/hooks/useMainDestination';
 
 interface TripCardProps {
+    tripId?: string; // Optional for analysis
     title: string;
     location: string;
     date: string;
     imageUrl?: any;
     isFavorite?: boolean;
+    showHeart?: boolean;
     onPressHeart?: () => void;
     onPress?: () => void;
 }
 
-export const TripCard = ({ title, location, date, imageUrl, isFavorite, onPressHeart, onPress }: TripCardProps) => {
+export const TripCard = ({ tripId, title, location: initialLocation, date, imageUrl, isFavorite, showHeart = true, onPressHeart, onPress }: TripCardProps) => {
+    const analyzedLocation = useMainDestination(tripId || '', initialLocation);
+    const location = tripId ? analyzedLocation : initialLocation;
     return (
         <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
             <View 
@@ -41,13 +45,15 @@ export const TripCard = ({ title, location, date, imageUrl, isFavorite, onPressH
                 <View className="flex-1 justify-center px-6 py-3 ml-1" style={{ flexShrink: 1 }}>
                     <View className="flex-row justify-between items-start">
                         <Text className="flex-1 text-black text-lg font-pretendard-bold" numberOfLines={1}>{title}</Text>
-                        <Pressable onPress={onPressHeart} className="ml-2">
-                           <Ionicons 
-                             name={isFavorite ? "heart" : "heart-outline"} 
-                             size={24} 
-                             color={isFavorite ? "#E74C3C" : "#828F9C"} 
-                           />
-                        </Pressable>
+                        {showHeart && (
+                          <Pressable onPress={onPressHeart} className="ml-2">
+                             <Ionicons 
+                               name={isFavorite ? "heart" : "heart-outline"} 
+                               size={24} 
+                               color={isFavorite ? "#E74C3C" : "#828F9C"} 
+                             />
+                          </Pressable>
+                        )}
                     </View>
                     <View className="flex-row items-center gap-1.5">
                         <Ionicons name="location" size={16} color="#828F9C" />

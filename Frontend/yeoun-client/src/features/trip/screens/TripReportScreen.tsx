@@ -1,6 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,7 +20,9 @@ import {
   type TimelineDayDetail,
   type TimelineDaySummary,
 } from '@/src/api/timeline';
+import { CommonApiResponse, getTripRouteDaysApi } from '@/src/api/trip';
 import { useTripStore } from '@/src/store/trip.store';
+import { getTopDestinationName } from '@/src/utils/trip-analysis-utils';
 
 type ReportDay = {
   id: string;
@@ -50,6 +53,28 @@ const formatTripDate = (date?: string) => (date ? date.slice(2, 10).replace(/-/g
 const formatDayLabel = (date: Date) =>
   `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
 const formatTime = (date?: string | null) => (date ? date.slice(11, 16) : '--:--');
+
+const shortenLocationName = (name: string) => {
+  if (!name) return '';
+  const doMap: Record<string, string> = {
+    경기도: '경기',
+    강원도: '강원',
+    충청북도: '충북',
+    충청남도: '충남',
+    전라북도: '전북',
+    전라남도: '전남',
+    경상북도: '경북',
+    경상남도: '경남',
+    제주특별자치도: '제주',
+  };
+
+  if (doMap[name]) return doMap[name];
+
+  return name
+    .replace(/(특별시|광역시|특별자치시|특별자치도|시|군|구)$/, '')
+    .trim()
+    .slice(0, 3);
+};
 
 const getExpenseSnapshot = (items: TripExpenseItem[]) => {
   const confirmedExpenses = items.filter((expense) => expense.status !== 'DELETED');
@@ -126,6 +151,8 @@ export default function TripReportScreen() {
   const [timelineDayDetails, setTimelineDayDetails] = useState<TimelineDayDetail[]>([]);
   const [expenses, setExpenses] = useState<TripExpenseItem[]>([]);
   const [settlementDetail, setSettlementDetail] = useState<SettlementDetail | null>(null);
+  const [mainDestination, setMainDestination] = useState<string | null>(null);
+  const [originAddress, setOriginAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const isReviewMode = params.mode === 'review';
@@ -133,7 +160,16 @@ export default function TripReportScreen() {
   const receiptAppear = useRef(new Animated.Value(0)).current;
 
   const handleGoHome = () => router.replace('/(tabs)');
-  const handleBackToTimeline = () => router.back();
+  const handleBackToTimeline = () => {
+    if (trip?.tripId) {
+      router.push({
+        pathname: '/trip/recording',
+        params: { tripId: trip.tripId, mode: isReviewMode ? 'review' : undefined },
+      });
+    } else {
+      router.back();
+    }
+  };
   const handleOpenSettlementDetail = () => {
     if (!trip?.tripId) return;
     router.push({
@@ -177,16 +213,37 @@ export default function TripReportScreen() {
         }
 
         // STAGE 2: Deep Details (Can be slow)
-        // Fetch settlements first as they affect the ticket "Total Cost" and "Shared Cost"
-        const [settlementsResponse, timelineDetailResponses] = await Promise.all([
+        const [destinationName, settlementsResponse, timelineDetailResponses, routeResponse] = await Promise.all([
+          getTopDestinationName(trip.tripId),
           getTripSettlementsApi(trip.tripId),
           Promise.all(nextTimelineDays.map((day) => getTimelineDayDetailApi(day.timelineDayId))),
+          getTripRouteDaysApi(trip.tripId),
         ]);
 
         if (mounted) {
-          setTimelineDayDetails(
-            timelineDetailResponses.filter((response) => response.success).map((response) => response.data),
-          );
+          setMainDestination(destinationName);
+
+          const settledTimelineDetails = timelineDetailResponses
+            .filter((res) => res.success)
+            .map((res) => res.data);
+
+          setTimelineDayDetails(settledTimelineDetails);
+
+          // Try to resolve origin address from the first route day's first coordinate
+          if (!trip.origin && routeResponse.success && routeResponse.data.routeDays.length > 0) {
+            const firstDay = routeResponse.data.routeDays[0];
+            if (firstDay.coordinates && firstDay.coordinates.length > 0) {
+              const [lon, lat] = firstDay.coordinates[0];
+              import('@/src/api/mapbox').then(({ reverseGeocodeKo }) => {
+                reverseGeocodeKo(lon, lat).then((addr) => {
+                  if (mounted && addr) {
+                    const cleaned = addr.replace(/대한민국\s*\d*/g, '').replace(/,/g, '').trim().split(' ')[0];
+                    setOriginAddress(cleaned);
+                  }
+                });
+              });
+            }
+          }
         }
 
         let nextSettlementDetail: SettlementDetail | null = null;
@@ -233,13 +290,7 @@ export default function TripReportScreen() {
           setSettlementDetail(nextSettlementDetail);
         }
       } catch (error) {
-        console.error('Failed to load trip report data:', error);
-        if (mounted) {
-          setTimelineDays([]);
-          setTimelineDayDetails([]);
-          setExpenses([]);
-          setSettlementDetail(null);
-        }
+        console.error('[TripReport] Failed to load details:', error);
       } finally {
         if (mounted) {
           setIsLoading(false);
@@ -287,8 +338,8 @@ export default function TripReportScreen() {
   const reportTitle = `${tripTitle} 여행 종료`;
   const tripStartLabel = formatTripDate(trip?.startDate);
   const tripEndLabel = formatTripDate(trip?.endDate);
-  const tripOrigin = trip?.origin || '출발';
-  const tripDestination = trip?.destination || tripTitle;
+  const tripOrigin = shortenLocationName(originAddress || trip?.origin || 'KR');
+  const tripDestination = shortenLocationName(mainDestination || trip?.destination || tripTitle);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -296,7 +347,11 @@ export default function TripReportScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.headerRow}>
             <TouchableOpacity style={styles.headerButton} onPress={handleBackToTimeline}>
-              <MaterialIcons name="arrow-back" size={22} color="#3852D6" />
+              <Image 
+                source={require('@/assets/images/timeline_nav_icon.svg')} 
+                style={{ width: 28, height: 28 }} 
+                contentFit="contain" 
+              />
             </TouchableOpacity>
             <View style={styles.headerCopy}>
               <Text style={styles.headerTitle}>{reportTitle}</Text>

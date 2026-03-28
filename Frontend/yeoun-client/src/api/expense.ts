@@ -70,6 +70,16 @@ const shouldMockInDev = (error: unknown) => {
   return axios.isAxiosError(error) && !error.response;
 };
 
+const getErrorMessage = (error: any, fallback: string) =>
+  error?.response?.data?.message ??
+  error?.response?.data?.error?.message ??
+  fallback;
+
+const getErrorCode = (error: any, fallback = 'ERROR') =>
+  error?.response?.data?.code ??
+  error?.response?.data?.error?.code ??
+  fallback;
+
 const mapExpenseItem = (item: any): TripExpenseItem => ({
   expenseId: String(item.expenseId),
   tripId: String(item.tripId),
@@ -123,15 +133,15 @@ export const getTripExpensesApi = async (tripId: string): Promise<ApiResponse<{ 
         items: Array.isArray(response.data.data?.items) ? response.data.data.items.map(mapExpenseItem) : [],
       },
     };
-  } catch (error) {
-    if (shouldMockInDev(error)) {
-      return {
-        success: true,
-        data: { items: [] },
-        timestamp: new Date().toISOString(),
-      };
-    }
-    throw error;
+  } catch (error: any) {
+    console.error('Get Trip Expenses API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch trip expenses.'),
+      data: { items: [] },
+      timestamp: new Date().toISOString(),
+    };
   }
 };
 

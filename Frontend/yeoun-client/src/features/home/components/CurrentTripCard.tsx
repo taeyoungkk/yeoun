@@ -5,26 +5,30 @@ import { Image } from 'expo-image';
 
 import { IconSymbol } from '@/src/components/ui/icon-symbol';
 
-const defaultTripImage = require('@/assets/images/trip_placeholder_1.png');
+import { getTripImage } from '@/src/utils/image-utils';
 
 interface CurrentTripCardProps {
+  tripId: string;
   title: string;
   location: string;
   date: string;
   participants: number;
   imageUrl?: any;
   isFavorite?: boolean;
+  showHeart?: boolean;
   onPressHeart?: () => void;
   onPress?: () => void;
 }
 
 export const CurrentTripCard = ({
+  tripId,
   title,
   location,
   date,
   participants,
   imageUrl,
   isFavorite,
+  showHeart = true,
   onPressHeart,
   onPress,
 }: CurrentTripCardProps) => {
@@ -37,28 +41,30 @@ export const CurrentTripCard = ({
         style={{ elevation: 5 }}
       >
         <Image
-          source={imageUrl || defaultTripImage}
-          className="w-full h-full"
+          source={imageUrl || require('@/assets/images/trip_placeholder_1.png')}
+          style={{ width: '100%', height: '100%' }}
           contentFit="cover"
         />
 
-        <Pressable 
-          onPress={onPressHeart} 
-          className="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/20 items-center justify-center"
-        >
-          <Ionicons 
-            name={isFavorite ? "heart" : "heart-outline"} 
-            size={24} 
-            color={isFavorite ? "#E74C3C" : "white"} 
-          />
-        </Pressable>
+        {showHeart && (
+          <Pressable 
+            onPress={onPressHeart} 
+            className="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/20 items-center justify-center"
+          >
+            <Ionicons 
+              name={isFavorite ? "heart" : "heart-outline"} 
+              size={24} 
+              color={isFavorite ? "#E74C3C" : "white"} 
+            />
+          </Pressable>
+        )}
 
         <View className="absolute bottom-4 left-4 right-4 bg-white/85 rounded-[32px] p-5 gap-1.5">
           <Text className="text-xl font-pretendard-bold text-[#101018]">{title}</Text>
 
-          <View className="flex-row items-center gap-1.5">
-            <IconSymbol name="location.fill" size={12} color="#828F9C" />
-            <Text className="text-[13px] text-[#828F9C] font-pretendard-medium">{location}</Text>
+          <View className="flex-row items-center">
+            <Ionicons name="location" size={12} color="#828F9C" />
+            <Text className="text-[13px] text-[#828F9C] font-pretendard-medium ml-1">{location}</Text>
           </View>
 
           <View className="flex-row items-center gap-3">

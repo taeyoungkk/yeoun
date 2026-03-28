@@ -60,10 +60,10 @@ const requestMediaLocationPermission = async (): Promise<{ granted: boolean; can
   });
 
   const isGranted = result === PermissionsAndroid.RESULTS.GRANTED;
-  logPhotoSync('ACCESS_MEDIA_LOCATION permission requested.', {
-    result,
-    granted: isGranted,
-  });
+  // Reduce noise for repetitive permission checks
+  if (isGranted) {
+    logPhotoSync('ACCESS_MEDIA_LOCATION permission granted.');
+  }
   return {
     granted: isGranted,
     canAskAgain: result !== PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN,

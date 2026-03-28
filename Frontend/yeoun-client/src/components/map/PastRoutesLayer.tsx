@@ -33,7 +33,7 @@ export function PastRoutesLayer({ routes, isFogEnabled = true }: PastRoutesLayer
       })),
     };
   }, [routes]);
-
+ 
   // 안개를 걷어내기 위해 모든 과거 경로들과 현재 활성화된 요소를 합친 MultiLineString을 만들 수 있지만,
   // 현재 구조상 FogOverlay는 하나의 Feature만을 받습니다. 
   // Mapbox 상에서는 여러 안개 레이어(다수의 뚫린 구멍)를 그려 겹칠 수 있으므로 과거 경로 전체를 하나의 지오메트리로 병합하여 보냅니다.
@@ -48,6 +48,7 @@ export function PastRoutesLayer({ routes, isFogEnabled = true }: PastRoutesLayer
       },
     };
   }, [routes]);
+
 
   if (!routes || routes.length === 0) return null;
 
@@ -68,7 +69,6 @@ export function PastRoutesLayer({ routes, isFogEnabled = true }: PastRoutesLayer
       </Mapbox.ShapeSource>
 
       {/* 2. 과거 이동 경로 전체를 감싸는 1km 반경 밖을 어둡게 처리하는 안개 오버레이 */}
-      {/* 참고: FogOverlay 컴포넌트가 Feature<MultiLineString>을 지원하도록 업데이트 되어야 정상 작동합니다 */}
       {isFogEnabled && fogFeature && (
         <FogOverlay feature={fogFeature} radiusKm={1} />
       )}
