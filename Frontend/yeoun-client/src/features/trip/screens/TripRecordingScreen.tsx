@@ -1575,7 +1575,7 @@ function RealTripRecordingScreen({
         locationService.stopAutoSync();
         endTrip();
         void fetchTrips(true);
-        router.push(`${reportRoute}?mode=review`);
+        router.replace(`${reportRoute}?mode=review`);
       } finally {
         setIsSyncing(false);
         setIsSubmittingAction(false);

@@ -100,6 +100,7 @@ public class ReceiptOcrQueryService {
 
     private ReceiptOcrLineItemResponse toLineItemResponse(ReceiptOcrLineItem item) {
         return new ReceiptOcrLineItemResponse(
+                item.getReceiptOcrLineItemRowId(),
                 item.getSortOrder(),
                 item.getName(),
                 item.getQuantity(),
