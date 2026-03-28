@@ -11,6 +11,7 @@ public class FinanceApiProperties {
     private String fintechAppNo;
     private String apiKey;
     private int syncRangeDays = 365;
+    private String cardSecretEncryptionKey;
 
     public boolean isEnabled() {
         return enabled;
@@ -58,6 +59,14 @@ public class FinanceApiProperties {
 
     public void setSyncRangeDays(int syncRangeDays) {
         this.syncRangeDays = syncRangeDays;
+    }
+
+    public String getCardSecretEncryptionKey() {
+        return cardSecretEncryptionKey;
+    }
+
+    public void setCardSecretEncryptionKey(String cardSecretEncryptionKey) {
+        this.cardSecretEncryptionKey = cardSecretEncryptionKey;
     }
 
 }

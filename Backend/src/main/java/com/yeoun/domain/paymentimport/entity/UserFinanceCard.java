@@ -62,9 +62,12 @@ public class UserFinanceCard {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public void refresh(String cardName, String cardUniqueNo, JsonNode rawPayloadJson, Instant now) {
+    public void refresh(String cardName, String cardUniqueNo, String cvc, JsonNode rawPayloadJson, Instant now) {
         this.cardName = cardName;
         this.cardUniqueNo = cardUniqueNo;
+        if (cvc != null && !cvc.isBlank()) {
+            this.cvc = cvc;
+        }
         this.rawPayloadJson = rawPayloadJson;
         this.active = true;
         this.updatedAt = now;
