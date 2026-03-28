@@ -39,6 +39,7 @@ const CATEGORY_LABELS: Record<ReceiptExpenseCategory, string> = {
 const isSuccessStatus = (status?: string | null) => status === 'READY' || status === 'COMPLETED';
 const isFailureStatus = (status?: string | null) => status === 'FAILED' || status === 'DLQ';
 const isTerminalStatus = (status?: string | null) => isSuccessStatus(status) || isFailureStatus(status);
+const NON_RECEIPT_ERROR_CODES = new Set(['NonReceiptImageError', 'NOT_RECEIPT_IMAGE']);
 
 export default function ReceiptOcrResultScreen() {
   const router = useRouter();
@@ -125,6 +126,13 @@ export default function ReceiptOcrResultScreen() {
 
     if (isFailureStatus(statusResponse.data.status)) {
       setResultData(null);
+      if (
+        statusResponse.data.lastErrorCode &&
+        NON_RECEIPT_ERROR_CODES.has(statusResponse.data.lastErrorCode)
+      ) {
+        setErrorMessage('This image does not look like a receipt. Please try again with a receipt photo.');
+        return statusResponse.data;
+      }
       setErrorMessage(statusResponse.data.lastErrorMessage ?? '영수증 OCR 분석에 실패했습니다.');
     }
 
