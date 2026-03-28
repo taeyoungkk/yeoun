@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
+import axios from "axios";
 import * as AuthSession from "expo-auth-session";
 import { Controller, useForm } from "react-hook-form";
 import * as WebBrowser from "expo-web-browser";
@@ -33,6 +34,29 @@ interface LoginForm {
   email: string;
   password: string;
 }
+
+const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
+  if (!axios.isAxiosError(error)) {
+    return fallbackMessage;
+  }
+
+  const status = error.response?.status;
+  const responseMessage = error.response?.data?.message;
+
+  if (typeof responseMessage === "string" && responseMessage.trim().length > 0) {
+    return status ? `${responseMessage} (${status})` : responseMessage;
+  }
+
+  if (status) {
+    return `${fallbackMessage} (${status})`;
+  }
+
+  if (typeof error.message === "string" && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return fallbackMessage;
+};
 
 export const LoginScreen = () => {
   const router = useRouter();
@@ -136,7 +160,7 @@ export const LoginScreen = () => {
       } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
         setLoginError("Google Play 서비스를 사용할 수 없습니다.");
       } else {
-        setLoginError("구글 로그인 중 오류가 발생했습니다.");
+        setLoginError(getApiErrorMessage(error, "Google login failed."));
         console.error("Google Login Error:", error);
       }
     } finally {
@@ -196,7 +220,7 @@ export const LoginScreen = () => {
         setLoginError(response.message || "로그인에 실패했습니다.");
       }
     } catch (error: any) {
-      setLoginError("이메일 또는 비밀번호가 올바르지 않습니다.");
+      setLoginError(getApiErrorMessage(error, "Login failed."));
       console.error("Login Error:", error);
     } finally {
       setIsLoading(false);

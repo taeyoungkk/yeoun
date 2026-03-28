@@ -2054,6 +2054,19 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>친구 초대하기</Text>
               </TouchableOpacity>
             ) : null}
+            {displayTrip?.tripId ? (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  router.push({ pathname: '/trip/photo-album', params: { tripId: displayTrip.tripId } } as never);
+                }}
+                activeOpacity={0.85}
+              >
+                <MaterialIcons name="photo-library" size={18} color="#244934" />
+                <Text style={styles.menuItemText}>앨범 보기</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
