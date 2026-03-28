@@ -107,11 +107,11 @@ public class TripInviteService {
     private TripInviteAcceptResponse acceptInvite(UUID requesterUserId, TripInvite invite) {
         Instant now = Instant.now();
         if (invite.getStatus() != TripInviteStatus.SENT) {
-            throw new BaseException(ErrorCode.TRIP_INVITE_ACCEPT_NOT_ALLOWED);
+            throw new BaseException(resolveUnavailableInviteErrorCode(invite));
         }
         if (invite.getExpiresAt().isBefore(now)) {
             invite.markExpired();
-            throw new BaseException(ErrorCode.TRIP_INVITE_ACCEPT_NOT_ALLOWED);
+            throw new BaseException(ErrorCode.TRIP_INVITE_EXPIRED);
         }
         if (invite.getInviteType() == TripInviteType.USER
                 && invite.getTargetUserId() != null
@@ -133,9 +133,6 @@ public class TripInviteService {
         if (tripMember != null) {
             if (tripMember.getInviteStatus() == TripMemberInviteStatus.ACCEPTED && tripMember.getLeftAt() == null) {
                 throw new BaseException(ErrorCode.TRIP_ALREADY_MEMBER);
-            }
-            if (tripMember.getLeftAt() != null) {
-                throw new BaseException(ErrorCode.TRIP_INVITE_ACCEPT_NOT_ALLOWED);
             }
             tripMember.accept(now, invite.getInviterUserId());
         } else {
@@ -209,7 +206,7 @@ public class TripInviteService {
             invite.markExpired();
         }
         if (invite.getStatus() != TripInviteStatus.SENT) {
-            throw new BaseException(ErrorCode.TRIP_INVITE_ACCEPT_NOT_ALLOWED);
+            throw new BaseException(resolveUnavailableInviteErrorCode(invite));
         }
 
         if (invite.getInviteType() == TripInviteType.USER) {
@@ -238,6 +235,16 @@ public class TripInviteService {
 
     private boolean isInviteAcceptAllowedStatus(TripStatus status) {
         return status == TripStatus.DRAFT || status == TripStatus.ACTIVE;
+    }
+
+    private ErrorCode resolveUnavailableInviteErrorCode(TripInvite invite) {
+        if (invite.getStatus() == TripInviteStatus.EXPIRED) {
+            return ErrorCode.TRIP_INVITE_EXPIRED;
+        }
+        if (invite.getStatus() == TripInviteStatus.USED || invite.getStatus() == TripInviteStatus.CANCELLED) {
+            return ErrorCode.TRIP_INVITE_ALREADY_PROCESSED;
+        }
+        return ErrorCode.TRIP_INVITE_ACCEPT_NOT_ALLOWED;
     }
 
     private ReceivedTripInviteItemResponse toReceivedInviteItemResponse(ReceivedTripInviteSummaryProjection projection) {
