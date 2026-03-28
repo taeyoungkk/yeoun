@@ -2,7 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { getTripDetailApi, getTripsApi, TripDetail, TripListItem } from '../api/trip';
+export { LocationLog, TripDetail, TripListItem } from '../api/trip';
+import { getTripDetailApi, getTripsApi, LocationLog, TripDetail, TripListItem } from '../api/trip';
+import { useUserStore } from './user.store';
 
 const isTerminalTripStatus = (status?: string | null) => status === 'ENDED' || status === 'DELETED';
 
@@ -32,6 +34,9 @@ interface TripState {
   locationSyncMessage: string | null;
   locationSyncUpdatedAt: string | null;
   lastSyncedLogUuid: string | null;
+  inFlightLogs: LocationLog[];
+  currentAddress: string | null;
+  locationStatus: 'LOADING' | 'SUCCESS' | 'DENIED' | 'GPS_OFF';
   startTrip: (trip: CurrentTrip) => void;
   updateCurrentTrip: (trip: CurrentTrip) => void;
   setReviewTrip: (trip: CurrentTrip) => void;
@@ -44,9 +49,12 @@ interface TripState {
   setLocationSyncState: (status: LocationSyncStatus, message?: string | null) => void;
   resetLocationSyncState: () => void;
   setLastSyncedLogUuid: (uuid: string | null) => void;
+  addInFlightLogs: (logs: LocationLog[]) => void;
+  clearInFlightLogs: () => void;
   endTrip: () => void;
   clearTrip: () => void;
   removeTrip: (tripId: string) => void;
+  setCurrentAddress: (address: string | null, status?: 'LOADING' | 'SUCCESS' | 'DENIED' | 'GPS_OFF') => void;
 }
 
 export const useTripStore = create<TripState>()(
@@ -65,6 +73,9 @@ export const useTripStore = create<TripState>()(
       locationSyncMessage: null,
       locationSyncUpdatedAt: null,
       lastSyncedLogUuid: null,
+      inFlightLogs: [],
+      currentAddress: null,
+      locationStatus: 'LOADING',
       startTrip: (trip) =>
         set({
           isTripActive: true,
@@ -98,7 +109,7 @@ export const useTripStore = create<TripState>()(
             endDate: trip.endDate,
             memberCount: trip.memberCount ?? trip.participants ?? state.currentTrip?.memberCount ?? 0,
             origin: trip.country ?? state.currentTrip?.origin ?? '',
-            destination: trip.region ?? trip.title,
+            destination: trip.region ?? trip.country ?? '',
           };
           const hasDifferentActiveTrip =
             state.isTripActive && state.currentTripId !== null && state.currentTripId !== trip.tripId;
@@ -149,6 +160,16 @@ export const useTripStore = create<TripState>()(
           set({ isTripsLoading: false });
         }
       },
+      setCurrentAddress: (address, status = 'SUCCESS') => {
+        const current = get();
+        if (current.currentAddress === address && current.locationStatus === status) {
+          return;
+        }
+        set({ 
+          currentAddress: address,
+          locationStatus: status 
+        });
+      },
       restoreActiveTripFromServer: async () => {
         const persistedTripId = get().currentTripId;
         if (!persistedTripId) {
@@ -156,20 +177,35 @@ export const useTripStore = create<TripState>()(
         }
 
         const detailResponse = await getTripDetailApi(persistedTripId);
+        
+        // Handle 404 (Not Found) - Clear the stale state
+        // The API returns success: false and code: 'NOT_FOUND' (from getErrorCode) for 404s
+        if (!detailResponse.success && detailResponse.code === 'NOT_FOUND') {
+          console.warn('[TripStore] Active trip not found on server (404). Cleaning up stale state.');
+          get().clearTrip();
+          return null;
+        }
+
         if (detailResponse.success) {
-          if (detailResponse.data.status === 'ACTIVE') {
-            get().syncAcceptedTrip(detailResponse.data);
+          const tripData = detailResponse.data;
+          const currentUserId = useUserStore.getState().profile?.userId;
+
+          // Ownership check: If the trip belongs to someone else, don't restore it as ACTIVE
+          if (tripData.ownerUserId && currentUserId && tripData.ownerUserId !== currentUserId) {
+            console.warn('[TripStore] Active trip ownership mismatch. Cleaning up stale state.');
+            get().clearTrip();
             void get().fetchTrips(true);
-            return detailResponse.data;
+            return null;
           }
 
           if (isTerminalTripStatus(detailResponse.data.status) && get().currentTripId === detailResponse.data.tripId) {
             get().clearTrip();
           }
           void get().fetchTrips(true);
-          return detailResponse.data;
+          return tripData;
         }
 
+        // Fallback: Check trip list if detail fetch failed for reasons other than 404
         const trips = await get().fetchTrips(true);
         const activeTripListItem = trips.find((trip) => trip.tripId === persistedTripId && trip.status === 'ACTIVE');
 
@@ -237,6 +273,14 @@ export const useTripStore = create<TripState>()(
           trips: state.trips.filter((t) => t.tripId !== tripId),
           tripsFetchedAt: 0, // Force fresh fetch on next call
         })),
+      addInFlightLogs: (logs) =>
+        set((state) => ({
+          inFlightLogs: [...state.inFlightLogs, ...logs],
+        })),
+      clearInFlightLogs: () =>
+        set({
+          inFlightLogs: [],
+        }),
     }),
     {
       name: 'trip-storage',
