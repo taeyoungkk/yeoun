@@ -4,6 +4,8 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { getTripDetailApi, getTripsApi, TripDetail, TripListItem } from '../api/trip';
 
+const isTerminalTripStatus = (status?: string | null) => status === 'ENDED' || status === 'DELETED';
+
 export interface CurrentTrip {
   tripId: string;
   tripName: string;
@@ -161,7 +163,7 @@ export const useTripStore = create<TripState>()(
             return detailResponse.data;
           }
 
-          if (get().currentTripId === detailResponse.data.tripId || get().isTripActive) {
+          if (isTerminalTripStatus(detailResponse.data.status) && get().currentTripId === detailResponse.data.tripId) {
             get().clearTrip();
           }
           void get().fetchTrips(true);
@@ -172,6 +174,10 @@ export const useTripStore = create<TripState>()(
         const activeTripListItem = trips.find((trip) => trip.tripId === persistedTripId && trip.status === 'ACTIVE');
 
         if (!activeTripListItem) {
+          const matchingTripListItem = trips.find((trip) => trip.tripId === persistedTripId);
+          if (matchingTripListItem && isTerminalTripStatus(matchingTripListItem.status) && get().currentTripId === persistedTripId) {
+            get().clearTrip();
+          }
           return null;
         }
 
@@ -181,7 +187,7 @@ export const useTripStore = create<TripState>()(
         }
 
         if (activeDetailResponse.data.status !== 'ACTIVE') {
-          if (get().currentTripId === activeDetailResponse.data.tripId || get().isTripActive) {
+          if (isTerminalTripStatus(activeDetailResponse.data.status) && get().currentTripId === activeDetailResponse.data.tripId) {
             get().clearTrip();
           }
           return activeDetailResponse.data;
