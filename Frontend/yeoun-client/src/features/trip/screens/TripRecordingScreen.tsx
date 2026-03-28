@@ -56,7 +56,6 @@ import {
   leaveTripApi,
   type TripDetail,
   type TripMemberItem,
-  type TripDetail,
   type LocationLog,
 } from '@/src/api/trip';
 import { matchMapTrace } from '@/src/api/mapbox';
