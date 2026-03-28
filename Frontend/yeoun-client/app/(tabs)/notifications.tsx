@@ -13,8 +13,10 @@ import { Notification, useNotificationStore } from '@/src/store/notification.sto
 import { useTripStore } from '@/src/store/trip.store';
 import { useUIStore } from '@/src/store/ui.store';
 
-const isFriendRequestNotification = (type: string) => type.includes('FRIEND_REQUEST');
-const isTripInviteNotification = (type: string) => type.includes('TRIP_INVITE');
+const isFriendRequestNotification = (type: string) => type.startsWith('FRIEND_REQUEST');
+const isTripInviteNotification = (type: string) => type.startsWith('TRIP_INVITE');
+const isFriendRequestReceivedNotification = (type: string) => type === 'FRIEND_REQUEST_RECEIVED';
+const isTripInviteReceivedNotification = (type: string) => type === 'TRIP_INVITE_RECEIVED';
 const isReceiptReminderNotification = (type: string) => type.includes('RECEIPT_REMINDER');
 const isPaymentRequestNotification = (type: string) => type.includes('PAYMENT_REQUEST');
 
@@ -295,7 +297,8 @@ export default function NotificationsScreen() {
           visibleNotifications.map((item) => {
             const icon = getNotificationIcon(item.type);
             const hasDecisionAction =
-              activeTab === 'active' && (isFriendRequestNotification(item.type) || isTripInviteNotification(item.type));
+              activeTab === 'active' &&
+              (isFriendRequestReceivedNotification(item.type) || isTripInviteReceivedNotification(item.type));
             const hasNavigationAction =
               activeTab === 'active' &&
               !hasDecisionAction &&
@@ -305,7 +308,7 @@ export default function NotificationsScreen() {
             return (
               <View
                 key={item.id}
-                className={`mb-4 rounded-3xl border border-gray-100 p-4 ${item.isRead ? 'bg-white' : 'bg-blue-50/40'}`}
+                className="mb-4 rounded-3xl bg-white p-4"
                 style={{
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 2 },
@@ -319,9 +322,9 @@ export default function NotificationsScreen() {
                     <MaterialIcons name={icon.name} size={22} color={icon.color} />
                   </View>
                   <View className="flex-1">
-                    <View className="flex-row justify-between items-center">
-                      <Text className="text-base font-bold text-gray-900">{item.title}</Text>
-                      {activeTab === 'active' && !item.isRead ? <View className="w-2 h-2 rounded-full bg-[#2563EB]" /> : null}
+                    <View className="flex-row items-center gap-2 pr-3">
+                      <Text className="flex-1 text-base font-bold text-gray-900">{item.title}</Text>
+                      {activeTab === 'active' && !item.isRead ? <View className="w-2 h-2 rounded-full bg-[#EF4444]" /> : null}
                     </View>
                     <Text className="text-sm text-gray-600 mt-1 leading-5">{item.message}</Text>
                   </View>
