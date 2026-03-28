@@ -50,6 +50,7 @@ import {
 import {
   deleteTripApi,
   endTripApi,
+  filterAcceptedTripMembers,
   getTripDetailApi,
   getTripMembersApi,
   getTripRouteByDayApi,
@@ -748,9 +749,6 @@ function RealTripRecordingScreen({
     outputRange: [0, -145],
     extrapolate: 'clamp',
   });
-  const routeTripId = typeof params.tripId === 'string' ? params.tripId.trim() : '';
-  const storeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
-  const activeTripId = (routeTripId || storeTripId || '').trim();
   const tripTitle = (displayTrip as { title?: string; tripName?: string } | null)?.title || displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(
     loadedTripDetail?.ownerUserId && currentUserId && loadedTripDetail.ownerUserId === currentUserId,
@@ -1034,12 +1032,13 @@ function RealTripRecordingScreen({
               .filter((photoDetail): photoDetail is PhotoDetail => Boolean(photoDetail))
               .map((photoDetail) => [photoDetail.photoId, photoDetail]),
           );
-          const memberMap = tripMembersResponse.success
-            ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
-            : {};
+          const acceptedTripMembers = tripMembersResponse.success
+            ? filterAcceptedTripMembers(tripMembersResponse.data.items)
+            : [];
+          const memberMap = Object.fromEntries(acceptedTripMembers.map((member) => [member.userId, member]));
 
           // Final State Updates
-          setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
+          setTripMembers(acceptedTripMembers);
           setRealTripDays(buildRealTripDays(
             timelineDays, 
             routeByDate, 
