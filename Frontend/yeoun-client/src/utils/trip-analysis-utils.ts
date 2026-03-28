@@ -64,8 +64,13 @@ export function calculateDistance(route: [number, number][]): number {
   
   let totalKm = 0;
   for (let i = 0; i < route.length - 1; i++) {
-    const [lon1, lat1] = route[i];
-    const [lon2, lat2] = route[i+1];
+    const p1 = route[i];
+    const p2 = route[i+1];
+    
+    if (!p1 || !p2 || p1.length < 2 || p2.length < 2) continue;
+    
+    const [lon1, lat1] = p1;
+    const [lon2, lat2] = p2;
     
     const R = 6371; // Earth radius in km
     const dLat = (lat2 - lat1) * (Math.PI / 180);

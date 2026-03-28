@@ -85,7 +85,7 @@ type MapFilterKey = 'showPhotoPins' | 'showPaymentPins';
 type ActionConfirmKind = 'end' | 'leave' | 'delete';
 type PaymentDialogMode = 'edit';
 type PaymentSplitType = 'equal';
-type PhotoSyncOutcome = 'synced' | 'empty' | 'skipped_permission' | 'skipped_range' | 'failed';
+type PhotoSyncOutcome = 'synced' | 'empty' | 'skipped_permission' | 'skipped_app_setting' | 'skipped_range' | 'failed';
 
 type PhotoContributor = {
   id: string;
@@ -549,6 +549,7 @@ function RealTripRecordingScreen({
   const resetLocationSyncState = useTripStore((state) => state.resetLocationSyncState);
   const currentUserId = useUserStore((state) => state.profile?.userId);
   const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
+  const inFlightLogs = useTripStore((state) => state.inFlightLogs);
   const removeTrip = useTripStore((state) => state.removeTrip);
   const fetchTrips = useTripStore((state) => state.fetchTrips);
 
@@ -620,6 +621,11 @@ function RealTripRecordingScreen({
     }
   }, []);
   const isReviewMode = params.mode === 'review';
+  const routeTripId = typeof params.tripId === 'string' ? params.tripId.trim() : '';
+  const storeTripId = isReviewMode
+    ? reviewTrip?.tripId ?? currentTrip?.tripId ?? ''
+    : currentTripId ?? currentTrip?.tripId ?? '';
+  const activeTripId = (routeTripId || storeTripId || '').trim();
   const displayTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
 
   const tripDays = useMemo(() => {
@@ -655,13 +661,15 @@ function RealTripRecordingScreen({
   const routeCoordinates = useMemo(() => {
     const serverRoute = filteredDays.flatMap((day) => day.route);
     // Only append session trail if we are looking at 'all' or the last day
-    if (activeFilter === 'all' || activeFilter === `day${tripDays.length}`) {
+    // AND we are in ACTIVE mode (not review) for the current active trip
+    if (!isReviewMode && activeTripId === currentTripId && (activeFilter === 'all' || activeFilter === `day${tripDays.length}`)) {
+      const inFlightCoords = inFlightLogs.map(l => [l.longitude, l.latitude] as Coordinate);
       // Show already matched trail + raw points that haven't been matched yet
       const rawTrailCoords = sessionTrail.slice(lastMatchedIndexRef.current).map(l => [l.longitude, l.latitude] as Coordinate);
-      return [...serverRoute, ...matchedSessionTrail, ...rawTrailCoords];
+      return [...serverRoute, ...inFlightCoords, ...matchedSessionTrail, ...rawTrailCoords];
     }
     return serverRoute;
-  }, [activeFilter, filteredDays, sessionTrail, matchedSessionTrail, tripDays.length]);
+  }, [activeFilter, filteredDays, inFlightLogs, sessionTrail, matchedSessionTrail, tripDays.length, isReviewMode, activeTripId, currentTripId]);
 
   const currentLocationCoordinate = useMemo(
     () => liveCurrentLocation ?? initialCurrentLocation,
@@ -713,7 +721,7 @@ function RealTripRecordingScreen({
         paymentCount: filteredEvents.filter((event) => event.type === 'payment').length,
       };
     },
-    [activeFilter, filteredDays, filteredEvents, sessionTrail, tripDays.length]
+    [routeCoordinates, filteredEvents]
   );
   const selectedPhotoEvent = useMemo(
     () => filteredEvents.find((event) => event.id === photoViewer?.eventId) ?? null,
@@ -770,7 +778,7 @@ function RealTripRecordingScreen({
   );
 
   const updateRealTimelinePhotoMemo = useCallback((eventId: string, photoId: string, memo?: string) => {
-    setTripEvents((prev) =>
+    setTripEvents((prev: TimelineEvent[]) =>
       prev.map((event) => {
         if (event.id !== eventId || !event.photoItems) {
           return event;
@@ -792,7 +800,7 @@ function RealTripRecordingScreen({
   }, []);
 
   const removeRealTimelinePhoto = useCallback((eventId: string, photoId: string) => {
-    setTripEvents((prev) =>
+    setTripEvents((prev: TimelineEvent[]) =>
       prev.flatMap((event) => {
         if (event.id !== eventId || !event.photoItems) {
           return [event];
@@ -824,7 +832,7 @@ function RealTripRecordingScreen({
 
   const updateRealTimelineEvent = useCallback(
     (eventId: string, updates: Partial<Pick<TimelineEvent, 'title' | 'placeName' | 'subtitle' | 'eventMemo'>>) => {
-      setTripEvents((prev) =>
+      setTripEvents((prev: TimelineEvent[]) =>
         prev.map((event) =>
           event.id === eventId
             ? {
@@ -839,7 +847,7 @@ function RealTripRecordingScreen({
   );
 
   const removeRealTimelineEvent = useCallback((eventId: string) => {
-    setTripEvents((prev) => prev.filter((event) => event.id !== eventId));
+    setTripEvents((prev: TimelineEvent[]) => prev.filter((event) => event.id !== eventId));
   }, []);
 
   const updateRealExpenseEvent = useCallback(
@@ -857,7 +865,7 @@ function RealTripRecordingScreen({
         >
       >,
     ) => {
-      setTripEvents((prev) =>
+      setTripEvents((prev: TimelineEvent[]) =>
         prev.map((event) =>
           event.id === eventId
             ? {
@@ -921,6 +929,7 @@ function RealTripRecordingScreen({
     let cancelled = false;
 
     const loadRealTripData = async () => {
+      console.log(`[TripRecording] Loading data for ${activeTripId}. Current user: ${currentUserId}`);
       try {
         const [tripDetailResponse, timelineDaysResponse, expensesResponse, tripMembersResponse] = await Promise.all([
           getTripDetailApi(activeTripId),
@@ -929,144 +938,169 @@ function RealTripRecordingScreen({
           getTripMembersApi(activeTripId),
         ]);
 
-        const timelineDays = (await Promise.all(
-          timelineDaysResponse.data.timelineDays.map(async (timelineDay) => {
-            try {
-              const detailResponse = await getTimelineDayDetailApi(timelineDay.timelineDayId);
-              return detailResponse.success ? detailResponse.data : null;
-            } catch (e) {
-              console.warn(`Failed to fetch detail for day ${timelineDay.timelineDayId}`, e);
-              return null;
-            }
-          }),
-        )).filter((d): d is TimelineDayDetail => Boolean(d));
-        const eventDetails = await Promise.all(
-          timelineDays.flatMap((timelineDay) =>
-            timelineDay.events
-              .filter((event) => !event.hidden)
-              .map(async (event) => {
-                const detailResponse = await getEventDetailApi(event.eventId);
-                return detailResponse.success ? detailResponse.data : null;
-              }),
-          ),
-        );
-        const validEventDetails = eventDetails.filter((eventDetail): eventDetail is EventDetail => Boolean(eventDetail));
-        const uniquePhotoIds = Array.from(
-          new Set(validEventDetails.flatMap((eventDetail) => eventDetail.photos.map((photo) => photo.photoId))),
-        );
-        const photoDetails = await Promise.all(
-          uniquePhotoIds.map(async (photoId) => {
-            const photoDetailResponse = await getPhotoDetailApi(photoId);
-            return photoDetailResponse.success ? photoDetailResponse.data : null;
-          }),
-        );
-        const routeByDate = new Map<string, Coordinate[]>();
-        const uniqueDates = Array.from(new Set([
-          ...timelineDays.map(d => d.dayDate),
-          new Date().toISOString().split('T')[0]
-        ]));
+        if (cancelled) return;
 
-        await Promise.all(
-          uniqueDates.map(async (date) => {
-            try {
-              const routeResponse = await getTripRouteByDayApi(activeTripId, date);
-              if (routeResponse.success) {
-                routeByDate.set(date, normalizeRouteCoordinates(routeResponse.data.routeDays));
-              }
-            } catch (e) {
-              console.warn(`Failed to fetch route for date ${date}`, e);
-            }
-          })
-        );
-
-        if (cancelled) {
-          return;
-        }
-
-        const eventDetailsById = Object.fromEntries(validEventDetails.map((eventDetail) => [eventDetail.eventId, eventDetail]));
-        const photoDetailsById = Object.fromEntries(
-          photoDetails
-            .filter((photoDetail): photoDetail is PhotoDetail => Boolean(photoDetail))
-            .map((photoDetail) => [photoDetail.photoId, photoDetail]),
-        );
-        const memberMap = tripMembersResponse.success
-          ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
-          : {};
-
+        // 1. Set Trip Detail immediately for UI titles and 'End Trip' button visibility
         if (tripDetailResponse.success) {
-          setLoadedTripDetail(tripDetailResponse.data);
-          if (!isReviewMode && tripDetailResponse.data.status !== 'ACTIVE') {
-            setActiveTrip(tripDetailResponse.data);
-            router.replace({
-              pathname: '/trip/recording',
-              params: { mode: 'review', tripId: activeTripId },
-            });
-            return;
+          const tripData = tripDetailResponse.data;
+          setLoadedTripDetail(tripData);
+
+          // OWNERSHIP CHECK: If we are in recording mode but don't own this trip
+          // and it's not a trip we should be recording, treat as ghost data.
+          if (!isReviewMode && tripData.ownerUserId && currentUserId && tripData.ownerUserId !== currentUserId) {
+             console.warn('Trip ownership mismatch. Clearing stale trip state.');
+             clearTrip();
+             router.replace('/(tabs)');
+             return;
           }
 
           if (!isReviewMode) {
-            setActiveTrip(tripDetailResponse.data);
+            setActiveTrip(tripData);
+            if (tripData.status !== 'ACTIVE') {
+              router.replace({
+                pathname: '/trip/recording',
+                params: { mode: 'review', tripId: activeTripId },
+              });
+              return;
+            }
           }
         }
-        setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
-        setRealTripDays(buildRealTripDays(
-          timelineDays, 
-          routeByDate, 
-          activeTripId, 
-          tripDetailResponse.data?.startDate,
-          tripDetailResponse.data?.endDate
-        ));
-        setTripEvents(
-          appendRealExpenseEvents(
-            buildRealTripEvents(
+
+        // 2. Process secondary data (Timeline, Events, Photos, Routes)
+        if (timelineDaysResponse.success && timelineDaysResponse.data?.timelineDays) {
+          const timelineDays = (await Promise.all(
+            timelineDaysResponse.data.timelineDays.map(async (timelineDay) => {
+              try {
+                const detailResponse = await getTimelineDayDetailApi(timelineDay.timelineDayId);
+                return detailResponse.success ? detailResponse.data : null;
+              } catch (e) {
+                console.warn(`Failed to fetch detail for day ${timelineDay.timelineDayId}`, e);
+                return null;
+              }
+            }),
+          )).filter((d): d is TimelineDayDetail => Boolean(d));
+
+          // Fetch Event Details
+          const eventDetails = await Promise.all(
+            timelineDays.flatMap((timelineDay) =>
+              timelineDay.events
+                .filter((event) => !event.hidden)
+                .map(async (event) => {
+                  const detailResponse = await getEventDetailApi(event.eventId);
+                  return detailResponse.success ? detailResponse.data : null;
+                }),
+            ),
+          );
+          const validEventDetails = eventDetails.filter((eventDetail): eventDetail is EventDetail => Boolean(eventDetail));
+
+          // Fetch Photo Details
+          const uniquePhotoIds = Array.from(
+            new Set(validEventDetails.flatMap((eventDetail) => eventDetail.photos.map((photo) => photo.photoId))),
+          );
+          const photoDetails = await Promise.all(
+            uniquePhotoIds.map(async (photoId) => {
+              const photoDetailResponse = await getPhotoDetailApi(photoId);
+              return photoDetailResponse.success ? photoDetailResponse.data : null;
+            }),
+          );
+
+          // Fetch Routes
+          const routeByDate = new Map<string, Coordinate[]>();
+          const uniqueDates = Array.from(new Set([
+            ...timelineDays.map(d => d.dayDate),
+            new Date().toISOString().split('T')[0]
+          ]));
+
+          await Promise.all(
+            uniqueDates.map(async (date) => {
+              try {
+                if (!activeTripId) return;
+                const routeResponse = await getTripRouteByDayApi(activeTripId, date);
+                if (routeResponse.success) {
+                  routeByDate.set(date, normalizeRouteCoordinates(routeResponse.data.routeDays));
+                }
+              } catch (e) {
+                console.warn(`Failed to fetch route for date ${date}`, e);
+              }
+            })
+          );
+
+          if (cancelled) return;
+
+          // Mapping helpers
+          const eventDetailsById = Object.fromEntries(validEventDetails.map((eventDetail) => [eventDetail.eventId, eventDetail]));
+          const photoDetailsById = Object.fromEntries(
+            photoDetails
+              .filter((photoDetail): photoDetail is PhotoDetail => Boolean(photoDetail))
+              .map((photoDetail) => [photoDetail.photoId, photoDetail]),
+          );
+          const memberMap = tripMembersResponse.success
+            ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
+            : {};
+
+          // Final State Updates
+          setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
+          setRealTripDays(buildRealTripDays(
+            timelineDays, 
+            routeByDate, 
+            activeTripId, 
+            tripDetailResponse.data?.startDate,
+            tripDetailResponse.data?.endDate
+          ));
+          setTripEvents(
+            appendRealExpenseEvents(
+              buildRealTripEvents(
+                timelineDays,
+                eventDetailsById,
+                photoDetailsById,
+                memberMap,
+                currentUserId,
+                currentUserNickname,
+              ),
               timelineDays,
-              eventDetailsById,
-              photoDetailsById,
+              expensesResponse?.data?.items ?? [],
               memberMap,
               currentUserId,
               currentUserNickname,
             ),
-            timelineDays,
-            expensesResponse?.data?.items ?? [],
-            memberMap,
-            currentUserId,
-            currentUserNickname,
-          ),
-        );
-        
-        // Prune session trail based on the last synced log.
+          );
+        }
+
+        // 3. Prune session trail based on the last synced log.
         const lastSyncedUuid = useTripStore.getState().lastSyncedLogUuid;
         if (lastSyncedUuid) {
-          setSessionTrail(prev => {
+          setSessionTrail((prev: LocationLog[]) => {
             const syncedIndex = prev.findIndex(l => l.clientLogUuid === lastSyncedUuid);
-            if (syncedIndex !== -1) {
-              return prev.slice(syncedIndex + 1);
-            }
-            return prev;
+            return syncedIndex !== -1 ? prev.slice(syncedIndex + 1) : prev;
           });
-          // Reset matched trail so it starts fresh from the pruned session trail
-          setMatchedSessionTrail([]);
-          lastMatchedIndexRef.current = 0;
         } else {
-          // Fallback to time-based pruning if no UUID (e.g. initial load)
-          setSessionTrail(prev => {
+          setSessionTrail((prev: LocationLog[]) => {
             const twoMinsAgo = new Date(Date.now() - 120000).toISOString();
             return prev.filter(l => l.recordedAt > twoMinsAgo);
           });
-          setMatchedSessionTrail([]);
-          lastMatchedIndexRef.current = 0;
         }
-      } catch (error) {
-        if (cancelled) {
+        setMatchedSessionTrail([]);
+        lastMatchedIndexRef.current = 0;
+      } catch (err: any) {
+        if (cancelled) return;
+
+        console.error('Failed to load real trip data', err);
+
+        // SELF-HEALING: If the Trip ID is not found on the server (404),
+        // it means our local storage is stale (e.g. from a different account).
+        if (err?.response?.status === 404 || err?.status === 404) {
+          Alert.alert(
+            '여행을 찾을 수 없음',
+            '해당 여행 정보를 찾을 수 없습니다. 홈화면으로 이동합니다.',
+            [{ text: '확인', onPress: () => {
+              clearTrip();
+              router.replace('/(tabs)');
+            }}]
+          );
           return;
         }
 
-        console.error('Failed to load real trip data', error);
-        setLoadedTripDetail(null);
-        setRealTripDays(null);
-        setTripEvents([]);
-        setTripMembers([]);
-        Alert.alert('Trip data load failed', 'Could not load real trip data.');
+        Alert.alert('Trip data partially failed', 'Could not load your full travel history.');
       }
     };
 
@@ -1075,7 +1109,7 @@ function RealTripRecordingScreen({
     return () => {
       cancelled = true;
     };
-  }, [activeTripId, currentUserId, currentUserNickname, isReviewMode, routeRefreshKey, setActiveTrip]);
+  }, [activeTripId, currentUserId, currentUserNickname, isReviewMode, routeRefreshKey, setActiveTrip, router, clearTrip]);
 
 
   useEffect(() => {
@@ -1089,7 +1123,7 @@ function RealTripRecordingScreen({
       const coord: Coordinate = [location.longitude, location.latitude];
       setLiveCurrentLocation(coord);
       if (!isReviewMode) {
-        setSessionTrail((prev) => {
+        setSessionTrail((prev: LocationLog[]) => {
           // Avoid duplicates
           if (prev.length > 0 && prev[prev.length - 1].recordedAt === location.recordedAt) return prev;
           return [...prev, location];
@@ -1102,9 +1136,9 @@ function RealTripRecordingScreen({
       
       const refreshPendingLogs = () => {
         locationService.getPendingLogs().then((logs) => {
-          setSessionTrail((prev) => {
+          setSessionTrail((prev: LocationLog[]) => {
             const combined = [...logs, ...prev];
-            const unique = Array.from(new Map(combined.map(l => [l.recordedAt, l])).values())
+            const unique = Array.from(new Map(combined.map((l: LocationLog) => [l.recordedAt, l] as const)).values())
               .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
             return unique;
           });
@@ -1163,22 +1197,22 @@ function RealTripRecordingScreen({
         try {
           const matched = await matchMapTrace(chunkToMatch, 'walking');
           if (matched && matched.length > 0) {
-            setMatchedSessionTrail(prev => {
+            setMatchedSessionTrail((prev: Coordinate[]) => {
               const nextBase = startIndex === 0 ? [] : prev;
               return [...nextBase, ...matched];
             });
           } else {
             // Fallback: use raw points if matching fails (e.g. non-road path like a train)
-            setMatchedSessionTrail(prev => {
+            setMatchedSessionTrail((prev: Coordinate[]) => {
               const nextBase = startIndex === 0 ? [] : prev;
               return [...nextBase, ...chunkToMatch];
             });
           }
           // Advance index regardless to avoid infinite retries of failing segments
           lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
-        } catch (error) {
-          console.warn('[Map Matching] Failed to match segment, falling back to raw:', error);
-          setMatchedSessionTrail(prev => {
+        } catch (err) {
+          console.warn('[Map Matching] Failed to match segment, falling back to raw:', err);
+          setMatchedSessionTrail((prev: Coordinate[]) => {
             const nextBase = startIndex === 0 ? [] : prev;
             return [...nextBase, ...chunkToMatch];
           });
@@ -1321,6 +1355,11 @@ function RealTripRecordingScreen({
       }
 
       try {
+        const { photoPerm } = useUserStore.getState().settings;
+        if (!photoPerm) {
+          return { outcome: 'skipped_app_setting', syncedCount: 0 };
+        }
+
         const photoPermission = await requestTripPhotoPermission();
 
         if (!photoPermission.granted) {
@@ -1408,6 +1447,8 @@ function RealTripRecordingScreen({
       return false;
     }
 
+    const { locationPerm, photoPerm } = useUserStore.getState().settings;
+
     const photoResult = await syncTripPhotosOnly({ showStatus: true });
     const locationSynced = await locationService.syncLocations(activeTripId);
 
@@ -1415,27 +1456,27 @@ function RealTripRecordingScreen({
       return false;
     }
 
+    // Determine the combined feedback message
+    let finalMessage = '';
+    
+    const locStatus = locationPerm ? '위치 기록 동기화를 완료했습니다' : '위치 기록은 건너뛰었습니다';
+
     if (photoResult.outcome === 'synced') {
-      setLocationSyncState('completed', `위치 기록과 여행 사진 ${photoResult.syncedCount}장을 동기화했습니다.`);
-      return true;
+      finalMessage = `${locationPerm ? '위치 기록과 ' : ''}여행 사진 ${photoResult.syncedCount}장을 동기화했습니다.`;
+    } else if (photoResult.outcome === 'failed') {
+      finalMessage = `${locStatus}, 사진 동기화는 실패했습니다.`;
+    } else if (photoResult.outcome === 'skipped_permission') {
+      finalMessage = `${locStatus}, 사진 접근 권한이 없어 사진은 건너뛰었습니다.`;
+    } else if (photoResult.outcome === 'skipped_app_setting') {
+      finalMessage = `${locStatus}, 설정에서 사진 수집이 비활성화되어 있어 사진은 건너뛰었습니다.`;
+    } else if (photoResult.outcome === 'skipped_range') {
+      finalMessage = `${locStatus}, 여행 기간 정보가 없어 사진은 건너뛰었습니다.`;
+    } else {
+      // outcome === 'empty'
+      finalMessage = `${locStatus} (새로 동기화할 사진은 없습니다).`;
     }
 
-    if (photoResult.outcome === 'failed') {
-      setLocationSyncState('completed', '위치 기록은 동기화했고, 사진 동기화는 실패했습니다.');
-      return true;
-    }
-
-    if (photoResult.outcome === 'skipped_permission') {
-      setLocationSyncState('completed', '위치 기록은 동기화했고, 사진 권한이 없어 사진은 건너뛰었습니다.');
-      return true;
-    }
-
-    if (photoResult.outcome === 'skipped_range') {
-      setLocationSyncState('completed', '위치 기록은 동기화했고, 여행 기간 정보가 없어 사진은 건너뛰었습니다.');
-      return true;
-    }
-
-    setLocationSyncState('completed', '위치 기록 동기화가 완료되었습니다. 새로 가져올 여행 사진은 없습니다.');
+    setLocationSyncState('completed', finalMessage);
     return true;
   }, [activeTripId, setLocationSyncState, syncTripPhotosOnly]);
 
@@ -1558,7 +1599,24 @@ function RealTripRecordingScreen({
       try {
         setIsSyncing(true);
         stopAutoPhotoSync();
-        await syncTripAssets();
+        
+        // Ownership check before calling end api (extra safety)
+        if (!isTripOwner) {
+          Alert.alert('권한 없음', '여행 종료는 방장(생성자)만 할 수 있습니다.');
+          return;
+        }
+
+        // Start sync but we can proceed as soon as status becomes 'processing' (upload complete)
+        const syncPromise = syncTripAssets();
+        
+        // Wait a bit to see if sync reaches 'processing' quickly
+        let iters = 0;
+        while (iters < 15 && useTripStore.getState().locationSyncStatus !== 'processing' 
+               && useTripStore.getState().locationSyncStatus !== 'completed') {
+          await new Promise(r => setTimeout(r, 1000));
+          iters++;
+        }
+
         const response = await endTripApi(activeTripId);
 
         if (!response.success) {
@@ -1573,6 +1631,7 @@ function RealTripRecordingScreen({
 
         await locationService.stopTracking();
         locationService.stopAutoSync();
+        resetLocationSyncState(); // CLEAR SYNC TOAST BEFORE NAVIGATING
         endTrip();
         void fetchTrips(true);
         router.push(`${reportRoute}?mode=review`);
@@ -1888,13 +1947,13 @@ function RealTripRecordingScreen({
   };
 
   const togglePaymentMember = (memberUserId: string) => {
-    setPaymentImportDialog((prev) => {
+    setPaymentImportDialog((prev: any) => {
       if (!prev) {
         return prev;
       }
 
       const nextMembers = prev.selectedMemberUserIds.includes(memberUserId)
-        ? prev.selectedMemberUserIds.filter((member) => member !== memberUserId)
+        ? prev.selectedMemberUserIds.filter((member: string) => member !== memberUserId)
         : [...prev.selectedMemberUserIds, memberUserId];
 
       return {
@@ -2027,7 +2086,7 @@ function RealTripRecordingScreen({
               <Text style={styles.syncHeaderButtonText}>{syncActionInFlight ? '동기화 중' : '동기화'}</Text>
             </TouchableOpacity>
           ) : null}
-          <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev) => !prev)} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev: boolean) => !prev)} activeOpacity={0.85}>
             <MaterialIcons name="more-horiz" size={22} color="#274232" />
           </TouchableOpacity>
           </View>
@@ -2080,7 +2139,7 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>앨범 보기</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={[styles.menuItem, !canEndActiveTrip && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, (!isTripOwner || !canUseActiveTripActions) && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
@@ -2094,7 +2153,7 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>여행 삭제</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); router.push('/trip/start?mode=edit'); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, (!isTripOwner || !canUseActiveTripActions) && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); router.push('/trip/start?mode=edit'); }} activeOpacity={0.85}>
               <MaterialIcons name="edit" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 수정</Text>
             </TouchableOpacity>
