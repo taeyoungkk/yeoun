@@ -67,7 +67,8 @@ export default function PaymentSummaryScreen() {
     try {
       const tripsResponse = await getTripsApi();
       if (tripsResponse.success) {
-        setTrip(tripsResponse.data.items.find((item) => item.tripId === activeTripId) ?? null);
+        const availableTrips = tripsResponse.data.items.filter((item) => item.status !== 'DELETED');
+        setTrip(availableTrips.find((item) => item.tripId === activeTripId) ?? null);
       }
 
       const expensesResponse = await getTripExpensesApi(activeTripId);
@@ -115,7 +116,7 @@ export default function PaymentSummaryScreen() {
   }, [expenses]);
 
   const hasExpenses = expenses.length > 0;
-  const displayTrip = trip ?? currentTrip;
+  const displayTrip = trip ?? (currentTrip?.tripId === activeTripId ? currentTrip : null);
 
   const formatPeriod = (start?: string, end?: string) => {
     if (!start || !end) return '여행 기간 정보가 없어요';
