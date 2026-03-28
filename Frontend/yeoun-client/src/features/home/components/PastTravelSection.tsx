@@ -92,7 +92,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
         date: `${activeTrip.startDate} ~ ${activeTrip.endDate}`,
         participants: participantCandidates.length > 0 ? Math.max(...participantCandidates) : 0,
         imageUrl: activeTrip.imageUrl,
-        region: activeTrip.region || activeTrip.title,
+        region: currentAddress || activeTrip.region || activeTrip.country,
       };
     }
 
@@ -105,7 +105,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
         date: formatRange(currentTrip.startDate, currentTrip.endDate),
         participants: currentTrip.memberCount,
         imageUrl: undefined,
-        region: currentTrip.destination || currentTrip.tripName,
+        region: currentAddress || currentTrip.destination,
       };
     }
 

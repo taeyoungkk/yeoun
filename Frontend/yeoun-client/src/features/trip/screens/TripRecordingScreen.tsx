@@ -621,6 +621,11 @@ function RealTripRecordingScreen({
     }
   }, []);
   const isReviewMode = params.mode === 'review';
+  const routeTripId = typeof params.tripId === 'string' ? params.tripId.trim() : '';
+  const storeTripId = isReviewMode
+    ? reviewTrip?.tripId ?? currentTrip?.tripId ?? ''
+    : currentTripId ?? currentTrip?.tripId ?? '';
+  const activeTripId = (routeTripId || storeTripId || '').trim();
   const displayTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
 
   const tripDays = useMemo(() => {
@@ -716,7 +721,7 @@ function RealTripRecordingScreen({
         paymentCount: filteredEvents.filter((event) => event.type === 'payment').length,
       };
     },
-    [activeFilter, filteredDays, filteredEvents, inFlightLogs, sessionTrail, tripDays.length]
+    [routeCoordinates, filteredEvents]
   );
   const selectedPhotoEvent = useMemo(
     () => filteredEvents.find((event) => event.id === photoViewer?.eventId) ?? null,
@@ -732,9 +737,6 @@ function RealTripRecordingScreen({
   const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
   const mapRadius = 32 - 8 * collapseProgress;
   const panelLift = -145 * collapseProgress;
-  const routeTripId = typeof params.tripId === 'string' ? params.tripId.trim() : '';
-  const storeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
-  const activeTripId = (routeTripId || storeTripId || '').trim();
   const tripTitle = (displayTrip as { title?: string; tripName?: string } | null)?.title || displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(
     loadedTripDetail?.ownerUserId && currentUserId && loadedTripDetail.ownerUserId === currentUserId,

@@ -102,7 +102,7 @@ export const useTripStore = create<TripState>()(
             endDate: trip.endDate,
             memberCount: trip.memberCount ?? trip.participants ?? state.currentTrip?.memberCount ?? 0,
             origin: trip.country ?? state.currentTrip?.origin ?? '',
-            destination: trip.region ?? trip.title,
+            destination: trip.region ?? trip.country ?? '',
           };
 
           if (trip.status === 'ACTIVE') {
