@@ -10,6 +10,7 @@ import { useAuthStore, useUserStore } from '@/src/store';
 import { logoutApi } from '@/src/api/auth';
 import { withdrawAccount } from '@/src/api/user';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { locationService } from '@/src/services/locationService';
 
 const IosSwitch = ({
   value,
@@ -93,6 +94,7 @@ export default function SettingsScreen() {
       }
     }
     updateSettings({ locationPerm: val });
+    void locationService.onPermissionChange(val);
   };
 
   const handlePhotoPermission = async (val: boolean) => {
