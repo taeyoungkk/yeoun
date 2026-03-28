@@ -56,7 +56,6 @@ import {
   leaveTripApi,
   type TripDetail,
   type TripMemberItem,
-  type TripDetail,
   type LocationLog,
 } from '@/src/api/trip';
 import { matchMapTrace } from '@/src/api/mapbox';
@@ -918,144 +917,146 @@ function RealTripRecordingScreen({
           getTripMembersApi(activeTripId),
         ]);
 
-        const timelineDays = (await Promise.all(
-          timelineDaysResponse.data.timelineDays.map(async (timelineDay) => {
-            try {
-              const detailResponse = await getTimelineDayDetailApi(timelineDay.timelineDayId);
-              return detailResponse.success ? detailResponse.data : null;
-            } catch (e) {
-              console.warn(`Failed to fetch detail for day ${timelineDay.timelineDayId}`, e);
-              return null;
-            }
-          }),
-        )).filter((d): d is TimelineDayDetail => Boolean(d));
-        const eventDetails = await Promise.all(
-          timelineDays.flatMap((timelineDay) =>
-            timelineDay.events
-              .filter((event) => !event.hidden)
-              .map(async (event) => {
-                const detailResponse = await getEventDetailApi(event.eventId);
-                return detailResponse.success ? detailResponse.data : null;
-              }),
-          ),
-        );
-        const validEventDetails = eventDetails.filter((eventDetail): eventDetail is EventDetail => Boolean(eventDetail));
-        const uniquePhotoIds = Array.from(
-          new Set(validEventDetails.flatMap((eventDetail) => eventDetail.photos.map((photo) => photo.photoId))),
-        );
-        const photoDetails = await Promise.all(
-          uniquePhotoIds.map(async (photoId) => {
-            const photoDetailResponse = await getPhotoDetailApi(photoId);
-            return photoDetailResponse.success ? photoDetailResponse.data : null;
-          }),
-        );
-        const routeByDate = new Map<string, Coordinate[]>();
-        const uniqueDates = Array.from(new Set([
-          ...timelineDays.map(d => d.dayDate),
-          new Date().toISOString().split('T')[0]
-        ]));
+        if (cancelled) return;
 
-        await Promise.all(
-          uniqueDates.map(async (date) => {
-            try {
-              const routeResponse = await getTripRouteByDayApi(activeTripId, date);
-              if (routeResponse.success) {
-                routeByDate.set(date, normalizeRouteCoordinates(routeResponse.data.routeDays));
-              }
-            } catch (e) {
-              console.warn(`Failed to fetch route for date ${date}`, e);
-            }
-          })
-        );
-
-        if (cancelled) {
-          return;
-        }
-
-        const eventDetailsById = Object.fromEntries(validEventDetails.map((eventDetail) => [eventDetail.eventId, eventDetail]));
-        const photoDetailsById = Object.fromEntries(
-          photoDetails
-            .filter((photoDetail): photoDetail is PhotoDetail => Boolean(photoDetail))
-            .map((photoDetail) => [photoDetail.photoId, photoDetail]),
-        );
-        const memberMap = tripMembersResponse.success
-          ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
-          : {};
-
+        // 1. Set Trip Detail immediately for UI titles and 'End Trip' button visibility
         if (tripDetailResponse.success) {
           setLoadedTripDetail(tripDetailResponse.data);
-          if (!isReviewMode && tripDetailResponse.data.status !== 'ACTIVE') {
-            setActiveTrip(tripDetailResponse.data);
-            router.replace({
-              pathname: '/trip/recording',
-              params: { mode: 'review', tripId: activeTripId },
-            });
-            return;
-          }
-
           if (!isReviewMode) {
             setActiveTrip(tripDetailResponse.data);
+            if (tripDetailResponse.data.status !== 'ACTIVE') {
+              router.replace({
+                pathname: '/trip/recording',
+                params: { mode: 'review', tripId: activeTripId },
+              });
+              return;
+            }
           }
         }
-        setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
-        setRealTripDays(buildRealTripDays(
-          timelineDays, 
-          routeByDate, 
-          activeTripId, 
-          tripDetailResponse.data?.startDate,
-          tripDetailResponse.data?.endDate
-        ));
-        setTripEvents(
-          appendRealExpenseEvents(
-            buildRealTripEvents(
+
+        // 2. Process secondary data (Timeline, Events, Photos, Routes)
+        if (timelineDaysResponse.success && timelineDaysResponse.data?.timelineDays) {
+          const timelineDays = (await Promise.all(
+            timelineDaysResponse.data.timelineDays.map(async (timelineDay) => {
+              try {
+                const detailResponse = await getTimelineDayDetailApi(timelineDay.timelineDayId);
+                return detailResponse.success ? detailResponse.data : null;
+              } catch (e) {
+                console.warn(`Failed to fetch detail for day ${timelineDay.timelineDayId}`, e);
+                return null;
+              }
+            }),
+          )).filter((d): d is TimelineDayDetail => Boolean(d));
+
+          // Fetch Event Details
+          const eventDetails = await Promise.all(
+            timelineDays.flatMap((timelineDay) =>
+              timelineDay.events
+                .filter((event) => !event.hidden)
+                .map(async (event) => {
+                  const detailResponse = await getEventDetailApi(event.eventId);
+                  return detailResponse.success ? detailResponse.data : null;
+                }),
+            ),
+          );
+          const validEventDetails = eventDetails.filter((eventDetail): eventDetail is EventDetail => Boolean(eventDetail));
+
+          // Fetch Photo Details
+          const uniquePhotoIds = Array.from(
+            new Set(validEventDetails.flatMap((eventDetail) => eventDetail.photos.map((photo) => photo.photoId))),
+          );
+          const photoDetails = await Promise.all(
+            uniquePhotoIds.map(async (photoId) => {
+              const photoDetailResponse = await getPhotoDetailApi(photoId);
+              return photoDetailResponse.success ? photoDetailResponse.data : null;
+            }),
+          );
+
+          // Fetch Routes
+          const routeByDate = new Map<string, Coordinate[]>();
+          const uniqueDates = Array.from(new Set([
+            ...timelineDays.map(d => d.dayDate),
+            new Date().toISOString().split('T')[0]
+          ]));
+
+          await Promise.all(
+            uniqueDates.map(async (date) => {
+              try {
+                if (!activeTripId) return;
+                const routeResponse = await getTripRouteByDayApi(activeTripId, date);
+                if (routeResponse.success) {
+                  routeByDate.set(date, normalizeRouteCoordinates(routeResponse.data.routeDays));
+                }
+              } catch (e) {
+                console.warn(`Failed to fetch route for date ${date}`, e);
+              }
+            })
+          );
+
+          if (cancelled) return;
+
+          // Mapping helpers
+          const eventDetailsById = Object.fromEntries(validEventDetails.map((eventDetail) => [eventDetail.eventId, eventDetail]));
+          const photoDetailsById = Object.fromEntries(
+            photoDetails
+              .filter((photoDetail): photoDetail is PhotoDetail => Boolean(photoDetail))
+              .map((photoDetail) => [photoDetail.photoId, photoDetail]),
+          );
+          const memberMap = tripMembersResponse.success
+            ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
+            : {};
+
+          // Final State Updates
+          setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
+          setRealTripDays(buildRealTripDays(
+            timelineDays, 
+            routeByDate, 
+            activeTripId, 
+            tripDetailResponse.data?.startDate,
+            tripDetailResponse.data?.endDate
+          ));
+          setTripEvents(
+            appendRealExpenseEvents(
+              buildRealTripEvents(
+                timelineDays,
+                eventDetailsById,
+                photoDetailsById,
+                memberMap,
+                currentUserId,
+                currentUserNickname,
+              ),
               timelineDays,
-              eventDetailsById,
-              photoDetailsById,
+              expensesResponse?.data?.items ?? [],
               memberMap,
               currentUserId,
               currentUserNickname,
             ),
-            timelineDays,
-            expensesResponse?.data?.items ?? [],
-            memberMap,
-            currentUserId,
-            currentUserNickname,
-          ),
-        );
-        
-        // Prune session trail based on the last synced log.
+          );
+        }
+
+        // 3. Prune session trail based on the last synced log.
         const lastSyncedUuid = useTripStore.getState().lastSyncedLogUuid;
         if (lastSyncedUuid) {
           setSessionTrail(prev => {
             const syncedIndex = prev.findIndex(l => l.clientLogUuid === lastSyncedUuid);
-            if (syncedIndex !== -1) {
-              return prev.slice(syncedIndex + 1);
-            }
-            return prev;
+            return syncedIndex !== -1 ? prev.slice(syncedIndex + 1) : prev;
           });
-          // Reset matched trail so it starts fresh from the pruned session trail
-          setMatchedSessionTrail([]);
-          lastMatchedIndexRef.current = 0;
         } else {
-          // Fallback to time-based pruning if no UUID (e.g. initial load)
           setSessionTrail(prev => {
             const twoMinsAgo = new Date(Date.now() - 120000).toISOString();
             return prev.filter(l => l.recordedAt > twoMinsAgo);
           });
-          setMatchedSessionTrail([]);
-          lastMatchedIndexRef.current = 0;
         }
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
+        setMatchedSessionTrail([]);
+        lastMatchedIndexRef.current = 0;
 
-        console.error('Failed to load real trip data', error);
-        setLoadedTripDetail(null);
-        setRealTripDays(null);
-        setTripEvents([]);
-        setTripMembers([]);
-        Alert.alert('Trip data load failed', 'Could not load real trip data.');
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load real trip data', error);
+          Alert.alert('Trip data partially failed', 'Could not load your full travel history.');
+        }
+      } finally {
+        // No setIsLoading(false) needed as state not found
       }
     };
 
