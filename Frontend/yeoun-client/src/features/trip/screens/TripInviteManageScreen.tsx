@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getFriendsApi, type FriendListItem } from '@/src/api/friend';
@@ -10,7 +10,7 @@ import { useTripStore } from '@/src/store/trip.store';
 
 import { InviteCandidate, InviteMember, TripInviteScreen } from '../components/TripInviteScreen';
 
-const INVITE_LINK_PLACEHOLDER = '링크를 준비하는 중입니다.';
+const INVITE_LINK_PLACEHOLDER = '초대 링크를 준비하는 중입니다.';
 
 function mapInviteStatus(status?: string): InviteMember['status'] {
   switch (status) {
@@ -39,6 +39,11 @@ export default function TripInviteManageScreen() {
   const [inviteLink, setInviteLink] = useState(INVITE_LINK_PLACEHOLDER);
   const [isInviteLinkReady, setIsInviteLinkReady] = useState(false);
   const [friendCandidates, setFriendCandidates] = useState<FriendListItem[]>([]);
+  const [noticeModal, setNoticeModal] = useState<{ title: string; message: string } | null>(null);
+
+  const openNoticeModal = (title: string, message: string) => {
+    setNoticeModal({ title, message });
+  };
 
   useEffect(() => {
     if (!tripId) {
@@ -82,7 +87,7 @@ export default function TripInviteManageScreen() {
           setInviteLink(linkResponse.data.inviteUrl);
           setIsInviteLinkReady(true);
         } else if (linkResponse.code === 'CONFLICT') {
-          setInviteLink('이미 생성된 링크가 있거나 새 링크를 만들 수 없습니다.');
+          setInviteLink('이미 생성된 초대 링크가 없거나 링크를 만들 수 없습니다.');
           setIsInviteLinkReady(false);
         } else {
           setInviteLink('초대 링크를 준비하지 못했습니다.');
@@ -113,7 +118,7 @@ export default function TripInviteManageScreen() {
       return;
     }
 
-    const timeoutId = setTimeout(async () => {
+    const timeoutId = setTimeout(() => {
       try {
         const existingIds = new Set(inviteMembers.map((member) => member.id));
         setSearchResults(
@@ -142,7 +147,7 @@ export default function TripInviteManageScreen() {
 
     const response = await inviteUsersToTripApi(tripId, { inviteeUserIds: [candidate.id] });
     if (!response.success) {
-      Alert.alert('초대 실패', response.message || '친구를 초대하지 못했습니다.');
+      openNoticeModal('초대 실패', response.message || '친구를 초대하지 못했습니다.');
       return;
     }
 
@@ -157,11 +162,7 @@ export default function TripInviteManageScreen() {
     ]);
     setSearchQuery('');
     setSearchResults([]);
-    Alert.alert('초대 전송 완료', `${candidate.name}님에게 초대를 보냈습니다.`);
-  };
-
-  const handleCancelInvite = () => {
-    Alert.alert('초대 취소 미지원', '현재는 초대 취소 API가 없어 취소할 수 없습니다.');
+    openNoticeModal('초대 전송 완료', `${candidate.name}님에게 초대를 보냈습니다.`);
   };
 
   if (!tripId) {
@@ -187,17 +188,33 @@ export default function TripInviteManageScreen() {
   }
 
   return (
-    <TripInviteScreen
-      query={searchQuery}
-      candidates={searchResults}
-      members={inviteMembers}
-      inviteLink={inviteLink}
-      isInviteLinkReady={isInviteLinkReady}
-      onBack={() => router.back()}
-      onChangeQuery={setSearchQuery}
-      onInviteMember={handleInviteMember}
-      onCancelInvite={handleCancelInvite}
-    />
+    <>
+      <TripInviteScreen
+        query={searchQuery}
+        candidates={searchResults}
+        members={inviteMembers}
+        inviteLink={inviteLink}
+        isInviteLinkReady={isInviteLinkReady}
+        onBack={() => router.back()}
+        onChangeQuery={setSearchQuery}
+        onInviteMember={handleInviteMember}
+      />
+
+      <Modal visible={Boolean(noticeModal)} transparent animationType="fade" onRequestClose={() => setNoticeModal(null)}>
+        <Pressable style={styles.noticeBackdrop} onPress={() => setNoticeModal(null)}>
+          <Pressable style={styles.noticeCard} onPress={() => undefined}>
+            <View style={styles.noticeIconWrap}>
+              <MaterialIcons name="info-outline" size={26} color="#315B45" />
+            </View>
+            <Text style={styles.noticeTitle}>{noticeModal?.title}</Text>
+            <Text style={styles.noticeBody}>{noticeModal?.message}</Text>
+            <TouchableOpacity style={styles.noticeButton} onPress={() => setNoticeModal(null)} activeOpacity={0.88}>
+              <Text style={styles.noticeButtonText}>확인</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -220,5 +237,59 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 14,
     color: '#5B6A61',
+  },
+  noticeBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(12, 18, 14, 0.42)',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  noticeCard: {
+    borderRadius: 30,
+    backgroundColor: '#FCFEFB',
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 22,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  noticeIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#E7F1EA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  noticeTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#182119',
+    textAlign: 'center',
+  },
+  noticeBody: {
+    marginTop: 10,
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#5C6A61',
+    textAlign: 'center',
+  },
+  noticeButton: {
+    width: '100%',
+    marginTop: 22,
+    borderRadius: 18,
+    backgroundColor: '#2F5A44',
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  noticeButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
