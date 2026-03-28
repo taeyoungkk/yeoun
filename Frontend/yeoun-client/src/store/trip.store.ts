@@ -98,8 +98,10 @@ export const useTripStore = create<TripState>()(
             origin: trip.country ?? state.currentTrip?.origin ?? '',
             destination: trip.region ?? trip.title,
           };
+          const hasDifferentActiveTrip =
+            state.isTripActive && state.currentTripId !== null && state.currentTripId !== trip.tripId;
 
-          if (trip.status === 'ACTIVE') {
+          if (trip.status === 'ACTIVE' && !hasDifferentActiveTrip) {
             return {
               isTripActive: true,
               currentTripId: trip.tripId,
@@ -111,7 +113,7 @@ export const useTripStore = create<TripState>()(
           return {
             currentTripId: state.currentTripId === trip.tripId ? trip.tripId : state.currentTripId,
             currentTrip: state.currentTrip?.tripId === trip.tripId ? nextCurrentTrip : state.currentTrip,
-            activeTrip: trip,
+            activeTrip: state.activeTrip?.tripId === trip.tripId ? trip : state.activeTrip,
           };
         }),
       fetchTrips: async (force = false) => {
