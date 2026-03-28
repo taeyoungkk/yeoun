@@ -748,9 +748,6 @@ function RealTripRecordingScreen({
     outputRange: [0, -145],
     extrapolate: 'clamp',
   });
-  const routeTripId = typeof params.tripId === 'string' ? params.tripId.trim() : '';
-  const storeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
-  const activeTripId = (routeTripId || storeTripId || '').trim();
   const tripTitle = (displayTrip as { title?: string; tripName?: string } | null)?.title || displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(
     loadedTripDetail?.ownerUserId && currentUserId && loadedTripDetail.ownerUserId === currentUserId,
