@@ -315,10 +315,7 @@ export default function TripReportScreen() {
     }).start();
   }, [receiptAppear]);
 
-  const reportDays = useMemo(
-    () => (timelineDays.length > 0 ? timelineDays.map(mapReportDay) : buildFallbackDays(trip?.startDate, trip?.endDate)),
-    [timelineDays, trip?.endDate, trip?.startDate],
-  );
+  const reportDays = useMemo(() => timelineDays.map(mapReportDay), [timelineDays]);
   const timelineRows = useMemo(() => mapTimelineRows(timelineDayDetails), [timelineDayDetails]);
 
   const totalDistance = useMemo(() => reportDays.reduce((sum, day) => sum + day.distanceKm, 0), [reportDays]);

@@ -14,7 +14,33 @@ from app.schemas.receipt import ReceiptLineItem, ReceiptOcrRequest, ReceiptOcrRe
 logger = logging.getLogger(__name__)
 
 
+class NonReceiptImageError(ValueError):
+    pass
+
+
 class ReceiptOcrService:
+    RECEIPT_KEYWORDS = (
+        "receipt",
+        "total",
+        "subtotal",
+        "tax",
+        "vat",
+        "card",
+        "approval",
+        "payment",
+        "merchant",
+        "store",
+        "합계",
+        "총액",
+        "결제",
+        "승인",
+        "카드",
+        "가맹점",
+        "매장",
+        "부가세",
+        "영수증",
+    )
+
     def __init__(self, settings: Settings):
         self.settings = settings
 
@@ -52,12 +78,15 @@ class ReceiptOcrService:
     ) -> list[tuple[str, dict[str, Any]]]:
         prompt = (
             "You are extracting data from a receipt image. "
+            "First determine whether the image is actually a receipt. "
             "Return only a JSON object with these fields: "
+            "is_receipt boolean, confidence number between 0 and 1, reason string|null, "
             "merchant_name string, paid_at string|null in ISO 8601 if possible, "
             "currency_code string, total_amount number, tax_amount number|null, "
             "line_items array of objects with name string, quantity number, unit_price number|null, amount number, "
             "raw_text string. "
             "If a field is missing, use null or an empty array. "
+            "If the image is not a receipt, set is_receipt to false and explain briefly in reason. "
             f"The expected currency code is {payload.currency_code}. "
             f"The locale is {payload.locale}."
         )
@@ -186,6 +215,7 @@ class ReceiptOcrService:
         parsed: dict[str, Any],
         raw_text: str,
     ) -> ReceiptOcrResponse:
+        self._validate_receipt_candidate(parsed, raw_text)
         file_name = urlparse(str(payload.image_url)).path.rsplit("/", 1)[-1] or "receipt.jpg"
         merchant_name = parsed.get("merchant_name") or self._guess_merchant_name(file_name)
         line_items = [self._build_line_item(item) for item in parsed.get("line_items", []) if isinstance(item, dict)]
@@ -200,6 +230,36 @@ class ReceiptOcrService:
             line_items=line_items,
             raw_text=parsed.get("raw_text") or raw_text,
         )
+
+    def _validate_receipt_candidate(self, parsed: dict[str, Any], raw_text: str) -> None:
+        model_receipt = self._to_bool(parsed.get("is_receipt"))
+        confidence = self._to_float(parsed.get("confidence"))
+        reason = self._normalize_text(parsed.get("reason"))
+        merchant_name = self._normalize_text(parsed.get("merchant_name"))
+        total_amount = self._to_decimal(parsed.get("total_amount"), default=None)
+        line_items = parsed.get("line_items") if isinstance(parsed.get("line_items"), list) else []
+        normalized_text = (parsed.get("raw_text") or raw_text or "").lower()
+
+        has_positive_total = total_amount is not None and total_amount > 0
+        has_line_items = any(isinstance(item, dict) for item in line_items)
+        has_receipt_keywords = any(keyword in normalized_text for keyword in self.RECEIPT_KEYWORDS)
+        heuristic_score = sum(
+            (
+                1 if merchant_name else 0,
+                1 if has_positive_total else 0,
+                1 if has_line_items else 0,
+                1 if has_receipt_keywords else 0,
+            )
+        )
+
+        if model_receipt is False:
+            raise NonReceiptImageError(reason or "The uploaded image does not appear to be a receipt.")
+
+        if confidence is not None and confidence < 0.35 and heuristic_score < 2:
+            raise NonReceiptImageError(reason or "The uploaded image is too unlikely to be a receipt.")
+
+        if heuristic_score == 0:
+            raise NonReceiptImageError(reason or "The uploaded image does not include recognizable receipt information.")
 
     def _build_line_item(self, item: dict[str, Any]) -> ReceiptLineItem:
         return ReceiptLineItem(
@@ -224,6 +284,36 @@ class ReceiptOcrService:
             return Decimal(normalized)
         except InvalidOperation:
             return Decimal(default) if default is not None else None
+
+    def _to_bool(self, value: Any) -> bool | None:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "yes", "y", "1"}:
+                return True
+            if normalized in {"false", "no", "n", "0"}:
+                return False
+        return None
+
+    def _to_float(self, value: Any) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return None
+            try:
+                return float(normalized)
+            except ValueError:
+                return None
+        return None
+
+    def _normalize_text(self, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
 
 @lru_cache

@@ -94,6 +94,20 @@ export const getMyFinanceProfileApi = async (): Promise<ApiResponse<FinanceProfi
       data: mapFinanceProfile(response.data.data),
     };
   } catch (error) {
+    if (
+      axios.isAxiosError(error) &&
+      error.response?.status === 404 &&
+      error.response?.data?.code === 'FINANCE_PROFILE_NOT_FOUND'
+    ) {
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Finance profile not found. Returning empty profile.',
+        data: emptyProfile(),
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     if (shouldMockInDev(error)) {
       return {
         success: true,

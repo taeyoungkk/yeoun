@@ -56,7 +56,6 @@ import {
   leaveTripApi,
   type TripDetail,
   type TripMemberItem,
-  type TripDetail,
   type LocationLog,
 } from '@/src/api/trip';
 import { matchMapTrace } from '@/src/api/mapbox';
@@ -1345,8 +1344,10 @@ function RealTripRecordingScreen({
 
         const photoResult = await syncTripPhotosForDateRange({
           tripId: activeTripId,
+          tripStartedAt: (displayTrip as { startedAt?: string | null } | null)?.startedAt ?? null,
           startDate: displayTrip.startDate,
           endDate: displayTrip.endDate,
+          syncRequestedAt: new Date().toISOString(),
         });
 
         if (!photoResult.success) {
@@ -2052,6 +2053,19 @@ function RealTripRecordingScreen({
               <TouchableOpacity style={styles.menuItem} onPress={() => { setIsMenuOpen(false); router.push('/trip/invite'); }} activeOpacity={0.85}>
                 <MaterialIcons name="group-add" size={18} color="#244934" />
                 <Text style={styles.menuItemText}>친구 초대하기</Text>
+              </TouchableOpacity>
+            ) : null}
+            {displayTrip?.tripId ? (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  router.push({ pathname: '/trip/photo-album', params: { tripId: displayTrip.tripId } } as never);
+                }}
+                activeOpacity={0.85}
+              >
+                <MaterialIcons name="photo-library" size={18} color="#244934" />
+                <Text style={styles.menuItemText}>앨범 보기</Text>
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
