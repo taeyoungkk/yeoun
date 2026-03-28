@@ -85,7 +85,7 @@ type MapFilterKey = 'showPhotoPins' | 'showPaymentPins';
 type ActionConfirmKind = 'end' | 'leave' | 'delete';
 type PaymentDialogMode = 'edit';
 type PaymentSplitType = 'equal';
-type PhotoSyncOutcome = 'synced' | 'empty' | 'skipped_permission' | 'skipped_range' | 'failed';
+type PhotoSyncOutcome = 'synced' | 'empty' | 'skipped_permission' | 'skipped_app_setting' | 'skipped_range' | 'failed';
 
 type PhotoContributor = {
   id: string;
@@ -549,6 +549,7 @@ function RealTripRecordingScreen({
   const resetLocationSyncState = useTripStore((state) => state.resetLocationSyncState);
   const currentUserId = useUserStore((state) => state.profile?.userId);
   const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
+  const inFlightLogs = useTripStore((state) => state.inFlightLogs);
   const removeTrip = useTripStore((state) => state.removeTrip);
   const fetchTrips = useTripStore((state) => state.fetchTrips);
 
@@ -655,13 +656,15 @@ function RealTripRecordingScreen({
   const routeCoordinates = useMemo(() => {
     const serverRoute = filteredDays.flatMap((day) => day.route);
     // Only append session trail if we are looking at 'all' or the last day
-    if (activeFilter === 'all' || activeFilter === `day${tripDays.length}`) {
+    // AND we are in ACTIVE mode (not review) for the current active trip
+    if (!isReviewMode && activeTripId === currentTripId && (activeFilter === 'all' || activeFilter === `day${tripDays.length}`)) {
+      const inFlightCoords = inFlightLogs.map(l => [l.longitude, l.latitude] as Coordinate);
       // Show already matched trail + raw points that haven't been matched yet
       const rawTrailCoords = sessionTrail.slice(lastMatchedIndexRef.current).map(l => [l.longitude, l.latitude] as Coordinate);
-      return [...serverRoute, ...matchedSessionTrail, ...rawTrailCoords];
+      return [...serverRoute, ...inFlightCoords, ...matchedSessionTrail, ...rawTrailCoords];
     }
     return serverRoute;
-  }, [activeFilter, filteredDays, sessionTrail, matchedSessionTrail, tripDays.length]);
+  }, [activeFilter, filteredDays, inFlightLogs, sessionTrail, matchedSessionTrail, tripDays.length, isReviewMode, activeTripId, currentTripId]);
 
   const currentLocationCoordinate = useMemo(
     () => liveCurrentLocation ?? initialCurrentLocation,
@@ -713,7 +716,7 @@ function RealTripRecordingScreen({
         paymentCount: filteredEvents.filter((event) => event.type === 'payment').length,
       };
     },
-    [activeFilter, filteredDays, filteredEvents, sessionTrail, tripDays.length]
+    [activeFilter, filteredDays, filteredEvents, inFlightLogs, sessionTrail, tripDays.length]
   );
   const selectedPhotoEvent = useMemo(
     () => filteredEvents.find((event) => event.id === photoViewer?.eventId) ?? null,
@@ -1335,6 +1338,11 @@ function RealTripRecordingScreen({
       }
 
       try {
+        const { photoPerm } = useUserStore.getState().settings;
+        if (!photoPerm) {
+          return { outcome: 'skipped_app_setting', syncedCount: 0 };
+        }
+
         const photoPermission = await requestTripPhotoPermission();
 
         if (!photoPermission.granted) {
@@ -1420,6 +1428,8 @@ function RealTripRecordingScreen({
       return false;
     }
 
+    const { locationPerm, photoPerm } = useUserStore.getState().settings;
+
     const photoResult = await syncTripPhotosOnly({ showStatus: true });
     const locationSynced = await locationService.syncLocations(activeTripId);
 
@@ -1427,27 +1437,27 @@ function RealTripRecordingScreen({
       return false;
     }
 
+    // Determine the combined feedback message
+    let finalMessage = '';
+    
+    const locStatus = locationPerm ? '위치 기록 동기화를 완료했습니다' : '위치 기록은 건너뛰었습니다';
+
     if (photoResult.outcome === 'synced') {
-      setLocationSyncState('completed', `위치 기록과 여행 사진 ${photoResult.syncedCount}장을 동기화했습니다.`);
-      return true;
+      finalMessage = `${locationPerm ? '위치 기록과 ' : ''}여행 사진 ${photoResult.syncedCount}장을 동기화했습니다.`;
+    } else if (photoResult.outcome === 'failed') {
+      finalMessage = `${locStatus}, 사진 동기화는 실패했습니다.`;
+    } else if (photoResult.outcome === 'skipped_permission') {
+      finalMessage = `${locStatus}, 사진 접근 권한이 없어 사진은 건너뛰었습니다.`;
+    } else if (photoResult.outcome === 'skipped_app_setting') {
+      finalMessage = `${locStatus}, 설정에서 사진 수집이 비활성화되어 있어 사진은 건너뛰었습니다.`;
+    } else if (photoResult.outcome === 'skipped_range') {
+      finalMessage = `${locStatus}, 여행 기간 정보가 없어 사진은 건너뛰었습니다.`;
+    } else {
+      // outcome === 'empty'
+      finalMessage = `${locStatus} (새로 동기화할 사진은 없습니다).`;
     }
 
-    if (photoResult.outcome === 'failed') {
-      setLocationSyncState('completed', '위치 기록은 동기화했고, 사진 동기화는 실패했습니다.');
-      return true;
-    }
-
-    if (photoResult.outcome === 'skipped_permission') {
-      setLocationSyncState('completed', '위치 기록은 동기화했고, 사진 권한이 없어 사진은 건너뛰었습니다.');
-      return true;
-    }
-
-    if (photoResult.outcome === 'skipped_range') {
-      setLocationSyncState('completed', '위치 기록은 동기화했고, 여행 기간 정보가 없어 사진은 건너뛰었습니다.');
-      return true;
-    }
-
-    setLocationSyncState('completed', '위치 기록 동기화가 완료되었습니다. 새로 가져올 여행 사진은 없습니다.');
+    setLocationSyncState('completed', finalMessage);
     return true;
   }, [activeTripId, setLocationSyncState, syncTripPhotosOnly]);
 
@@ -1570,7 +1580,24 @@ function RealTripRecordingScreen({
       try {
         setIsSyncing(true);
         stopAutoPhotoSync();
-        await syncTripAssets();
+        
+        // Ownership check before calling end api (extra safety)
+        if (!isTripOwner) {
+          Alert.alert('권한 없음', '여행 종료는 방장(생성자)만 할 수 있습니다.');
+          return;
+        }
+
+        // Start sync but we can proceed as soon as status becomes 'processing' (upload complete)
+        const syncPromise = syncTripAssets();
+        
+        // Wait a bit to see if sync reaches 'processing' quickly
+        let iters = 0;
+        while (iters < 15 && useTripStore.getState().locationSyncStatus !== 'processing' 
+               && useTripStore.getState().locationSyncStatus !== 'completed') {
+          await new Promise(r => setTimeout(r, 1000));
+          iters++;
+        }
+
         const response = await endTripApi(activeTripId);
 
         if (!response.success) {
@@ -1585,6 +1612,7 @@ function RealTripRecordingScreen({
 
         await locationService.stopTracking();
         locationService.stopAutoSync();
+        resetLocationSyncState(); // CLEAR SYNC TOAST BEFORE NAVIGATING
         endTrip();
         void fetchTrips(true);
         router.push(`${reportRoute}?mode=review`);
@@ -2092,7 +2120,7 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>앨범 보기</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, (!isTripOwner || !canUseActiveTripActions) && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
@@ -2106,7 +2134,7 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>여행 삭제</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); router.push('/trip/start?mode=edit'); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, (!isTripOwner || !canUseActiveTripActions) && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); router.push('/trip/start?mode=edit'); }} activeOpacity={0.85}>
               <MaterialIcons name="edit" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 수정</Text>
             </TouchableOpacity>

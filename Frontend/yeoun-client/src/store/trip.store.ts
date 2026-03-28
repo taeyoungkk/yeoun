@@ -2,7 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { getTripDetailApi, getTripsApi, TripDetail, TripListItem } from '../api/trip';
+export { LocationLog, TripDetail, TripListItem } from '../api/trip';
+import { getTripDetailApi, getTripsApi, LocationLog, TripDetail, TripListItem } from '../api/trip';
 import { useUserStore } from './user.store';
 
 export interface CurrentTrip {
@@ -31,6 +32,7 @@ interface TripState {
   locationSyncMessage: string | null;
   locationSyncUpdatedAt: string | null;
   lastSyncedLogUuid: string | null;
+  inFlightLogs: LocationLog[];
   startTrip: (trip: CurrentTrip) => void;
   updateCurrentTrip: (trip: CurrentTrip) => void;
   setReviewTrip: (trip: CurrentTrip) => void;
@@ -43,6 +45,8 @@ interface TripState {
   setLocationSyncState: (status: LocationSyncStatus, message?: string | null) => void;
   resetLocationSyncState: () => void;
   setLastSyncedLogUuid: (uuid: string | null) => void;
+  addInFlightLogs: (logs: LocationLog[]) => void;
+  clearInFlightLogs: () => void;
   endTrip: () => void;
   clearTrip: () => void;
   removeTrip: (tripId: string) => void;
@@ -64,6 +68,7 @@ export const useTripStore = create<TripState>()(
       locationSyncMessage: null,
       locationSyncUpdatedAt: null,
       lastSyncedLogUuid: null,
+      inFlightLogs: [],
       startTrip: (trip) =>
         set({
           isTripActive: true,
@@ -256,6 +261,14 @@ export const useTripStore = create<TripState>()(
           trips: state.trips.filter((t) => t.tripId !== tripId),
           tripsFetchedAt: 0, // Force fresh fetch on next call
         })),
+      addInFlightLogs: (logs) =>
+        set((state) => ({
+          inFlightLogs: [...state.inFlightLogs, ...logs],
+        })),
+      clearInFlightLogs: () =>
+        set({
+          inFlightLogs: [],
+        }),
     }),
     {
       name: 'trip-storage',

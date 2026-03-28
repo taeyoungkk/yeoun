@@ -6,6 +6,7 @@ import { AppState, type AppStateStatus, Linking } from 'react-native';
 
 import { getTripSyncStatusApi, type TripSyncStatusData, LocationLog, uploadLocationsApi } from '../api/trip';
 import { useTripStore } from '../store/trip.store';
+import { useUserStore } from '../store/user.store';
 
 const LOCATION_TRACKING_TASK = 'LOCATION_TRACKING_TASK';
 const STORAGE_KEY_PREFIX = 'pending_location_logs_chunk_';
@@ -62,6 +63,11 @@ const toLocationLog = (location: Location.LocationObject): LocationLog => ({
 });
 
 async function appendLogsToStorage(newLogs: LocationLog[], options: { dedupe?: boolean } = {}) {
+  const settings = useUserStore.getState().settings;
+  if (!settings.locationPerm) {
+    return;
+  }
+  
   return runQueuedStorageOperation(async () => {
     try {
       const shouldDedupe = options.dedupe ?? true;
@@ -122,8 +128,8 @@ let lastQueuedLogSnapshot:
       recordedAtMs: number;
     }
   | null = null;
-const LOCATION_STATUS_POLL_INTERVAL_MS = 1500;
-const LOCATION_STATUS_POLL_TIMEOUT_MS = 20000;
+const LOCATION_STATUS_POLL_INTERVAL_MS = 2000;
+const LOCATION_STATUS_POLL_TIMEOUT_MS = 90000;
 
 const logLocationDebug = (message: string, payload?: Record<string, unknown>) => {
   if (payload) {
@@ -437,6 +443,7 @@ const pollTripSyncStatus = async (tripId: string, baseline: TripSyncStatusData |
     if (isLocationSyncComplete(baseline, response.data)) {
       console.log('Trip location sync completed:', response.data);
       setLocationSyncState('completed', 'GPS 기록 동기화가 완료되었습니다.');
+      useTripStore.getState().clearInFlightLogs();
       useTripStore.getState().bumpRouteRefreshKey();
       return true;
     }
@@ -487,6 +494,16 @@ export const locationService = {
         appState: AppState.currentState,
         activeCollectorMode,
       });
+
+      const { locationPerm } = useUserStore.getState().settings;
+      if (!locationPerm) {
+        logLocationDebug('startTracking skipped: locationPerm is disabled in app settings.');
+        return {
+          success: false,
+          foregroundGranted: false,
+          backgroundGranted: false,
+        };
+      }
       const currentForeground = await Location.getForegroundPermissionsAsync();
       const foregroundPermission =
         currentForeground.status === 'granted'
@@ -650,6 +667,13 @@ export const locationService = {
 
   syncLocations: async (tripId: string) => {
     try {
+      const settings = useUserStore.getState().settings;
+      if (!settings.locationPerm) {
+        logLocationDebug('syncLocations skipped: locationPerm is disabled in app settings.', { tripId });
+        setLocationSyncState('completed', '설정에서 위치 정보 수집이 비활성화되어 있어 위치 기록 동기화를 건너뛰었습니다.');
+        return true;
+      }
+
       const logs = await locationService.flushLogs();
       logLocationDebug('syncLocations called.', {
         tripId,
@@ -686,7 +710,8 @@ export const locationService = {
       }
 
       console.log('Successfully synced logs to server');
-      setLocationSyncState('processing', 'GPS 기록을 업로드했습니다. 동기화 상태 업데이트를 기다리고 있어요.');
+      setLocationSyncState('completed', 'GPS 기록 업로드가 완료되었습니다.');
+      useTripStore.getState().addInFlightLogs(logs);
       const processed = await pollTripSyncStatus(tripId, baselineSyncStatus);
 
       if (processed && lastSyncedLogUuid) {
