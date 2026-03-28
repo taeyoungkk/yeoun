@@ -213,8 +213,9 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
                 {pastTrips.map((trip, index) => (
                   <View key={trip.tripId} style={{ marginBottom: index === pastTrips.length - 1 ? 0 : 16 }}>
                     <TripCard
+                      tripId={trip.tripId}
                       title={trip.title}
-                      location="여행지 정보"
+                      location={trip.region || trip.country || '대한민국'}
                       date={`${trip.startDate} ~ ${trip.endDate}`}
                       imageUrl={getTripImage(trip.tripId, trip.imageUrl)}
                       showHeart={false}

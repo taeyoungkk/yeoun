@@ -224,15 +224,15 @@ export const getTripTimelineDaysApi = async (tripId: string): Promise<ApiRespons
           : [],
       },
     };
-  } catch (error) {
-    if (shouldMockInDev(error)) {
-      return {
-        success: true,
-        data: { timelineDays: [] },
-        timestamp: new Date().toISOString(),
-      };
-    }
-    throw error;
+  } catch (error: any) {
+    console.error('Get Trip Timeline Days API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch trip timeline days.'),
+      data: { timelineDays: [] },
+      timestamp: new Date().toISOString(),
+    };
   }
 };
 
@@ -243,26 +243,26 @@ export const getTimelineDayDetailApi = async (timelineDayId: string): Promise<Ap
       ...response.data,
       data: mapTimelineDayDetail(response.data.data),
     };
-  } catch (error) {
-    if (shouldMockInDev(error)) {
-      return {
-        success: true,
-        data: {
-          timelineDayId,
-          tripId: 'mock-trip',
-          dayDate: new Date().toISOString().slice(0, 10),
-          summaryText: '',
-          distanceM: 0,
-          photoCount: 0,
-          eventCount: 0,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          events: [],
-        },
-        timestamp: new Date().toISOString(),
-      };
-    }
-    throw error;
+  } catch (error: any) {
+    console.error('Get Timeline Day Detail API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch timeline day detail.'),
+      data: {
+        timelineDayId,
+        tripId: '',
+        dayDate: '',
+        summaryText: '',
+        distanceM: 0,
+        photoCount: 0,
+        eventCount: 0,
+        createdAt: '',
+        updatedAt: '',
+        events: [],
+      },
+      timestamp: new Date().toISOString(),
+    };
   }
 };
 
@@ -286,34 +286,34 @@ export const getEventDetailApi = async (eventId: string): Promise<ApiResponse<Ev
         myMemo: data.myMemo ?? null,
       },
     };
-  } catch (error) {
-    if (shouldMockInDev(error)) {
-      return {
-        success: true,
-        data: {
-          eventId,
-          createdBy: 'SYSTEM',
-          eventType: 'PLACE_VISIT',
-          title: 'Mock Event',
-          placeName: 'Mock Place',
-          startAt: new Date().toISOString(),
-          endAt: new Date().toISOString(),
-          hidden: false,
-          photoCount: 0,
-          tripId: 'mock-trip',
-          timelineDayId: 'mock-day',
-          centerLatitude: 37.5665,
-          centerLongitude: 126.9780,
-          radiusM: 100,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          photos: [],
-          myMemo: null,
-        },
-        timestamp: new Date().toISOString(),
-      };
-    }
-    throw error;
+  } catch (error: any) {
+    console.error('Get Event Detail API Error:', error);
+    return {
+      success: false,
+      code: getErrorCode(error),
+      message: getErrorMessage(error, 'Failed to fetch event detail.'),
+      data: {
+        eventId,
+        createdBy: '',
+        eventType: 'OTHER',
+        title: '',
+        placeName: null,
+        startAt: null,
+        endAt: null,
+        hidden: false,
+        photoCount: 0,
+        tripId: '',
+        timelineDayId: '',
+        centerLatitude: 0,
+        centerLongitude: 0,
+        radiusM: 0,
+        createdAt: '',
+        updatedAt: '',
+        photos: [],
+        myMemo: null,
+      },
+      timestamp: new Date().toISOString(),
+    };
   }
 };
 

@@ -143,6 +143,7 @@ export function CurrentLocationMap() {
           />
         )}
 
+
         <Mapbox.UserLocation visible showsUserHeadingIndicator />
       </Mapbox.MapView>
 

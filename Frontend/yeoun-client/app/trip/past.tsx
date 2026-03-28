@@ -80,6 +80,7 @@ export default function PastTripsScreen() {
   const renderItem = ({ item, index }: { item: TripListItem, index: number }) => (
     <View style={{ marginBottom: 16 }}>
       <TripCard
+        tripId={item.tripId}
         title={item.title}
         location={getTripLocation(item)}
         date={formatRange(item.startDate, item.endDate)}

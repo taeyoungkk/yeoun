@@ -29,6 +29,7 @@ interface TripState {
   locationSyncStatus: LocationSyncStatus;
   locationSyncMessage: string | null;
   locationSyncUpdatedAt: string | null;
+  lastSyncedLogUuid: string | null;
   startTrip: (trip: CurrentTrip) => void;
   updateCurrentTrip: (trip: CurrentTrip) => void;
   setReviewTrip: (trip: CurrentTrip) => void;
@@ -40,6 +41,7 @@ interface TripState {
   bumpRouteRefreshKey: () => void;
   setLocationSyncState: (status: LocationSyncStatus, message?: string | null) => void;
   resetLocationSyncState: () => void;
+  setLastSyncedLogUuid: (uuid: string | null) => void;
   endTrip: () => void;
   clearTrip: () => void;
   removeTrip: (tripId: string) => void;
@@ -60,6 +62,7 @@ export const useTripStore = create<TripState>()(
       locationSyncStatus: 'idle',
       locationSyncMessage: null,
       locationSyncUpdatedAt: null,
+      lastSyncedLogUuid: null,
       startTrip: (trip) =>
         set({
           isTripActive: true,
@@ -201,6 +204,7 @@ export const useTripStore = create<TripState>()(
           locationSyncMessage: null,
           locationSyncUpdatedAt: null,
         }),
+      setLastSyncedLogUuid: (uuid) => set({ lastSyncedLogUuid: uuid }),
       endTrip: () =>
         set((state) => ({
           isTripActive: false,
@@ -234,6 +238,7 @@ export const useTripStore = create<TripState>()(
         currentTripId: state.currentTripId,
         currentTrip: state.currentTrip,
         activeTrip: state.activeTrip,
+        lastSyncedLogUuid: state.lastSyncedLogUuid,
       }),
     },
   ),

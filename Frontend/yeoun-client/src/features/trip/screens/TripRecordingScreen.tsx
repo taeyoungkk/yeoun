@@ -56,12 +56,15 @@ import {
   leaveTripApi,
   type TripMemberItem,
   type TripDetail,
+  type LocationLog,
 } from '@/src/api/trip';
+import { matchMapTrace } from '@/src/api/mapbox';
 import { useTripStore, useUserStore } from '@/src/store';
 import { locationService } from '../../../services/locationService';
+import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
 import { requestTripPhotoPermission, syncTripPhotosForDateRange } from '../../../services/photoSyncService';
 import { type LocationSyncStatus } from '@/src/store/trip.store';
-import { PhotoMarker } from '@/src/components/map/EventMarkers';
+import { calculateDistance } from '@/src/utils/trip-analysis-utils';
 import MockTripRecordingScreen from './MockTripRecordingScreen';
 
 const hasMapboxToken = configureMapbox();
@@ -132,6 +135,7 @@ type TripDay = {
   id: DayKey;
   label: string;
   dateLabel: string;
+  lastRecordedAt?: string; // Track the latest point in this day
   distanceKm: number;
   summary: string;
   route: Coordinate[];
@@ -281,15 +285,36 @@ function normalizeRouteCoordinates(routeDays: Array<{ coordinates: number[][] }>
 function buildRealTripDays(
   timelineDays: TimelineDayDetail[],
   routeByDate: Map<string, Coordinate[]>,
+  activeTripId: string,
+  tripStartDate?: string,
+  tripEndDate?: string,
 ): TripDay[] {
-  return timelineDays.map((timelineDay, index) => ({
-    id: `day${index + 1}` as DayKey,
-    label: `DAY ${index + 1}`,
-    dateLabel: formatDateLabel(timelineDay.dayDate),
-    distanceKm: Math.round((timelineDay.distanceM / 1000) * 10) / 10,
-    summary: timelineDay.summaryText || '',
-    route: routeByDate.get(timelineDay.dayDate) ?? [],
-  }));
+  // If timelineDays is empty, we must at least show Day 1 for active trips
+  const dates = timelineDays.map(d => d.dayDate);
+  const today = new Date().toISOString().split('T')[0];
+  if (!dates.includes(today) && activeTripId) {
+    dates.push(today);
+  }
+
+  // If we still have no dates, fallback to startDate or today
+  if (dates.length === 0) {
+    dates.push(tripStartDate?.split('T')[0] || today);
+  }
+
+  return dates.map((date, index) => {
+    const timelineDay = timelineDays.find(d => d.dayDate === date);
+    const route = routeByDate.get(date) ?? [];
+    return {
+      id: `day${index + 1}` as DayKey,
+      label: `DAY ${index + 1}`,
+      dateLabel: formatDateLabel(date),
+      distanceKm: timelineDay ? Math.round((timelineDay.distanceM / 1000) * 10) / 10 : 0,
+      summary: timelineDay?.summaryText || '',
+      route,
+      // We don't have timestamps for server route points easily here, 
+      // so we use the day's date as a baseline if needed.
+    };
+  });
 }
 
 function buildEmptyRealTripDays(startDate?: string, endDate?: string): TripDay[] {
@@ -506,7 +531,6 @@ function RealTripRecordingScreen({
   const cardPositionsRef = useRef<Record<string, number>>({});
   const [scrollOffset, setScrollOffset] = useState(0);
   const [tripEvents, setTripEvents] = useState<TimelineEvent[]>([]);
-  const [realTripDays, setRealTripDays] = useState<TripDay[] | null>(null);
   const [tripMembers, setTripMembers] = useState<TripMemberItem[]>([]);
   const params = useLocalSearchParams();
   const endTrip = useTripStore((state) => state.endTrip);
@@ -560,6 +584,9 @@ function RealTripRecordingScreen({
   const settings = useUserStore((state) => state.settings);
   const { showPhotoPins, showPaymentPins } = settings;
   const updateSettings = useUserStore((state) => state.updateSettings);
+  const [realTripDays, setRealTripDays] = useState<TripDay[] | null>(null);
+  const [sessionTrail, setSessionTrail] = useState<LocationLog[]>([]);
+  const [liveCurrentLocation, setLiveCurrentLocation] = useState<Coordinate | null>(null);
   const [actionConfirm, setActionConfirm] = useState<{
     kind: ActionConfirmKind;
     title: string;
@@ -568,12 +595,18 @@ function RealTripRecordingScreen({
   } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
-  const [liveCurrentLocation, setLiveCurrentLocation] = useState<Coordinate | null>(null);
   const [initialCurrentLocation, setInitialCurrentLocation] = useState<Coordinate | null>(null);
   const [syncToast, setSyncToast] = useState<{ status: LocationSyncStatus; message: string } | null>(null);
   const syncToastOpacity = useRef(new Animated.Value(0)).current;
   const syncToastTranslateY = useRef(new Animated.Value(-14)).current;
   const syncToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // -- Map Matching states --
+  const [matchedSessionTrail, setMatchedSessionTrail] = useState<Coordinate[]>([]);
+  const lastMatchedIndexRef = useRef(0);
+  const isMatchingRef = useRef(false);
+  // -------------------------
+
   const autoPhotoSyncInFlightRef = useRef(false);
   const autoPhotoSyncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastAutoPhotoSyncAtRef = useRef(0);
@@ -592,6 +625,7 @@ function RealTripRecordingScreen({
   const tripDays = useMemo(() => {
     return realTripDays ?? buildEmptyRealTripDays(displayTrip?.startDate, displayTrip?.endDate);
   }, [displayTrip?.endDate, displayTrip?.startDate, realTripDays]);
+
   const filteredDays = useMemo(() => getFilteredDays(activeFilter, tripDays), [activeFilter, tripDays]);
   const filteredEvents = useMemo(
     () => tripEvents.filter((event) => activeFilter === 'all' || event.day === activeFilter),
@@ -619,12 +653,21 @@ function RealTripRecordingScreen({
   );
 
   const routeCoordinates = useMemo(() => {
-    return filteredDays.flatMap((day) => day.route);
-  }, [filteredDays]);
+    const serverRoute = filteredDays.flatMap((day) => day.route);
+    // Only append session trail if we are looking at 'all' or the last day
+    if (activeFilter === 'all' || activeFilter === `day${tripDays.length}`) {
+      // Show already matched trail + raw points that haven't been matched yet
+      const rawTrailCoords = sessionTrail.slice(lastMatchedIndexRef.current).map(l => [l.longitude, l.latitude] as Coordinate);
+      return [...serverRoute, ...matchedSessionTrail, ...rawTrailCoords];
+    }
+    return serverRoute;
+  }, [activeFilter, filteredDays, sessionTrail, matchedSessionTrail, tripDays.length]);
+
   const currentLocationCoordinate = useMemo(
     () => liveCurrentLocation ?? initialCurrentLocation,
     [initialCurrentLocation, liveCurrentLocation]
   );
+
   const routeShape = useMemo(
     () => ({
       type: 'Feature' as const,
@@ -633,6 +676,7 @@ function RealTripRecordingScreen({
     }),
     [routeCoordinates]
   );
+
   const eventFeatureCollection = useMemo(
     () => ({
       type: 'FeatureCollection' as const,
@@ -641,13 +685,13 @@ function RealTripRecordingScreen({
 
         return {
           type: 'Feature' as const,
-            id: event.id,
-            properties: {
-              eventId: event.id,
-              type: event.type,
-              accent: theme.accent,
-              selected: selectedEventId === event.id ? 1 : 0,
-            },
+          id: event.id,
+          properties: {
+            eventId: event.id,
+            type: event.type,
+            accent: theme.accent,
+            selected: selectedEventId === event.id ? 1 : 0,
+          },
           geometry: {
             type: 'Point' as const,
             coordinates: event.coordinate as Coordinate,
@@ -657,14 +701,19 @@ function RealTripRecordingScreen({
     }),
     [filteredMapEvents, selectedEventId]
   );
+
   const summaryStats = useMemo(
-    () => ({
-      totalDistanceLabel: `${filteredDays.reduce((sum, day) => sum + day.distanceKm, 0).toFixed(1)}km`,
-      visitedPlaceCount: filteredEvents.filter((event) => Boolean(event.coordinate)).length,
-      photoCount: filteredEvents.reduce((sum, event) => sum + (event.photoItems?.length ?? 0), 0),
-      paymentCount: filteredEvents.filter((event) => event.type === 'payment').length,
-    }),
-    [filteredDays, filteredEvents]
+    () => {
+      const totalDistance = calculateDistance(routeCoordinates);
+      
+      return {
+        totalDistanceLabel: `${totalDistance.toFixed(1)}km`,
+        visitedPlaceCount: filteredEvents.filter((event) => Boolean(event.coordinate)).length,
+        photoCount: filteredEvents.reduce((sum, event) => sum + (event.photoItems?.length ?? 0), 0),
+        paymentCount: filteredEvents.filter((event) => event.type === 'payment').length,
+      };
+    },
+    [activeFilter, filteredDays, filteredEvents, sessionTrail, tripDays.length]
   );
   const selectedPhotoEvent = useMemo(
     () => filteredEvents.find((event) => event.id === photoViewer?.eventId) ?? null,
@@ -868,12 +917,17 @@ function RealTripRecordingScreen({
           getTripMembersApi(activeTripId),
         ]);
 
-        const timelineDays = await Promise.all(
+        const timelineDays = (await Promise.all(
           timelineDaysResponse.data.timelineDays.map(async (timelineDay) => {
-            const detailResponse = await getTimelineDayDetailApi(timelineDay.timelineDayId);
-            return detailResponse.data;
+            try {
+              const detailResponse = await getTimelineDayDetailApi(timelineDay.timelineDayId);
+              return detailResponse.success ? detailResponse.data : null;
+            } catch (e) {
+              console.warn(`Failed to fetch detail for day ${timelineDay.timelineDayId}`, e);
+              return null;
+            }
           }),
-        );
+        )).filter((d): d is TimelineDayDetail => Boolean(d));
         const eventDetails = await Promise.all(
           timelineDays.flatMap((timelineDay) =>
             timelineDay.events
@@ -894,16 +948,23 @@ function RealTripRecordingScreen({
             return photoDetailResponse.success ? photoDetailResponse.data : null;
           }),
         );
-        const routeByDate = new Map<string, Coordinate[]>(
-          await Promise.all(
-            timelineDays.map(async (timelineDay) => {
-              const routeResponse = await getTripRouteByDayApi(activeTripId, timelineDay.dayDate);
-              return [
-                timelineDay.dayDate,
-                routeResponse.success ? normalizeRouteCoordinates(routeResponse.data.routeDays) : [],
-              ] as const;
-            }),
-          ),
+        const routeByDate = new Map<string, Coordinate[]>();
+        const uniqueDates = Array.from(new Set([
+          ...timelineDays.map(d => d.dayDate),
+          new Date().toISOString().split('T')[0]
+        ]));
+
+        await Promise.all(
+          uniqueDates.map(async (date) => {
+            try {
+              const routeResponse = await getTripRouteByDayApi(activeTripId, date);
+              if (routeResponse.success) {
+                routeByDate.set(date, normalizeRouteCoordinates(routeResponse.data.routeDays));
+              }
+            } catch (e) {
+              console.warn(`Failed to fetch route for date ${date}`, e);
+            }
+          })
         );
 
         if (cancelled) {
@@ -936,7 +997,13 @@ function RealTripRecordingScreen({
           }
         }
         setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
-        setRealTripDays(buildRealTripDays(timelineDays, routeByDate));
+        setRealTripDays(buildRealTripDays(
+          timelineDays, 
+          routeByDate, 
+          activeTripId, 
+          tripDetailResponse.data?.startDate,
+          tripDetailResponse.data?.endDate
+        ));
         setTripEvents(
           appendRealExpenseEvents(
             buildRealTripEvents(
@@ -948,12 +1015,35 @@ function RealTripRecordingScreen({
               currentUserNickname,
             ),
             timelineDays,
-            expensesResponse.data.items,
+            expensesResponse?.data?.items ?? [],
             memberMap,
             currentUserId,
             currentUserNickname,
           ),
         );
+        
+        // Prune session trail based on the last synced log.
+        const lastSyncedUuid = useTripStore.getState().lastSyncedLogUuid;
+        if (lastSyncedUuid) {
+          setSessionTrail(prev => {
+            const syncedIndex = prev.findIndex(l => l.clientLogUuid === lastSyncedUuid);
+            if (syncedIndex !== -1) {
+              return prev.slice(syncedIndex + 1);
+            }
+            return prev;
+          });
+          // Reset matched trail so it starts fresh from the pruned session trail
+          setMatchedSessionTrail([]);
+          lastMatchedIndexRef.current = 0;
+        } else {
+          // Fallback to time-based pruning if no UUID (e.g. initial load)
+          setSessionTrail(prev => {
+            const twoMinsAgo = new Date(Date.now() - 120000).toISOString();
+            return prev.filter(l => l.recordedAt > twoMinsAgo);
+          });
+          setMatchedSessionTrail([]);
+          lastMatchedIndexRef.current = 0;
+        }
       } catch (error) {
         if (cancelled) {
           return;
@@ -983,18 +1073,119 @@ function RealTripRecordingScreen({
   }, [filteredEvents, selectedEventId]);
 
   useEffect(() => {
+    const unsubscribe = locationService.subscribe((location) => {
+      const coord: Coordinate = [location.longitude, location.latitude];
+      setLiveCurrentLocation(coord);
+      if (!isReviewMode) {
+        setSessionTrail((prev) => {
+          // Avoid duplicates
+          if (prev.length > 0 && prev[prev.length - 1].recordedAt === location.recordedAt) return prev;
+          return [...prev, location];
+        });
+      }
+    });
+
+    if (!isReviewMode && activeTripId) {
+      locationService.startAutoSync(activeTripId);
+      
+      const refreshPendingLogs = () => {
+        locationService.getPendingLogs().then((logs) => {
+          setSessionTrail((prev) => {
+            const combined = [...logs, ...prev];
+            const unique = Array.from(new Map(combined.map(l => [l.recordedAt, l])).values())
+              .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
+            return unique;
+          });
+        });
+      };
+
+      // Initial load
+      refreshPendingLogs();
+
+      // Refresh when app comes to foreground
+      const appStateSub = AppState.addEventListener('change', (nextState) => {
+        if (nextState === 'active') {
+          refreshPendingLogs();
+        }
+      });
+
+      return () => {
+        unsubscribe();
+        locationService.stopAutoSync();
+        appStateSub.remove();
+      };
+    }
+
+    return () => {
+      unsubscribe();
+      locationService.stopAutoSync();
+    };
+  }, [activeTripId, isReviewMode]);
+
+  useEffect(() => {
+    if (isReviewMode || !activeTripId || isMatchingRef.current) {
+      return;
+    }
+
+    const rawCoords = sessionTrail.map(l => [l.longitude, l.latitude] as Coordinate);
+    const unMatchedCount = rawCoords.length - lastMatchedIndexRef.current;
+
+    // Minimum 3 points to match, and at least 5 new points since last match
+    if (unMatchedCount < 5) {
+      return;
+    }
+
+    const processMatching = async () => {
+      isMatchingRef.current = true;
+      try {
+        // Take up to 100 points for matching (Mapbox limit)
+        // We overlap by 1 point to ensure continuity
+        const startIndex = Math.max(0, lastMatchedIndexRef.current - 1);
+        const chunkToMatch = rawCoords.slice(startIndex, startIndex + 100);
+        
+        if (chunkToMatch.length < 2) {
+          isMatchingRef.current = false;
+          return;
+        }
+
+        try {
+          const matched = await matchMapTrace(chunkToMatch, 'walking');
+          if (matched && matched.length > 0) {
+            setMatchedSessionTrail(prev => {
+              const nextBase = startIndex === 0 ? [] : prev;
+              return [...nextBase, ...matched];
+            });
+          } else {
+            // Fallback: use raw points if matching fails (e.g. non-road path like a train)
+            setMatchedSessionTrail(prev => {
+              const nextBase = startIndex === 0 ? [] : prev;
+              return [...nextBase, ...chunkToMatch];
+            });
+          }
+          // Advance index regardless to avoid infinite retries of failing segments
+          lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
+        } catch (error) {
+          console.warn('[Map Matching] Failed to match segment, falling back to raw:', error);
+          setMatchedSessionTrail(prev => {
+            const nextBase = startIndex === 0 ? [] : prev;
+            return [...nextBase, ...chunkToMatch];
+          });
+          lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
+        }
+      } finally {
+        isMatchingRef.current = false;
+      }
+    };
+
+    void processMatching();
+  }, [sessionTrail, activeTripId, isReviewMode]);
+
+  useEffect(() => {
     if (activeFilter !== 'all' && !tripDays.some((day) => day.id === activeFilter)) {
       setActiveFilter('all');
     }
   }, [activeFilter, tripDays]);
 
-  useEffect(() => {
-    const unsubscribe = locationService.subscribe((location) => {
-      setLiveCurrentLocation([location.longitude, location.latitude]);
-    });
-
-    return unsubscribe;
-  }, []);
 
   useEffect(() => {
     if (photoViewer && (!selectedPhotoEvent || !selectedPhotoItem)) {
@@ -1366,6 +1557,7 @@ function RealTripRecordingScreen({
         }
 
         await locationService.stopTracking();
+        locationService.stopAutoSync();
         endTrip();
         void fetchTrips(true);
         router.push(`${reportRoute}?mode=review`);
@@ -1391,6 +1583,7 @@ function RealTripRecordingScreen({
 
       InteractionManager.runAfterInteractions(() => {
         stopAutoPhotoSync();
+        locationService.stopAutoSync();
         removeTrip(activeTripId);
         void fetchTrips(true);
         clearTrip();
@@ -1409,6 +1602,7 @@ function RealTripRecordingScreen({
 
     InteractionManager.runAfterInteractions(() => {
       stopAutoPhotoSync();
+      locationService.stopAutoSync();
       removeTrip(activeTripId);
       void fetchTrips(true);
       clearTrip();

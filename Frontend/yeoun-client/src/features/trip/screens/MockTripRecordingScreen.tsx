@@ -23,7 +23,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { configureMapbox } from '@/src/lib/mapbox';
 import { getTripExpensesApi } from '@/src/api/expense';
 import { getTimelineDayDetailApi, getTripTimelineDaysApi, type TimelineDayDetail } from '@/src/api/timeline';
-import { getTripDetailApi, startTripApi, endTripApi, leaveTripApi, deleteTripApi, type TripDetail } from '@/src/api/trip';
+import { getTripDetailApi, startTripApi, endTripApi, leaveTripApi, deleteTripApi, type TripDetail, type LocationLog } from '@/src/api/trip';
+import { matchMapTrace } from '@/src/api/mapbox';
 import { useTripStore, useUserStore } from '@/src/store';
 import {
   CURRENT_USER_ID,
@@ -401,7 +402,10 @@ export default function MockTripRecordingScreen({
   } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
-  const [liveRoute, setLiveRoute] = useState<Coordinate[]>([]);
+  const [liveRoute, setLiveRoute] = useState<LocationLog[]>([]);
+  const [matchedLiveRoute, setMatchedLiveRoute] = useState<Coordinate[]>([]);
+  const lastMatchedIndexRef = useRef(0);
+  const isMatchingRef = useRef(false);
   const showMockRouteMetrics = useMockData;
   const isReviewMode = params.mode === 'review';
   const mockDisplayTrip = useMemo(
@@ -459,10 +463,11 @@ export default function MockTripRecordingScreen({
 
   const routeCoordinates = useMemo(() => {
     const historical = filteredDays.flatMap((day) => day.route);
-    return [...historical, ...liveRoute];
-  }, [filteredDays, liveRoute]);
+    const rawLiveCoords = liveRoute.slice(lastMatchedIndexRef.current).map(l => [l.longitude, l.latitude] as Coordinate);
+    return [...historical, ...matchedLiveRoute, ...rawLiveCoords];
+  }, [filteredDays, liveRoute, matchedLiveRoute]);
   const currentLocationCoordinate = useMemo(
-    () => (liveRoute.length > 0 ? liveRoute[liveRoute.length - 1] : null),
+    () => (liveRoute.length > 0 ? [liveRoute[liveRoute.length - 1].longitude, liveRoute[liveRoute.length - 1].latitude] as Coordinate : null),
     [liveRoute]
   );
   const routeShape = useMemo(
@@ -523,18 +528,19 @@ export default function MockTripRecordingScreen({
     selectedPhotoEvent?.emotionOwnerId === CURRENT_USER_ID && selectedPhotoEvent?.emotionEmoji && selectedPhotoEvent?.emotionLabel
       ? `${selectedPhotoEvent.emotionEmoji} ${selectedPhotoEvent.emotionLabel}`
       : null;
-  const collapseProgress = Math.min(scrollOffset / MAP_COLLAPSE_DISTANCE, 1);
-  const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
-  const mapRadius = 32 - 8 * collapseProgress;
-  const panelLift = -145 * collapseProgress;
   const activeTripId = useMockData
     ? ''
     : isReviewMode
       ? reviewTrip?.tripId ?? currentTrip?.tripId ?? ''
       : currentTripId ?? currentTrip?.tripId ?? '';
+  const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
+
+  const collapseProgress = Math.min(scrollOffset / MAP_COLLAPSE_DISTANCE, 1);
+  const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
+  const mapRadius = 32 - 8 * collapseProgress;
+  const panelLift = -145 * collapseProgress;
   const tripTitle = displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(activeTrip?.ownerUserId && currentUserId && activeTrip.ownerUserId === currentUserId);
-  const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
 
   useEffect(() => {
     if (routeCoordinates.length < 2) {
@@ -595,7 +601,7 @@ export default function MockTripRecordingScreen({
           setActiveTrip(tripDetailResponse.data);
         }
         setRealTripDays(buildRealTripDays(timelineDays));
-        setTripEvents(appendRealExpenseEvents(buildRealTripEvents(timelineDays), timelineDays, expensesResponse.data.items));
+        setTripEvents(appendRealExpenseEvents(buildRealTripEvents(timelineDays), timelineDays, expensesResponse?.data?.items ?? []));
       } catch (error) {
         if (cancelled) {
           return;
@@ -629,13 +635,65 @@ export default function MockTripRecordingScreen({
   }, [activeFilter, tripDays]);
 
   useEffect(() => {
-    // Subscribe to real-time location updates for instant map updates
     const unsubscribe = locationService.subscribe((location) => {
-      setLiveRoute((prev) => [...prev, [location.longitude, location.latitude]]);
+      setLiveRoute((prev) => [...prev, location]);
     });
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (isMatchingRef.current) {
+      return;
+    }
+
+    const rawCoords = liveRoute.map(l => [l.longitude, l.latitude] as Coordinate);
+    const unMatchedCount = rawCoords.length - lastMatchedIndexRef.current;
+    if (unMatchedCount < 5) {
+      return;
+    }
+
+    const processMatching = async () => {
+      isMatchingRef.current = true;
+      try {
+        const startIndex = Math.max(0, lastMatchedIndexRef.current - 1);
+        const chunkToMatch = rawCoords.slice(startIndex, startIndex + 100);
+
+        if (chunkToMatch.length < 2) {
+          isMatchingRef.current = false;
+          return;
+        }
+
+        try {
+          const matched = await matchMapTrace(chunkToMatch, 'walking');
+          if (matched && matched.length > 0) {
+            setMatchedLiveRoute((prev) => {
+              const nextBase = startIndex === 0 ? [] : prev;
+              return [...nextBase, ...matched];
+            });
+          } else {
+            // Fallback for NoMatch or empty results
+            setMatchedLiveRoute((prev) => {
+              const nextBase = startIndex === 0 ? [] : prev;
+              return [...nextBase, ...chunkToMatch];
+            });
+          }
+          lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
+        } catch (error) {
+          console.warn('[Mock Matching] Failed, falling back to raw:', error);
+          setMatchedLiveRoute((prev) => {
+            const nextBase = startIndex === 0 ? [] : prev;
+            return [...nextBase, ...chunkToMatch];
+          });
+          lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
+        }
+      } finally {
+        isMatchingRef.current = false;
+      }
+    };
+
+    void processMatching();
+  }, [liveRoute]);
 
   useEffect(() => {
     if (photoViewer && (!selectedPhotoEvent || !selectedPhotoItem)) {
@@ -2035,8 +2093,8 @@ export default function MockTripRecordingScreen({
               <Text style={styles.endButtonText}>여행 종료</Text>
             </TouchableOpacity>
           </View>
-          </View>
         </View>
+      </View>
       </Animated.ScrollView>
     </SafeAreaView>
   );

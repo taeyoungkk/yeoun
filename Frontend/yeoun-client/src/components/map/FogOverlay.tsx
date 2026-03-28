@@ -74,7 +74,7 @@ function combineToMultiPolygon(features: Feature<Polygon | MultiPolygon>[]): Fea
 }
 
 // 공통 헬퍼: 입력된 Feature(Point, LineString, MultiLineString, GeometryCollection)를 기반으로
-// 모두 'Polygon'들로 변환 후 배열로 묶어줍니다. 이때 거리 0.001km 정도의 아주 미세한 기본 버퍼를 주어
+// 모두 'Polygon'들로 변환 후 배열로 묶어줍니다. 이때 거리 0.02km 정도의 아주 미세한 기본 버퍼를 주어
 // 선이나 점을 면(Polygon)으로 안전하게 변환합니다.
 function normalizeToPolygons(feature: Feature<any>): Feature<Polygon>[] {
   const polys: Feature<Polygon>[] = [];
@@ -87,15 +87,15 @@ function normalizeToPolygons(feature: Feature<any>): Feature<Polygon>[] {
       for (const coords of geom.coordinates) {
         if (!coords || coords.length < 2) continue;
         const lineFeature = { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } };
-        // 미세한 버퍼를 주어 면으로 변환 (0.0001 -> 0.001 로 약간 키워 안정성 강화)
-        const buf = buffer(lineFeature as any, 0.001, { units: 'kilometers', steps: 4 });
+        // 미세한 버퍼를 주어 면으로 변환 (성능을 위해 steps를 8로 축소)
+        const buf = buffer(lineFeature as any, 0.02, { units: 'kilometers', steps: 8 });
         if (buf) polys.push(...flattenToPolygons([truncate(buf as any, { precision: 6 })]));
       }
       return;
     }
 
     const tempFeature = { type: 'Feature', properties: {}, geometry: geom };
-    const buf = buffer(tempFeature as any, 0.001, { units: 'kilometers', steps: 4 });
+    const buf = buffer(tempFeature as any, 0.02, { units: 'kilometers', steps: 8 });
     if (buf) {
       polys.push(...flattenToPolygons([truncate(buf as any, { precision: 6 })]));
     }
@@ -104,6 +104,38 @@ function normalizeToPolygons(feature: Feature<any>): Feature<Polygon>[] {
   if (feature.geometry.type === 'GeometryCollection') {
     for (const g of feature.geometry.geometries) processGeom(g);
   } else {
+    // 잦은 연산 부하를 줄이기 위해 포인트 밀도를 낮춥니다 (약 10m 이내 포인트 제거)
+    const geom = feature.geometry;
+    if (geom.type === 'LineString') {
+      const coords = geom.coordinates;
+      if (coords.length > 2) {
+        const simplified: any[] = [coords[0]];
+        for (let i = 1; i < coords.length - 1; i++) {
+          const last = simplified[simplified.length - 1];
+          const curr = coords[i];
+          const dist = Math.sqrt(Math.pow(curr[0] - last[0], 2) + Math.pow(curr[1] - last[1], 2));
+          if (dist > 0.0001) simplified.push(curr); // 약 10m
+        }
+        simplified.push(coords[coords.length - 1]);
+        processGeom({ ...geom, coordinates: simplified });
+        return polys;
+      }
+    } else if (geom.type === 'MultiLineString') {
+      const simplifiedMulti = geom.coordinates.map((line: any[]) => {
+        if (line.length <= 2) return line;
+        const simplified: any[] = [line[0]];
+        for (let i = 1; i < line.length - 1; i++) {
+          const last = simplified[simplified.length - 1];
+          const curr = line[i];
+          const dist = Math.sqrt(Math.pow(curr[0] - last[0], 2) + Math.pow(curr[1] - last[1], 2));
+          if (dist > 0.0001) simplified.push(curr);
+        }
+        simplified.push(line[line.length - 1]);
+        return simplified;
+      });
+      processGeom({ ...geom, coordinates: simplifiedMulti });
+      return polys;
+    }
     processGeom(feature.geometry);
   }
   
@@ -134,10 +166,10 @@ export function FogOverlay({ feature, radiusKm = 1 }: FogOverlayProps) {
           return;
         }
 
-        const steps = 8; // 페이드 단계를 8로 조정 (부드러움과 성능의 균형)
-        const fadeStartKm = radiusKm * 0.3;
+        const steps = 4; // 단계를 4로 축소하여 연산량 절반으로 감소 (성능 최적화)
+        const fadeStartKm = radiusKm * 0.4;
         const fadeEndKm = radiusKm;
-        const maxOpacity = 1.0; 
+        const maxOpacity = 0.95; // 완전 불투명보다 약간 투명하게 하여 부드러움 유지
 
         const features: Feature<Polygon | MultiPolygon>[] = [];
         let prevBuffer: Feature<Polygon | MultiPolygon> | null = null;
@@ -175,9 +207,8 @@ export function FogOverlay({ feature, radiusKm = 1 }: FogOverlayProps) {
           
           let currentBuffer: Feature<Polygon | MultiPolygon> | null = null;
           try {
-            // steps: 16으로 정밀도 유지 (충분히 빠름)
-            const buf = buffer(baseGeometry, currentRadiusKm, { units: 'kilometers', steps: 16 });
-            currentBuffer = truncate(buf as any, { precision: 6 }) as Feature<Polygon | MultiPolygon>;
+            const buf = buffer(baseGeometry, currentRadiusKm, { units: 'kilometers', steps: 8 });
+            currentBuffer = truncate(buf as any, { precision: 5 }) as Feature<Polygon | MultiPolygon>;
           } catch (e) { continue; }
 
           if (!currentBuffer) continue;
@@ -196,10 +227,8 @@ export function FogOverlay({ feature, radiusKm = 1 }: FogOverlayProps) {
           // Transition: 안쪽(fadeStartKm)부터 바깥쪽(fadeEndKm) 사이의 그라데이션 링
           if (i > 0 && prevBuffer && currentBuffer) {
             try {
-              // 더 큰 원(currentBuffer)에서 작은 원(prevBuffer)을 빼서 링을 만듭니다.
               const ring = difference(featureCollection([currentBuffer, prevBuffer]));
               if (ring) {
-                // i=1 (안쪽) 일 때 낮은 투명도, i=steps (바깥쪽) 일 때 높은 투명도
                 const opacity = (i / steps) * maxOpacity;
                 ring.properties = { opacity: opacity };
                 features.push(ring as Feature<Polygon | MultiPolygon>);
@@ -226,12 +255,9 @@ export function FogOverlay({ feature, radiusKm = 1 }: FogOverlayProps) {
       <Mapbox.FillLayer
         id="fog-overlay-fill"
         style={{
-          fillColor: '#EFF4EC', // 앱 배경색과 동일한 색상으로 안개를 설정하여 맵이 배경으로 서서히 녹아들도록(fade out) 합니다.
-          // 생성한 각 도넛의 속성 opacity를 가져와 적용합니다.
+          fillColor: '#EFF4EC',
           fillOpacity: ['get', 'opacity'],
         }}
-        // 이 속성으로 안개를 마커와 라벨보다 아래로 또는 위로 보낼지 결정할 수 있습니다.
-        // 위에 얹으면 마커들도 같이 어두워집니다 (의도한 바).
       />
     </Mapbox.ShapeSource>
   );

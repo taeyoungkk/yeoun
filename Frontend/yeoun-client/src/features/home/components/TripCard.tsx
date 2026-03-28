@@ -1,10 +1,11 @@
-import { Ionicons } from '@expo/vector-icons';
-import { IconSymbol } from '@/src/components/ui/icon-symbol';
-import { Image } from 'expo-image';
 import React from 'react';
 import { Text, View, TouchableOpacity, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { useMainDestination } from '@/src/hooks/useMainDestination';
 
 interface TripCardProps {
+    tripId?: string; // Optional for analysis
     title: string;
     location: string;
     date: string;
@@ -15,7 +16,9 @@ interface TripCardProps {
     onPress?: () => void;
 }
 
-export const TripCard = ({ title, location, date, imageUrl, isFavorite, showHeart = true, onPressHeart, onPress }: TripCardProps) => {
+export const TripCard = ({ tripId, title, location: initialLocation, date, imageUrl, isFavorite, showHeart = true, onPressHeart, onPress }: TripCardProps) => {
+    const analyzedLocation = useMainDestination(tripId || '', initialLocation);
+    const location = tripId ? analyzedLocation : initialLocation;
     return (
         <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
             <View 

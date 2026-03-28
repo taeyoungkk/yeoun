@@ -38,8 +38,11 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
     const { locations } = data as { locations: Location.LocationObject[] };
     if (locations && locations.length > 0) {
       const newLogs = locations.map(toLocationLog);
-
       await appendLogsToStorage(newLogs);
+      // Notify listeners even in background (to update UI if still mounted)
+      newLogs.forEach(log => {
+        listeners.forEach(listener => listener(log));
+      });
     }
   }
 });
@@ -108,6 +111,7 @@ let appStateSubscription: { remove: () => void } | null = null;
 let trackingSessionConfig: TrackingSessionConfig | null = null;
 let trackingEnabled = false;
 let activeCollectorMode: CollectorMode = 'idle';
+let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
 let lastKnownAppState: AppStateStatus = AppState.currentState;
 let collectorTransitionQueue: Promise<void> = Promise.resolve();
 let storageOperationQueue: Promise<unknown> = Promise.resolve();
@@ -558,6 +562,31 @@ export const locationService = {
     }
   },
 
+  getPendingLogs: async (): Promise<LocationLog[]> => {
+    return runQueuedStorageOperation(async () => {
+      try {
+        const existingIndexRaw = await AsyncStorage.getItem(STORAGE_INDEX_KEY);
+        const chunkKeys = existingIndexRaw ? (JSON.parse(existingIndexRaw) as string[]) : [];
+        if (chunkKeys.length === 0) {
+          return [];
+        }
+
+        const chunkEntries = await AsyncStorage.multiGet(chunkKeys);
+        return chunkEntries.flatMap(([, value]) => {
+          if (!value) return [];
+          try {
+            return JSON.parse(value) as LocationLog[];
+          } catch (e) {
+            return [];
+          }
+        });
+      } catch (error) {
+        console.error('Failed to get pending logs:', error);
+        return [];
+      }
+    });
+  },
+
   flushLogs: async (): Promise<LocationLog[]> => {
     return runQueuedStorageOperation(async () => {
       try {
@@ -617,6 +646,7 @@ export const locationService = {
         pendingLocationCount: baselineSyncStatus?.pendingLocationCount ?? null,
         pendingPhotoCount: baselineSyncStatus?.pendingPhotoCount ?? null,
       });
+      const lastSyncedLogUuid = logs[logs.length - 1]?.clientLogUuid;
       const response = await uploadLocationsApi(tripId, logs);
 
       if (!response.success) {
@@ -630,8 +660,8 @@ export const locationService = {
       setLocationSyncState('processing', 'GPS 기록을 업로드했습니다. 동기화 상태 업데이트를 기다리고 있어요.');
       const processed = await pollTripSyncStatus(tripId, baselineSyncStatus);
 
-      if (!processed) {
-        console.warn('Location logs uploaded but processing is not complete yet.');
+      if (processed && lastSyncedLogUuid) {
+        useTripStore.getState().setLastSyncedLogUuid(lastSyncedLogUuid);
       }
 
       return processed;
@@ -639,6 +669,27 @@ export const locationService = {
       console.error('Sync process error:', error);
       setLocationSyncState('failed', 'GPS 동기화 중 예기치 않은 오류가 발생했습니다.');
       return false;
+    }
+  },
+  
+  startAutoSync: (tripId: string, intervalMs: number = 60000) => {
+    if (autoSyncTimer) {
+      clearInterval(autoSyncTimer);
+    }
+    
+    console.log(`[LocationService] Starting auto-sync for trip ${tripId} (interval: ${intervalMs}ms)`);
+    autoSyncTimer = setInterval(() => {
+      void locationService.syncLocations(tripId).catch(err => {
+        console.error('[LocationService] Auto-sync failed:', err);
+      });
+    }, intervalMs);
+  },
+  
+  stopAutoSync: () => {
+    if (autoSyncTimer) {
+      console.log('[LocationService] Stopping auto-sync');
+      clearInterval(autoSyncTimer);
+      autoSyncTimer = null;
     }
   },
 };
