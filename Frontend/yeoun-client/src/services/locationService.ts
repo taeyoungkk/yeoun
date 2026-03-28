@@ -746,4 +746,18 @@ export const locationService = {
       autoSyncTimer = null;
     }
   },
+
+  onPermissionChange: async (enabled: boolean) => {
+    logLocationDebug('onPermissionChange called.', { enabled, trackingEnabled });
+    if (!enabled) {
+      if (trackingEnabled) {
+        await locationService.stopTracking();
+      }
+    } else {
+      // If was previously tracking (session exists), restart
+      if (!trackingEnabled) {
+        await locationService.startTracking();
+      }
+    }
+  },
 };

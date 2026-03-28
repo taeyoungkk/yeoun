@@ -1448,6 +1448,12 @@ function RealTripRecordingScreen({
 
     const { locationPerm, photoPerm } = useUserStore.getState().settings;
 
+    // Early exit if both are disabled - don't show "Success" toast for nothing
+    if (!locationPerm && !photoPerm) {
+      setLocationSyncState('idle', '설정에서 위치와 사진 정보 수집이 모두 비활성화되어 있어 동기화를 건너뛰었습니다.');
+      return true;
+    }
+
     const photoResult = await syncTripPhotosOnly({ showStatus: true });
     const locationSynced = await locationService.syncLocations(activeTripId);
 
@@ -1455,9 +1461,7 @@ function RealTripRecordingScreen({
       return false;
     }
 
-    // Determine the combined feedback message
     let finalMessage = '';
-    
     const locStatus = locationPerm ? '위치 기록 동기화를 완료했습니다' : '위치 기록은 건너뛰었습니다';
 
     if (photoResult.outcome === 'synced') {
