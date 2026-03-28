@@ -657,7 +657,7 @@ export const getTripRouteByDayApi = async (tripId: string, dayDate: string): Pro
       };
     }
 
-    console.error('Get Trip Route API Error:', error);
+    console.warn('Get Trip Route API Error (expected if route not yet processed):', error);
     return {
       success: false,
       code: getErrorCode(error),

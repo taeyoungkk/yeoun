@@ -168,20 +168,6 @@ export const LoginScreen = () => {
     }
   };
 
-  const handleMockLogin = () => {
-    setTokens("mock-access-token", "mock-refresh-token");
-    setProfile({
-      userId: "mock-user-id",
-      email: "test@example.com",
-      nickname: "테스트유저",
-      profileImageUrl: null,
-      timezone: "Asia/Seoul",
-      createdAt: new Date().toISOString(),
-      role: "USER",
-      status: "ACTIVE",
-    });
-    router.replace("/(tabs)");
-  };
 
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
@@ -340,16 +326,6 @@ export const LoginScreen = () => {
             )}
           </TouchableOpacity>
 
-          {/* Dev-only Mock Login Button */}
-          {__DEV__ && (
-            <TouchableOpacity
-              style={styles.mockLoginButton}
-              onPress={handleMockLogin}
-              accessibilityLabel="개발용 목업 로그인"
-            >
-              <Text style={styles.mockLoginText}>개발용 목업 로그인 (서버 패스)</Text>
-            </TouchableOpacity>
-          )}
 
           {/* Or with divider */}
           <View style={styles.dividerRow}>
@@ -523,20 +499,5 @@ const styles = StyleSheet.create({
   signUpLink: {
     fontWeight: "700",
     color: "#344966",
-  },
-  mockLoginButton: {
-    backgroundColor: "#FFEBEE",
-    borderWidth: 1,
-    borderColor: "#FFCDD2",
-    borderRadius: 15,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginBottom: 36,
-  },
-  mockLoginText: {
-    fontFamily: "Poppins",
-    fontWeight: "600",
-    fontSize: 14,
-    color: "#D32F2F",
   },
 });
