@@ -45,7 +45,8 @@ export default function PaymentSettlementScreen() {
       setErrorMessage(null);
       const tripsResponse = await getTripsApi();
       if (!tripsResponse.success) throw new Error(tripsResponse.message ?? '여행 정보를 불러오지 못했습니다.');
-      const selectedTrip = tripsResponse.data.items.find((item) => item.tripId === activeTripId) ?? null;
+      const availableTrips = tripsResponse.data.items.filter((item) => item.status !== 'DELETED');
+      const selectedTrip = availableTrips.find((item) => item.tripId === activeTripId) ?? null;
       setTrip(selectedTrip);
 
       const settlementsResponse = await getTripSettlementsApi(activeTripId);
@@ -95,7 +96,7 @@ export default function PaymentSettlementScreen() {
     [currentUserId, settlementDetail],
   );
 
-  const displayTrip = trip ?? currentTrip;
+  const displayTrip = trip ?? (currentTrip?.tripId === activeTripId ? currentTrip : null);
 
   const formatPeriod = (start?: string, end?: string) => {
     if (!start || !end) return '2026.3.19 - 3.26';

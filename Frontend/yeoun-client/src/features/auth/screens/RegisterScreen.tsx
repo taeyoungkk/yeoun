@@ -286,6 +286,7 @@ export const RegisterScreen = () => {
           nickname: user.nickname,
           profileImageUrl: null,
           timezone: 'Asia/Seoul',
+          createdAt: user.createdAt || new Date().toISOString(),
           role: 'USER',
           status: 'ACTIVE',
         });
