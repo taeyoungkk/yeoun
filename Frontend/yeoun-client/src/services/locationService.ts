@@ -203,23 +203,32 @@ const startForegroundWatcher = async () => {
     appState: AppState.currentState,
   });
 
-  foregroundSubscription = await Location.watchPositionAsync(
-    {
-      accuracy: Location.Accuracy.High,
-      timeInterval: 5000,
-      distanceInterval: 5,
-    },
-    (loc) => {
-      if (activeCollectorMode !== 'foreground') {
-        return;
-      }
+  try {
+    foregroundSubscription = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High,
+        timeInterval: 5000,
+        distanceInterval: 5,
+      },
+      (loc) => {
+        if (activeCollectorMode !== 'foreground') {
+          return;
+        }
 
-      const newLog = toLocationLog(loc);
-      void appendLogsToStorage([newLog]);
-      listeners.forEach((listener) => listener(newLog));
-    },
-  );
-  console.log('Foreground location watcher started');
+        const newLog = toLocationLog(loc);
+        void appendLogsToStorage([newLog]);
+        listeners.forEach((listener) => listener(newLog));
+      },
+    );
+    console.log('Foreground location watcher started');
+  } catch (error) {
+    logLocationDebug('Failed to start foreground watcher.', {
+      activeCollectorMode,
+      appState: AppState.currentState,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 };
 
 const stopForegroundWatcher = async () => {
@@ -284,12 +293,15 @@ const syncCollectorsForAppState = async (nextAppState: AppStateStatus) => {
     activeCollectorMode,
   });
   if (!trackingEnabled) {
+    await stopBackgroundWatcher();
+    await stopForegroundWatcher();
     activeCollectorMode = 'idle';
     return;
   }
 
   if (nextAppState === 'active') {
     activeCollectorMode = 'foreground';
+    await stopBackgroundWatcher();
     await startForegroundWatcher();
     return;
   }
@@ -301,6 +313,7 @@ const syncCollectorsForAppState = async (nextAppState: AppStateStatus) => {
     return;
   }
 
+  await stopBackgroundWatcher();
   activeCollectorMode = 'idle';
 };
 
@@ -537,6 +550,22 @@ export const locationService = {
       console.error('Failed to open app settings:', error);
       return false;
     }
+  },
+
+  ensureForegroundCollector: async () => {
+    if (!trackingEnabled || AppState.currentState !== 'active') {
+      return false;
+    }
+
+    logLocationDebug('Ensuring foreground collector.', {
+      appState: AppState.currentState,
+      activeCollectorMode,
+      backgroundGranted: trackingSessionConfig?.backgroundGranted ?? false,
+    });
+
+    lastKnownAppState = 'active';
+    await runCollectorTransition('active');
+    return foregroundSubscription != null;
   },
 
   stopTracking: async () => {

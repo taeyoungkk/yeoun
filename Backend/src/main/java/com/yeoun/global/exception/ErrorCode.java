@@ -77,6 +77,7 @@ public enum ErrorCode {
     FINANCE_API_ERROR(HttpStatus.BAD_GATEWAY, "Failed to communicate with finance API."),
     FINANCE_API_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "Finance API request timed out."),
     SETTLEMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "Settlement not found."),
+    SETTLEMENT_LATEST_NOT_AVAILABLE(HttpStatus.NOT_FOUND, "No confirmed expenses found for latest settlement."),
     SETTLEMENT_FINALIZE_NOT_ALLOWED(HttpStatus.CONFLICT, "Settlement can be finalized only in DRAFT status."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid email or password."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found."),

@@ -6,6 +6,7 @@ import com.yeoun.domain.settlement.dto.response.SettlementDetailResponse;
 import com.yeoun.domain.settlement.dto.response.SettlementFinalizeResponse;
 import com.yeoun.domain.settlement.dto.response.SettlementListResponse;
 import com.yeoun.domain.settlement.service.SettlementCommandService;
+import com.yeoun.domain.settlement.service.SettlementLatestService;
 import com.yeoun.domain.settlement.service.SettlementQueryService;
 import com.yeoun.global.response.ApiResponse;
 import com.yeoun.global.security.principal.CurrentUser;
@@ -31,13 +32,16 @@ import java.util.UUID;
 public class SettlementController {
 
     private final SettlementCommandService settlementCommandService;
+    private final SettlementLatestService settlementLatestService;
     private final SettlementQueryService settlementQueryService;
 
     public SettlementController(
             SettlementCommandService settlementCommandService,
+            SettlementLatestService settlementLatestService,
             SettlementQueryService settlementQueryService
     ) {
         this.settlementCommandService = settlementCommandService;
+        this.settlementLatestService = settlementLatestService;
         this.settlementQueryService = settlementQueryService;
     }
 
@@ -60,6 +64,16 @@ public class SettlementController {
             @PathVariable("tripId") UUID tripId
     ) {
         SettlementListResponse response = settlementQueryService.getTripSettlements(principal.userId(), tripId);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/trips/{tripId}/settlements/latest")
+    @Operation(summary = "최신 정산 조회", description = "현재 확정 지출 상태와 일치하는 최신 정산을 조회하고, 없으면 새로 계산해 반환합니다.")
+    public ApiResponse<SettlementDetailResponse> getLatestSettlement(
+            @Parameter(hidden = true) @CurrentUser CustomUserPrincipal principal,
+            @PathVariable("tripId") UUID tripId
+    ) {
+        SettlementDetailResponse response = settlementLatestService.getLatestSettlement(principal.userId(), tripId);
         return ApiResponse.ok(response);
     }
 

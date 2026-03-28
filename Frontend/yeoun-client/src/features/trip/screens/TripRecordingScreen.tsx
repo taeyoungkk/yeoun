@@ -1266,6 +1266,7 @@ function RealTripRecordingScreen({
       appStateRef.current = nextAppState;
 
       if ((previousAppState === 'background' || previousAppState === 'inactive') && nextAppState === 'active') {
+        void locationService.ensureForegroundCollector();
         void runAutoPhotoSync(false);
       }
     });

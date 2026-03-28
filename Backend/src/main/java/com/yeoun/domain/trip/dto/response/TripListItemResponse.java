@@ -22,6 +22,8 @@ public record TripListItemResponse(
         Instant actualEndedAt,
         @Schema(description = "여행 상태")
         TripStatus status,
+        @Schema(description = "여행 대표 이미지 URL")
+        String imageUrl,
         @Schema(description = "현재 참여 멤버 수")
         long memberCount
 ) {
