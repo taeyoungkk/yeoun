@@ -33,6 +33,7 @@ const hasSpecial = (pw: string) =>
   /[!@#$%^&*(),.?":{}|<>_\-+=~`[\]\\;'/]/.test(pw);
 
 type ResetStep = "EMAIL" | "VERIFY" | "NEW_PASSWORD";
+const RESEND_BLOCKED_MESSAGE = "인증코드는 60초마다 다시 요청할 수 있어요. 잠시 후 다시 시도해주세요.";
 
 export const ForgotPasswordScreen = () => {
   const router = useRouter();
@@ -41,12 +42,13 @@ export const ForgotPasswordScreen = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [timer, setTimer] = useState(300); // 5 minutes
+  const [timer, setTimer] = useState(180); // 3 minutes
   const [isTimerActive, setIsTimerActive] = useState(false);
 
   const {
     control,
     handleSubmit,
+    setValue,
     watch,
     formState: { errors },
   } = useForm<ForgotPasswordForm>({
@@ -86,6 +88,17 @@ export const ForgotPasswordScreen = () => {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const getResendBlockedMessage = (fallback: string, error?: any) => {
+    const message = error?.response?.data?.message;
+    const code = error?.response?.data?.code;
+
+    if (code === "EMAIL_RESEND_BLOCKED" || message === "Verification code resend is not allowed yet.") {
+      return RESEND_BLOCKED_MESSAGE;
+    }
+
+    return message || fallback;
+  };
+
   const handleRequestReset = async () => {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
     setIsLoading(true);
@@ -94,13 +107,13 @@ export const ForgotPasswordScreen = () => {
       const response = await requestPasswordReset(email);
       if (response.success) {
         setCurrentStep("VERIFY");
-        setTimer(300);
+        setTimer(180);
         setIsTimerActive(true);
       } else {
         setErrorMsg(response.message || "비밀번호 재설정 요청에 실패했습니다.");
       }
-    } catch (error) {
-      setErrorMsg("비밀번호 재설정 요청 중 오류가 발생했습니다.");
+    } catch (error: any) {
+      setErrorMsg(getResendBlockedMessage("비밀번호 재설정 요청 중 오류가 발생했습니다.", error));
     } finally {
       setIsLoading(false);
     }
@@ -136,9 +149,20 @@ export const ForgotPasswordScreen = () => {
   };
 
   const handleResendCode = async () => {
-    setTimer(300);
-    setIsTimerActive(true);
-    await requestPasswordReset(email);
+    setErrorMsg("");
+    setValue("code", "");
+    try {
+      const response = await requestPasswordReset(email);
+      if (response.success) {
+        setTimer(180);
+        setIsTimerActive(true);
+        return;
+      }
+
+      setErrorMsg(response.message || "인증코드 재전송에 실패했습니다.");
+    } catch (error: any) {
+      setErrorMsg(getResendBlockedMessage("인증코드 재전송에 실패했습니다.", error));
+    }
   };
 
   return (
@@ -195,7 +219,9 @@ export const ForgotPasswordScreen = () => {
 
               <TouchableOpacity
                 className={`bg-primary rounded-[15px] py-[18px] items-center mt-10 ${isLoading ? "bg-[#8FA3B8]" : ""}`}
-                onPress={handleRequestReset}
+                onPress={() => {
+                  void handleRequestReset();
+                }}
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -252,10 +278,20 @@ export const ForgotPasswordScreen = () => {
 
               <View className="flex-row justify-start mt-2">
                 <Text className="text-[12px] text-[#ABABAB]">이메일을 받지 못하셨나요? </Text>
-                <TouchableOpacity onPress={handleResendCode}>
+                <TouchableOpacity
+                  onPress={() => {
+                    void handleResendCode();
+                  }}
+                >
                   <Text className="text-[12px] text-primary font-pretendard-bold underline">재전송</Text>
                 </TouchableOpacity>
               </View>
+
+              {errorMsg ? (
+                <Text className="font-pretendard text-[12px] text-[#ABABAB] mt-2">
+                  {errorMsg}
+                </Text>
+              ) : null}
 
               <TouchableOpacity
                 className={`bg-primary rounded-[15px] py-[18px] items-center mt-10 ${code.length !== 6 ? "bg-[#8FA3B8]" : ""}`}
