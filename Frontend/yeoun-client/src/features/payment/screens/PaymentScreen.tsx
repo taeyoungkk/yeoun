@@ -88,25 +88,26 @@ export default function PaymentScreen() {
       if (!tripsResponse.success) {
         throw new Error(tripsResponse.message ?? '여행 목록을 불러오지 못했습니다.');
       }
-      console.log(
-        '[PaymentScreen] settlement trip candidates',
-        tripsResponse.data.items.map((trip) => ({
-          tripId: trip.tripId,
-          title: trip.title,
-          status: trip.status,
-          startedAt: trip.startedAt ?? null,
-          actualEndedAt: trip.actualEndedAt ?? null,
-        })),
+      const settlementEligibleTrips = tripsResponse.data.items.filter(isSettlementEligibleTrip);
+      const expenseResponses = await Promise.allSettled(
+        settlementEligibleTrips.map(async (trip) => {
+          const expenseResponse = await getTripExpensesApi(trip.tripId);
+          return {
+            trip,
+            hasExpenses: expenseResponse.success && expenseResponse.data.items.length > 0,
+          };
+        }),
       );
-      const availableTrips = tripsResponse.data.items.filter(isSettlementEligibleTrip);
-      console.log(
-        '[PaymentScreen] settlement eligible trips',
-        availableTrips.map((trip) => ({
-          tripId: trip.tripId,
-          title: trip.title,
-          status: trip.status,
-        })),
-      );
+
+      const availableTrips = expenseResponses
+        .flatMap((result) => {
+          if (result.status !== 'fulfilled' || !result.value.hasExpenses) {
+            return [];
+          }
+
+          return [result.value.trip];
+        });
+
       setTripOptions(availableTrips);
 
       const fallbackTripId = isTripActive
