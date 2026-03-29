@@ -311,6 +311,16 @@ function clampTripDateKeysToToday(dateKeys: string[]) {
   return dateKeys.filter((dateKey) => dateKey <= todayKey);
 }
 
+function clampTripEndDateToToday(endDate?: string) {
+  if (!endDate) {
+    return endDate;
+  }
+
+  const normalizedEndDate = endDate.slice(0, 10);
+  const todayKey = getTodayDateKey();
+  return normalizedEndDate <= todayKey ? endDate : todayKey;
+}
+
 function buildTripDays(startDate?: string, endDate?: string): TripDay[] {
   const start = startDate ? new Date(startDate) : null;
   const end = endDate ? new Date(endDate) : null;
@@ -721,10 +731,14 @@ function RealTripRecordingScreen({
     : currentTripId ?? currentTrip?.tripId ?? '';
   const activeTripId = (routeTripId || storeTripId || '').trim();
   const displayTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
+  const visibleTripEndDate = useMemo(
+    () => (isReviewMode ? displayTrip?.endDate : clampTripEndDateToToday(displayTrip?.endDate)),
+    [displayTrip?.endDate, isReviewMode],
+  );
 
   const tripDays = useMemo(() => {
-    return realTripDays ?? buildEmptyRealTripDays(displayTrip?.startDate, displayTrip?.endDate);
-  }, [displayTrip?.endDate, displayTrip?.startDate, realTripDays]);
+    return realTripDays ?? buildEmptyRealTripDays(displayTrip?.startDate, visibleTripEndDate);
+  }, [displayTrip?.startDate, realTripDays, visibleTripEndDate]);
 
   const filteredDays = useMemo(() => getFilteredDays(activeFilter, tripDays), [activeFilter, tripDays]);
   const filteredEvents = useMemo(
@@ -758,11 +772,7 @@ function RealTripRecordingScreen({
     // AND we are in ACTIVE mode (not review) for the current active trip
     if (!isReviewMode && activeTripId === currentTripId && (activeFilter === 'all' || activeFilter === `day${tripDays.length}`)) {
       const liveRouteCoords = buildVisibleLiveRouteCoordinates(mergeLocationLogs(sessionTrail, inFlightLogs));
-      if (shouldPreferRawRoute(liveRouteCoords, serverRoute)) {
-        return liveRouteCoords;
-      }
-
-      return serverRoute.length >= 2 ? serverRoute : liveRouteCoords;
+      return liveRouteCoords.length >= 2 ? liveRouteCoords : serverRoute;
     }
     return serverRoute;
   }, [activeFilter, filteredDays, inFlightLogs, sessionTrail, tripDays.length, isReviewMode, activeTripId, currentTripId]);
@@ -1113,6 +1123,9 @@ function RealTripRecordingScreen({
             timelineDays.map((day) => day.dayDate),
           );
           const uniqueDates = isReviewMode ? tripDateKeys : clampTripDateKeysToToday(tripDateKeys);
+          const visibleTimelineDays = isReviewMode
+            ? timelineDays
+            : timelineDays.filter((day) => uniqueDates.includes(day.dayDate.slice(0, 10)));
 
           await Promise.all(
             uniqueDates.map(async (date) => {
@@ -1145,22 +1158,22 @@ function RealTripRecordingScreen({
           // Final State Updates
           setTripMembers(acceptedTripMembers);
           setRealTripDays(buildRealTripDays(
-            timelineDays, 
+            visibleTimelineDays,
             routeByDate, 
             tripDetailResponse.data?.startDate,
-            tripDetailResponse.data?.endDate
+            isReviewMode ? tripDetailResponse.data?.endDate : clampTripEndDateToToday(tripDetailResponse.data?.endDate),
           ));
           setTripEvents(
             appendRealExpenseEvents(
               buildRealTripEvents(
-                timelineDays,
+                visibleTimelineDays,
                 eventDetailsById,
                 photoDetailsById,
                 memberMap,
                 currentUserId,
                 currentUserNickname,
               ),
-              timelineDays,
+              visibleTimelineDays,
               expensesResponse?.data?.items ?? [],
               memberMap,
               currentUserId,

@@ -1,6 +1,8 @@
 import logging
+from datetime import date, datetime
 from decimal import Decimal
 from math import asin, cos, radians, sin, sqrt
+from zoneinfo import ZoneInfo
 
 from psycopg import Connection
 
@@ -21,6 +23,7 @@ from app.services.location_timeline_candidate_writer import LocationTimelineCand
 from app.services.location_timeline_linker import LocationTimelineLinker
 
 logger = logging.getLogger(__name__)
+KST = ZoneInfo("Asia/Seoul")
 
 
 def _route_distance_km(coordinates: list[tuple[Decimal, Decimal]]) -> float:
@@ -116,6 +119,11 @@ class LocationFollowupPipeline:
             payload.user_id,
             clean_logs,
         )
+        route_days = self._clamp_route_days_to_trip_range(
+            payload.trip_id,
+            route_days,
+            connection=connection,
+        )
         route_days, map_matched_route_day_count, route_day_fallback_count = await self._apply_map_matching(route_days)
         places = self.place_builder.build(
             payload.trip_id,
@@ -170,6 +178,58 @@ class LocationFollowupPipeline:
             updated_summary.route_day_fallback_count,
         )
         return updated_summary
+
+    def _clamp_route_days_to_trip_range(
+        self,
+        trip_id: str,
+        route_days: list[LocationRouteDay],
+        *,
+        connection: Connection | None = None,
+    ) -> list[LocationRouteDay]:
+        if not route_days or connection is None:
+            return route_days
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT start_date, end_date, actual_ended_at
+                FROM trips
+                WHERE trip_id = %s
+                """,
+                (trip_id,),
+            )
+            row = cursor.fetchone()
+
+        if row is None:
+            return route_days
+
+        start_date, end_date, actual_ended_at = row
+        if start_date is None or end_date is None:
+            return route_days
+
+        max_allowed_day = end_date
+        if actual_ended_at is None:
+            max_allowed_day = min(end_date, datetime.now(KST).date())
+        else:
+            ended_day = actual_ended_at.astimezone(KST).date() if actual_ended_at.tzinfo else actual_ended_at.date()
+            max_allowed_day = min(end_date, ended_day)
+
+        clamped_route_days = [
+            route_day
+            for route_day in route_days
+            if start_date <= date.fromisoformat(route_day.day) <= max_allowed_day
+        ]
+
+        if len(clamped_route_days) != len(route_days):
+            logger.info(
+                "Clamped route days to trip range for tripId=%s startDate=%s maxAllowedDay=%s removed=%s",
+                trip_id,
+                start_date,
+                max_allowed_day,
+                len(route_days) - len(clamped_route_days),
+            )
+
+        return clamped_route_days
 
     async def _apply_map_matching(
         self,
