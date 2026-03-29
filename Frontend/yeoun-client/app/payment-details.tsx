@@ -570,12 +570,12 @@ export default function PaymentDetailsScreen() {
       <View style={styles.filterRow}>
         <TouchableOpacity style={styles.filterButton} onPress={() => setPeriodSelectorVisible(true)}>
           <Text style={styles.filterButtonText}>{selectedPeriod.label}</Text>
-          <Ionicons name="chevron-down" size={14} color="#4D8BEF" />
+          <Ionicons name="chevron-down" size={14} color="#244934" />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.filterButton} onPress={() => setMemberSelectorVisible(true)}>
           <Text style={styles.filterButtonText}>{selectedMemberLabel}</Text>
-          <Ionicons name="chevron-down" size={14} color="#4D8BEF" />
+          <Ionicons name="chevron-down" size={14} color="#244934" />
         </TouchableOpacity>
       </View>
 
@@ -592,7 +592,7 @@ export default function PaymentDetailsScreen() {
 
         {isLoading ? (
           <View style={styles.loadingBox}>
-            <ActivityIndicator color="#65C4B8" />
+            <ActivityIndicator color="#244934" />
           </View>
         ) : groupedExpenses.length === 0 ? (
           <View style={styles.emptyState}>
@@ -678,7 +678,7 @@ export default function PaymentDetailsScreen() {
             }}
           >
             <View style={styles.methodIconBox}>
-              <Ionicons name="pencil" size={24} color="#65C4B8" />
+              <Ionicons name="pencil" size={24} color="#244934" />
             </View>
             <Text style={styles.methodItemText}>직접 입력</Text>
           </TouchableOpacity>
@@ -694,7 +694,7 @@ export default function PaymentDetailsScreen() {
             }}
           >
             <View style={styles.methodIconBox}>
-              <Ionicons name="scan" size={24} color="#65C4B8" />
+              <Ionicons name="scan" size={24} color="#244934" />
             </View>
             <Text style={styles.methodItemText}>영수증 스캔</Text>
           </TouchableOpacity>
@@ -930,12 +930,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#65C4B8',
+    borderColor: '#244934',
   },
   filterButtonText: {
     fontSize: 14,
     fontFamily: 'Pretendard-Medium',
-    color: '#65C4B8',
+    color: '#244934',
   },
   filterButtonDisabled: {
     borderColor: '#E0E0E0',
@@ -1077,31 +1077,32 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   addExpenseButton: {
-    borderWidth: 1.5,
-    borderColor: '#EAEAEA',
+    borderWidth: 1,
+    borderColor: '#4F7A62',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
+    backgroundColor: '#4F7A62',
   },
   addExpenseButtonText: {
     fontFamily: 'Pretendard-SemiBold',
     fontSize: 15,
-    color: '#555555',
+    color: '#FFFFFF',
   },
   dayAddExpenseBlockButton: {
     minHeight: 40,
     borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#D8D8D8',
+    borderWidth: 1,
+    borderColor: '#4F7A62',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#4F7A62',
   },
   dayAddExpenseBlockButtonText: {
     fontFamily: 'Pretendard-SemiBold',
     fontSize: 17,
-    color: '#333333',
+    color: '#FFFFFF',
   },
   summaryCard: {
     paddingTop: 8,
@@ -1250,7 +1251,9 @@ const styles = StyleSheet.create({
   },
   methodItem: {
     flex: 1,
-    backgroundColor: '#F9F9F9',
+    backgroundColor: '#F8FAF6',
+    borderWidth: 1,
+    borderColor: '#D7DDD4',
     borderRadius: 16,
     paddingVertical: 24,
     alignItems: 'center',
@@ -1260,14 +1263,14 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#E6F6F4',
+    backgroundColor: '#E7F0EB',
     alignItems: 'center',
     justifyContent: 'center',
   },
   methodItemText: {
     fontSize: 16,
     fontFamily: 'Pretendard-Bold',
-    color: '#333333',
+    color: '#244934',
   },
   modalContent: {
     gap: 16,
@@ -1295,27 +1298,28 @@ const styles = StyleSheet.create({
   choiceChip: {
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: '#D7DDD4',
     paddingHorizontal: 14,
     paddingVertical: 8,
+    backgroundColor: '#F8FAF6',
   },
   choiceChipActive: {
-    borderColor: '#65C4B8',
-    backgroundColor: '#E6F6F4',
+    borderColor: '#244934',
+    backgroundColor: '#E7F0EB',
   },
   choiceChipText: {
     fontFamily: 'Pretendard-Medium',
     fontSize: 13,
-    color: '#666666',
+    color: '#4B5563',
   },
   choiceChipTextActive: {
-    color: '#2C8E82',
+    color: '#244934',
     fontWeight: 'bold',
   },
   fullWidthButton: {
     marginTop: 16,
     borderRadius: 12,
-    backgroundColor: '#65C4B8',
+    backgroundColor: '#244934',
     minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1335,10 +1339,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: '#F9F9F9',
+    backgroundColor: '#F8FAF6',
   },
   selectorItemActive: {
-    backgroundColor: '#E6F6F4',
+    backgroundColor: '#E7F0EB',
   },
   selectorItemText: {
     fontFamily: 'Pretendard-Medium',
@@ -1346,7 +1350,7 @@ const styles = StyleSheet.create({
     color: '#333333',
   },
   selectorItemTextActive: {
-    color: '#2C8E82',
+    color: '#244934',
     fontWeight: 'bold',
   },
   deleteItem: {

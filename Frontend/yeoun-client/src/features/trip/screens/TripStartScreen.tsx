@@ -598,7 +598,7 @@ export default function TripStartScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#EDF3EA',
+    backgroundColor: '#EBF3EA',
   },
   content: {
     paddingHorizontal: 20,

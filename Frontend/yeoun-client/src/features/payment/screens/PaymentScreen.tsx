@@ -222,12 +222,13 @@ export default function PaymentScreen() {
     }
     return values;
   }, [displayMaxExpenseByDate]);
+  const hasDailyExpenseData = displayExpensesByDate.length > 0;
 
   useEffect(() => {
-    if (displayExpensesByDate.length > 0 && !selectedDateKey) {
+    if (hasDailyExpenseData && !selectedDateKey) {
       setSelectedDateKey(displayExpensesByDate[displayExpensesByDate.length - 1].date);
     }
-  }, [displayExpensesByDate, selectedDateKey]);
+  }, [displayExpensesByDate, hasDailyExpenseData, selectedDateKey]);
 
   const selectedDailyExpense = useMemo(
     () => displayExpensesByDate.find((item) => item.date === selectedDateKey),
@@ -326,16 +327,18 @@ export default function PaymentScreen() {
 
             <View style={styles.chartSection}>
             <View style={styles.chartWrapper}>
-              <View style={styles.yAxisLinesLayer}>
-                {yAxisValues.map((val, index) => (
-                  <View key={`y-${val}-${index}`} style={styles.yAxisLineRow}>
-                    <Text style={styles.yAxisText}>{val === 0 ? '0' : val}</Text>
-                    <View style={styles.yAxisDashedLine} />
-                  </View>
-                ))}
-              </View>
+              {hasDailyExpenseData ? (
+                <View style={styles.yAxisLinesLayer}>
+                  {yAxisValues.map((val, index) => (
+                    <View key={`y-${val}-${index}`} style={styles.yAxisLineRow}>
+                      <Text style={styles.yAxisText}>{val === 0 ? '0' : val}</Text>
+                      <View style={styles.yAxisDashedLine} />
+                    </View>
+                  ))}
+                </View>
+              ) : null}
 
-              {displayExpensesByDate.length === 0 ? (
+              {!hasDailyExpenseData ? (
                 <View style={styles.chartEmpty}>
                   <Text style={styles.chartEmptyText}>표시할 날짜별 지출이 없습니다.</Text>
                 </View>
@@ -387,7 +390,7 @@ export default function PaymentScreen() {
               )}
             </View>
 
-            {displayExpensesByDate.length > 0 && (
+            {hasDailyExpenseData && (
               <View style={styles.legendRow}>
                 {visibleCategories.map((category) => (
                   <View key={category.key} style={styles.legendItem}>

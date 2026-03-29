@@ -221,7 +221,7 @@ export default function TripInviteManageScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#EDF3EA',
+    backgroundColor: '#EBF3EA',
   },
   centerWrap: {
     flex: 1,

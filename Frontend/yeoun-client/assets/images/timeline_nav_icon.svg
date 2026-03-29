@@ -1,16 +1,16 @@
 <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!-- Clock Outer Circle -->
-  <circle cx="14" cy="34" r="9" stroke="#3852D6" stroke-width="2.5"/>
+  <circle cx="14" cy="34" r="9" stroke="#244934" stroke-width="2.5"/>
   <!-- Clock Hands -->
-  <path d="M14 29V34L18 36.5" stroke="#3852D6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M14 29V34L18 36.5" stroke="#244934" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
   
   <!-- S-Curve Path -->
-  <path d="M23 34H29C35 34 35 26 29 26H19C13 26 13 18 19 18H25" stroke="#3852D6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M23 34H29C35 34 35 26 29 26H19C13 26 13 18 19 18H25" stroke="#244934" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
   
   <!-- Map Pin -->
-  <path d="M31 14C31 10.134 34.134 7 38 7C41.866 7 45 10.134 45 14C45 19 38 24 38 24C38 24 31 19 31 14Z" fill="#3852D6"/>
+  <path d="M31 14C31 10.134 34.134 7 38 7C41.866 7 45 10.134 45 14C45 19 38 24 38 24C38 24 31 19 31 14Z" fill="#244934"/>
   <!-- Hole in Pin -->
   <circle cx="38" cy="14" r="2.5" fill="white"/>
   <!-- Base line under Pin -->
-  <path d="M35 24H41" stroke="#3852D6" stroke-width="2" stroke-linecap="round"/>
+  <path d="M35 24H41" stroke="#244934" stroke-width="2" stroke-linecap="round"/>
 </svg>

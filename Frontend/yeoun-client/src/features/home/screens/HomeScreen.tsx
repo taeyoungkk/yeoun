@@ -32,7 +32,7 @@ const HomeScreen = () => {
             <SafeAreaView style={styles.safeArea}>
                 <ScrollView
                     style={styles.scrollView}
-                    contentContainerStyle={[styles.contentContainer, { paddingBottom: 80 }]}
+                    contentContainerStyle={styles.contentContainer}
                     showsVerticalScrollIndicator={false}
                 >
                     <View style={styles.searchSection}>
@@ -53,7 +53,7 @@ export default HomeScreen;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F5F6F2',
+        backgroundColor: '#FFFFFF',
     },
     heroBackground: {
         position: 'absolute',
@@ -75,6 +75,7 @@ const styles = StyleSheet.create({
     },
     safeArea: {
         flex: 1,
+        backgroundColor: 'transparent',
     },
     scrollView: {
         flex: 1,

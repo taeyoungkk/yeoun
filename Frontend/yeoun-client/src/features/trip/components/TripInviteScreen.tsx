@@ -242,7 +242,7 @@ export function TripInviteScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#EDF3EA',
+    backgroundColor: '#EBF3EA',
   },
   header: {
     flexDirection: 'row',

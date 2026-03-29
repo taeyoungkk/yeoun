@@ -514,7 +514,7 @@ const formatAmount = (amount: number | null, currencyCode: string | null) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F6F7F5',
+    backgroundColor: '#EBF3EA',
   },
   centerContent: {
     flex: 1,

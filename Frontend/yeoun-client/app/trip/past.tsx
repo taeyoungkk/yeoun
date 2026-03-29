@@ -93,8 +93,8 @@ export default function PastTripsScreen() {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F3F6EB]">
-      <View className="flex-row items-center justify-between px-4 py-3 bg-[#F3F6EB]">
+    <SafeAreaView className="flex-1 bg-[#EBF3EA]">
+      <View className="flex-row items-center justify-between px-4 py-3 bg-[#EBF3EA]">
         <Pressable onPress={() => router.back()} className="p-1">
           <Ionicons name="chevron-back" size={28} color="#1A1A1A" />
         </Pressable>

@@ -568,7 +568,7 @@ export default function TripPhotoAlbumApiScreen() {
   );
 }
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#EFF4EC' },
+  safeArea: { flex: 1, backgroundColor: '#EBF3EA' },
   defaultHeader: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
   selectionHeader: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   backButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', marginRight: 2 },
