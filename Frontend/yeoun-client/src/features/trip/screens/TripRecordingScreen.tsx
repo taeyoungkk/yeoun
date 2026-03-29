@@ -59,7 +59,6 @@ import {
   type TripMemberItem,
   type LocationLog,
 } from '@/src/api/trip';
-import { matchMapTrace } from '@/src/api/mapbox';
 import { useTripStore, useUserStore } from '@/src/store';
 import { locationService } from '../../../services/locationService';
 import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
@@ -1228,61 +1227,13 @@ function RealTripRecordingScreen({
   }, [activeTripId, isReviewMode]);
 
   useEffect(() => {
-    if (isReviewMode || !activeTripId || isMatchingRef.current) {
+    if (isReviewMode || !activeTripId) {
       return;
     }
 
-    const rawCoords = sessionTrail.map(l => [l.longitude, l.latitude] as Coordinate);
-    const unMatchedCount = rawCoords.length - lastMatchedIndexRef.current;
-
-    // Minimum 3 points to match, and at least 5 new points since last match
-    if (unMatchedCount < 5) {
-      return;
-    }
-
-    const processMatching = async () => {
-      isMatchingRef.current = true;
-      try {
-        // Take up to 100 points for matching (Mapbox limit)
-        // We overlap by 1 point to ensure continuity
-        const startIndex = Math.max(0, lastMatchedIndexRef.current - 1);
-        const chunkToMatch = rawCoords.slice(startIndex, startIndex + 100);
-        
-        if (chunkToMatch.length < 2) {
-          isMatchingRef.current = false;
-          return;
-        }
-
-        try {
-          const matched = await matchMapTrace(chunkToMatch, 'walking');
-          if (matched && matched.length > 0) {
-            setMatchedSessionTrail((prev: Coordinate[]) => {
-              const nextBase = startIndex === 0 ? [] : prev;
-              return [...nextBase, ...matched];
-            });
-          } else {
-            // Fallback: use raw points if matching fails (e.g. non-road path like a train)
-            setMatchedSessionTrail((prev: Coordinate[]) => {
-              const nextBase = startIndex === 0 ? [] : prev;
-              return [...nextBase, ...chunkToMatch];
-            });
-          }
-          // Advance index regardless to avoid infinite retries of failing segments
-          lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
-        } catch (err) {
-          console.warn('[Map Matching] Failed to match segment, falling back to raw:', err);
-          setMatchedSessionTrail((prev: Coordinate[]) => {
-            const nextBase = startIndex === 0 ? [] : prev;
-            return [...nextBase, ...chunkToMatch];
-          });
-          lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
-        }
-      } finally {
-        isMatchingRef.current = false;
-      }
-    };
-
-    void processMatching();
+    setMatchedSessionTrail([]);
+    lastMatchedIndexRef.current = sessionTrail.length;
+    isMatchingRef.current = false;
   }, [sessionTrail, activeTripId, isReviewMode]);
 
   useEffect(() => {

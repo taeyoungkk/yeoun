@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     gps_stay_radius_m: float = Field(default=25.0, alias="GPS_STAY_RADIUS_M")
     gps_stay_min_duration_seconds: int = Field(default=300, alias="GPS_STAY_MIN_DURATION_SECONDS")
     gps_place_merge_radius_m: float = Field(default=120.0, alias="GPS_PLACE_MERGE_RADIUS_M")
-    gps_map_matching_enabled: bool = Field(default=True, alias="GPS_MAP_MATCHING_ENABLED")
+    gps_map_matching_enabled: bool = Field(default=False, alias="GPS_MAP_MATCHING_ENABLED")
     gps_map_matching_provider: str = Field(default="mapbox", alias="GPS_MAP_MATCHING_PROVIDER")
     gps_map_matching_profile: str = Field(default="walking", alias="GPS_MAP_MATCHING_PROFILE")
     gps_map_matching_timeout_seconds: float = Field(default=10.0, alias="GPS_MAP_MATCHING_TIMEOUT_SECONDS")
