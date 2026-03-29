@@ -227,6 +227,7 @@ export default function TripReportScreen() {
   const reviewTrip = useTripStore((state) => state.reviewTrip);
   const inFlightLogs = useTripStore((state) => state.inFlightLogs);
   const currentUserId = useUserStore((state) => state.profile?.userId ?? null);
+  const routeRefreshKey = useTripStore((state) => state.routeRefreshKey);
   const router = useRouter();
 
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
@@ -364,7 +365,7 @@ export default function TripReportScreen() {
     return () => {
       mounted = false;
     };
-  }, [trip?.tripId]); // Only load server data when trip changes
+  }, [routeRefreshKey, trip?.tripId]); // Reload when trip data is invalidated elsewhere
 
   // Derive current distance locally to avoid loop
   const totalInFlightDistance = useMemo(() => {
@@ -548,7 +549,7 @@ export default function TripReportScreen() {
                         {day.distanceKm > 0 || day.photoCount > 0 || day.eventCount > 0 ? (
                           `${day.distanceKm.toFixed(1)}km · 사진 ${day.photoCount}장 · 기록 ${day.eventCount}개`
                         ) : (
-                          '분석 중...'
+                          '기록 없음'
                         )}
                       </Text>
                     </View>
@@ -568,7 +569,6 @@ export default function TripReportScreen() {
               </Text>
             </View>
           )}
-
           <View style={styles.sectionCard}>
             <TouchableOpacity style={styles.timelineHeader} activeOpacity={0.8} onPress={() => setIsTimelineOpen((prev) => !prev)}>
               <View style={styles.timelineHeaderCopy}>

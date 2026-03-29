@@ -460,6 +460,7 @@ public class TripService {
         validateTripOwner(requesterUserId, trip);
 
         trip.markDeleted(Instant.now());
+        tripRepository.saveAndFlush(trip);
 
         return new TripDeleteResponse(trip.getTripId(), true);
     }

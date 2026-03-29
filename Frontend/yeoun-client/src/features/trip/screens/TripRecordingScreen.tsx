@@ -77,6 +77,8 @@ const MAP_SIDE_MARGIN = 16;
 const MAP_TOP_OFFSET = 112;
 const PANEL_TOP_OFFSET = 118;
 const AUTO_PHOTO_SYNC_INTERVAL_MS = 3 * 60 * 1000;
+const MAX_VISIBLE_ROUTE_ACCURACY_M = 35;
+const MIN_VISIBLE_ROUTE_POINT_DISTANCE_M = 25;
 
 type DayKey = `day${number}`;
 type DayFilter = 'all' | DayKey;
@@ -87,6 +89,36 @@ type ActionConfirmKind = 'end' | 'leave' | 'delete';
 type PaymentDialogMode = 'edit';
 type PaymentSplitType = 'equal';
 type PhotoSyncOutcome = 'synced' | 'empty' | 'skipped_permission' | 'skipped_app_setting' | 'skipped_range' | 'failed';
+
+const isFiniteCoordinate = (coordinate?: Coordinate | null): coordinate is Coordinate =>
+  Array.isArray(coordinate) &&
+  coordinate.length >= 2 &&
+  Number.isFinite(coordinate[0]) &&
+  Number.isFinite(coordinate[1]);
+
+const distanceBetweenCoordinates = (left: Coordinate, right: Coordinate) =>
+  calculateDistance([left, right]) * 1000;
+
+const buildVisibleLiveRouteCoordinates = (logs: LocationLog[]) => {
+  const nextCoordinates: Coordinate[] = [];
+
+  logs.forEach((log) => {
+    const accuracyM = typeof log.accuracyM === 'number' ? log.accuracyM : typeof log.accuracy === 'number' ? log.accuracy : null;
+    if (accuracyM != null && accuracyM > MAX_VISIBLE_ROUTE_ACCURACY_M) {
+      return;
+    }
+
+    const coordinate: Coordinate = [log.longitude, log.latitude];
+    const previous = nextCoordinates[nextCoordinates.length - 1];
+    if (previous && distanceBetweenCoordinates(previous, coordinate) < MIN_VISIBLE_ROUTE_POINT_DISTANCE_M) {
+      return;
+    }
+
+    nextCoordinates.push(coordinate);
+  });
+
+  return nextCoordinates;
+};
 
 type PhotoContributor = {
   id: string;
@@ -680,18 +712,23 @@ function RealTripRecordingScreen({
     // Only append session trail if we are looking at 'all' or the last day
     // AND we are in ACTIVE mode (not review) for the current active trip
     if (!isReviewMode && activeTripId === currentTripId && (activeFilter === 'all' || activeFilter === `day${tripDays.length}`)) {
-      const inFlightCoords = inFlightLogs.map(l => [l.longitude, l.latitude] as Coordinate);
+      const inFlightCoords = buildVisibleLiveRouteCoordinates(inFlightLogs);
       // Show already matched trail + raw points that haven't been matched yet
-      const rawTrailCoords = sessionTrail.slice(lastMatchedIndexRef.current).map(l => [l.longitude, l.latitude] as Coordinate);
+      const rawTrailCoords = buildVisibleLiveRouteCoordinates(sessionTrail.slice(lastMatchedIndexRef.current));
       return [...serverRoute, ...inFlightCoords, ...matchedSessionTrail, ...rawTrailCoords];
     }
     return serverRoute;
   }, [activeFilter, filteredDays, inFlightLogs, sessionTrail, matchedSessionTrail, tripDays.length, isReviewMode, activeTripId, currentTripId]);
 
   const currentLocationCoordinate = useMemo(
-    () => liveCurrentLocation ?? initialCurrentLocation,
-    [initialCurrentLocation, liveCurrentLocation]
+    () => (isReviewMode ? null : liveCurrentLocation ?? initialCurrentLocation),
+    [initialCurrentLocation, isReviewMode, liveCurrentLocation]
   );
+  const firstEventCoordinate = useMemo(
+    () => filteredMapEvents.find((event) => isFiniteCoordinate(event.coordinate))?.coordinate ?? null,
+    [filteredMapEvents],
+  );
+  const mapCenterCoordinate = currentLocationCoordinate ?? routeCoordinates[0] ?? firstEventCoordinate;
 
   const routeShape = useMemo(
     () => ({
@@ -892,6 +929,13 @@ function RealTripRecordingScreen({
   useEffect(() => {
     let isMounted = true;
 
+    if (isReviewMode) {
+      setInitialCurrentLocation(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+
     const loadInitialCurrentLocation = async () => {
       try {
         let loc = await Location.getLastKnownPositionAsync({});
@@ -912,7 +956,7 @@ function RealTripRecordingScreen({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [isReviewMode]);
 
   useEffect(() => {
     if (routeCoordinates.length < 2) {
@@ -1130,19 +1174,23 @@ function RealTripRecordingScreen({
   }, [filteredEvents, selectedEventId]);
 
   useEffect(() => {
+    if (isReviewMode) {
+      setLiveCurrentLocation(null);
+      locationService.stopAutoSync();
+      return;
+    }
+
     const unsubscribe = locationService.subscribe((location) => {
       const coord: Coordinate = [location.longitude, location.latitude];
       setLiveCurrentLocation(coord);
-      if (!isReviewMode) {
-        setSessionTrail((prev: LocationLog[]) => {
-          // Avoid duplicates
-          if (prev.length > 0 && prev[prev.length - 1].recordedAt === location.recordedAt) return prev;
-          return [...prev, location];
-        });
-      }
+      setSessionTrail((prev: LocationLog[]) => {
+        // Avoid duplicates
+        if (prev.length > 0 && prev[prev.length - 1].recordedAt === location.recordedAt) return prev;
+        return [...prev, location];
+      });
     });
 
-    if (!isReviewMode && activeTripId) {
+    if (activeTripId) {
       locationService.startAutoSync(activeTripId);
       
       const refreshPendingLogs = () => {
@@ -2510,89 +2558,97 @@ function RealTripRecordingScreen({
       </Modal>
 
       <Animated.View style={[styles.floatingMapWrap, { height: mapHeight, borderRadius: mapRadius }]}>
-        <Mapbox.MapView
-          style={StyleSheet.absoluteFill}
-          styleURL={Mapbox.StyleURL.Outdoors}
-          localizeLabels={{ locale: 'ko' }}
-          scaleBarEnabled={false}
-          attributionEnabled
-          logoEnabled
-          compassEnabled={false}
-          onDidFinishLoadingMap={handleMapReady}
-          onDidFinishLoadingStyle={handleMapReady}
-          onMapIdle={handleMapReady}
-          onDidFailLoadingMap={handleMapLoadFailure}
-        >
-          <Mapbox.Camera
-            ref={cameraRef}
-            zoomLevel={13.4}
-            centerCoordinate={currentLocationCoordinate ?? routeCoordinates[0] ?? [126.9784, 37.5667]}
-          />
-          <Mapbox.UserLocation visible={true} showsUserHeadingIndicator={true} />
-          <Mapbox.ShapeSource id="trip-route" shape={routeShape}>
-            <Mapbox.LineLayer
-              id="trip-route-line"
-              style={{ lineColor: '#3787FF', lineWidth: 5, lineCap: 'round', lineJoin: 'round', lineOpacity: 0.92 }}
-            />
-          </Mapbox.ShapeSource>
-          <Mapbox.ShapeSource
-            id="trip-events"
-            shape={eventFeatureCollection}
-            onPress={(event) => {
-              const pressedFeature = event.features?.[0];
-              const eventId =
-                pressedFeature && typeof pressedFeature.properties?.eventId === 'string'
-                  ? pressedFeature.properties.eventId
-                  : null;
-
-              if (eventId) {
-                focusEvent(eventId);
-              }
-            }}
+        {mapCenterCoordinate ? (
+          <Mapbox.MapView
+            style={StyleSheet.absoluteFill}
+            styleURL={Mapbox.StyleURL.Outdoors}
+            localizeLabels={{ locale: 'ko' }}
+            scaleBarEnabled={false}
+            attributionEnabled
+            logoEnabled
+            compassEnabled={false}
+            onDidFinishLoadingMap={handleMapReady}
+            onDidFinishLoadingStyle={handleMapReady}
+            onMapIdle={handleMapReady}
+            onDidFailLoadingMap={handleMapLoadFailure}
           >
-            {/* Background markers for location/payment - CircleLayer for efficiency */}
-            <Mapbox.CircleLayer
-              id="trip-events-shadow"
-              style={{
-                circleColor: '#102118',
-                circleOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 0.12, 0],
-                circleRadius: ['case', ['==', ['get', 'selected'], 1], 12, 10],
-                circleTranslate: [0, 2],
-              }}
+            <Mapbox.Camera
+              ref={cameraRef}
+              zoomLevel={13.4}
+              centerCoordinate={mapCenterCoordinate}
             />
-            <Mapbox.CircleLayer
-              id="trip-events-ring"
-              style={{
-                circleColor: '#FFFFFF',
-                circleOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 1, 0],
-                circleRadius: ['case', ['==', ['get', 'selected'], 1], 11, 9],
-              }}
-            />
-            <Mapbox.CircleLayer
-              id="trip-events-core"
-              style={{
-                circleColor: ['get', 'accent'],
-                circleOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 1, 0],
-                circleRadius: ['case', ['==', ['get', 'selected'], 1], 8, 6],
-                circleStrokeColor: '#FFFFFF',
-                circleStrokeOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 1, 0],
-                circleStrokeWidth: ['case', ['==', ['get', 'selected'], 1], 2, 1],
-              }}
-            />
-          </Mapbox.ShapeSource>
+            <Mapbox.UserLocation visible={!isReviewMode} showsUserHeadingIndicator={!isReviewMode} />
+            <Mapbox.ShapeSource id="trip-route" shape={routeShape}>
+              <Mapbox.LineLayer
+                id="trip-route-line"
+                style={{ lineColor: '#3787FF', lineWidth: 5, lineCap: 'round', lineJoin: 'round', lineOpacity: 0.92 }}
+              />
+            </Mapbox.ShapeSource>
+            <Mapbox.ShapeSource
+              id="trip-events"
+              shape={eventFeatureCollection}
+              onPress={(event) => {
+                const pressedFeature = event.features?.[0];
+                const eventId =
+                  pressedFeature && typeof pressedFeature.properties?.eventId === 'string'
+                    ? pressedFeature.properties.eventId
+                    : null;
 
-          {/* Individual Photo Markers for the "Stack" effect */}
-          {filteredMapEvents.filter(e => e.type === 'photo').map((event) => (
-            <PhotoMarker 
-              key={event.id}
-              id={event.id}
-              coordinate={event.coordinate as [number, number]}
-              isSelected={selectedEventId === event.id}
-              photoUrls={event.photoUrls || (event.photoItems?.map(p => String(p.source)))}
-              onPress={() => focusEvent(event.id)}
-            />
-          ))}
-        </Mapbox.MapView>
+                if (eventId) {
+                  focusEvent(eventId);
+                }
+              }}
+            >
+              {/* Background markers for location/payment - CircleLayer for efficiency */}
+              <Mapbox.CircleLayer
+                id="trip-events-shadow"
+                style={{
+                  circleColor: '#102118',
+                  circleOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 0.12, 0],
+                  circleRadius: ['case', ['==', ['get', 'selected'], 1], 12, 10],
+                  circleTranslate: [0, 2],
+                }}
+              />
+              <Mapbox.CircleLayer
+                id="trip-events-ring"
+                style={{
+                  circleColor: '#FFFFFF',
+                  circleOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 1, 0],
+                  circleRadius: ['case', ['==', ['get', 'selected'], 1], 11, 9],
+                }}
+              />
+              <Mapbox.CircleLayer
+                id="trip-events-core"
+                style={{
+                  circleColor: ['get', 'accent'],
+                  circleOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 1, 0],
+                  circleRadius: ['case', ['==', ['get', 'selected'], 1], 8, 6],
+                  circleStrokeColor: '#FFFFFF',
+                  circleStrokeOpacity: ['case', ['any', ['==', ['get', 'type'], 'location'], ['==', ['get', 'type'], 'payment']], 1, 0],
+                  circleStrokeWidth: ['case', ['==', ['get', 'selected'], 1], 2, 1],
+                }}
+              />
+            </Mapbox.ShapeSource>
+
+            {/* Individual Photo Markers for the "Stack" effect */}
+            {filteredMapEvents.filter(e => e.type === 'photo').map((event) => (
+              <PhotoMarker 
+                key={event.id}
+                id={event.id}
+                coordinate={event.coordinate as [number, number]}
+                isSelected={selectedEventId === event.id}
+                photoUrls={event.photoUrls || (event.photoItems?.map(p => String(p.source)))}
+                onPress={() => focusEvent(event.id)}
+              />
+            ))}
+          </Mapbox.MapView>
+        ) : (
+          <View style={[StyleSheet.absoluteFill, styles.mapEmptyState]}>
+            <MaterialIcons name="map" size={18} color="#6E7C74" />
+            <Text style={styles.mapEmptyTitle}>표시할 지도 좌표가 아직 없어요</Text>
+            <Text style={styles.mapEmptyText}>사진이나 동선 데이터가 들어오면 이 화면에 여행 지도가 표시됩니다.</Text>
+          </View>
+        )}
 
         {!isMapReady ? (
           <View style={styles.mapStatusOverlay} pointerEvents="none">
@@ -3274,6 +3330,9 @@ const styles = StyleSheet.create({
   mapStatusCard: { width: '100%', borderRadius: 24, backgroundColor: 'rgba(248, 250, 247, 0.96)', paddingHorizontal: 18, paddingVertical: 18 },
   mapStatusTitle: { marginTop: 10, fontFamily: 'Pretendard-Bold', fontSize: 17, color: '#1B261E' },
   mapStatusText: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 13, lineHeight: 20, color: '#65746B' },
+  mapEmptyState: { alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#DDE6DF', paddingHorizontal: 24 },
+  mapEmptyTitle: { fontFamily: 'Pretendard-Bold', fontSize: 16, color: '#223428' },
+  mapEmptyText: { fontFamily: 'Pretendard-Regular', fontSize: 13, lineHeight: 20, color: '#65746B', textAlign: 'center' },
   panel: {
     marginTop: PANEL_TOP_OFFSET,
     marginHorizontal: MAP_SIDE_MARGIN,

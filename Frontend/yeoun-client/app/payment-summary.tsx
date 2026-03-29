@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { getTripExpensesApi, TripExpenseItem } from '@/src/api/expense';
-import { getTripsApi, TripListItem } from '@/src/api/trip';
+import { getTripsApi, isSettlementEligibleTrip, TripListItem } from '@/src/api/trip';
 import { useTripStore } from '@/src/store';
 
 const KRW_FORMATTER = new Intl.NumberFormat('ko-KR');
@@ -67,7 +67,7 @@ export default function PaymentSummaryScreen() {
     try {
       const tripsResponse = await getTripsApi();
       if (tripsResponse.success) {
-        const availableTrips = tripsResponse.data.items.filter((item) => item.status !== 'DELETED');
+        const availableTrips = tripsResponse.data.items.filter(isSettlementEligibleTrip);
         setTrip(availableTrips.find((item) => item.tripId === activeTripId) ?? null);
       }
 

@@ -2,15 +2,16 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { Image } from 'expo-image';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { deletePhotoMemoApi, getPhotoDetailApi, getTripPhotosApi, type PhotoDetail, updatePhotoApi, upsertPhotoMemoApi } from '@/src/api/photo';
 import { getEventDetailApi, type EventDetail, type EventPhoto } from '@/src/api/timeline';
 import { getTripDetailApi, getTripMembersApi, type TripMemberItem } from '@/src/api/trip';
 import { requestTripPhotoPermission } from '@/src/services/photoSyncService';
+import { useTripStore } from '@/src/store/trip.store';
 import { useUIStore } from '@/src/store/ui.store';
 import { useUserStore } from '@/src/store/user.store';
 
@@ -53,6 +54,7 @@ export default function TripPhotoAlbumApiScreen() {
   const showToast = useUIStore((state) => state.showToast);
   const currentUserId = useUserStore((state) => state.profile?.userId ?? null);
   const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
+  const bumpRouteRefreshKey = useTripStore((state) => state.bumpRouteRefreshKey);
 
   const [eventDetail, setEventDetail] = useState<EventDetail | null>(null);
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);
@@ -70,6 +72,7 @@ export default function TripPhotoAlbumApiScreen() {
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
   const [downloadResult, setDownloadResult] = useState<{ success: boolean; message: string } | null>(null);
   const [modalImageVersion, setModalImageVersion] = useState(0);
+  const [gridImageVersion, setGridImageVersion] = useState(0);
   const [deleteSelectionConfirm, setDeleteSelectionConfirm] = useState<{ photoIds: string[]; count: number } | null>(null);
 
   const loadAlbum = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
@@ -149,10 +152,42 @@ export default function TripPhotoAlbumApiScreen() {
     setLoadedImages((prev) => ({ ...prev, [selectedModalImageKey]: false }));
   }, [selectedModalImageKey, modalImageVersion]);
 
-  const closeSelectionMode = useCallback(() => { setSelectionMode(null); setSelectedPhotoIds([]); }, []);
+  const refreshGridImages = useCallback(() => {
+    setLoadedImages((prev) => {
+      const nextEntries = Object.entries(prev).filter(([key]) => key.startsWith('modal_'));
+      return Object.fromEntries(nextEntries);
+    });
+    setGridImageVersion((prev) => prev + 1);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshGridImages();
+    }, [refreshGridImages]),
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        refreshGridImages();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [refreshGridImages]);
+
+  const closeSelectionMode = useCallback(() => {
+    setSelectionMode(null);
+    setSelectedPhotoIds([]);
+    refreshGridImages();
+    void loadAlbum('refresh');
+  }, [loadAlbum, refreshGridImages]);
   const activateActionMode = useCallback((mode: Exclude<SelectionMode, null>) => { setSelectionMode(mode); setSelectedPhotoIds([]); setSelectedPhotoId(null); }, []);
   const dismissDownloadResult = useCallback(() => {
     setDownloadResult(null);
+    setGridImageVersion((prev) => prev + 1);
     if (selectedPhotoId) setModalImageVersion((prev) => prev + 1);
   }, [selectedPhotoId]);
   const toggleSelectAll = useCallback(() => { if (!selectionMode) return; setSelectedPhotoIds((prev) => prev.length === allSelectableIds.length ? [] : allSelectableIds); }, [allSelectableIds, selectionMode]);
@@ -198,6 +233,7 @@ export default function TripPhotoAlbumApiScreen() {
               }
               setAlbumPhotos((prev) => prev.map((item) => item.photoId === photo.photoId ? { ...item, isExcluded: true } : item));
               setSelectedPhotoId(null);
+              bumpRouteRefreshKey();
               showToast('사진을 삭제했어요.', 'success');
             } finally {
               setIsSubmitting(false);
@@ -206,7 +242,7 @@ export default function TripPhotoAlbumApiScreen() {
         }
       },
     ]);
-  }, [currentUserId, showToast]);
+  }, [bumpRouteRefreshKey, currentUserId, showToast]);
 
   const handleDownloadSelectedPhotos = useCallback(async () => {
     if (!selectedPhotoIds.length) {
@@ -260,13 +296,14 @@ export default function TripPhotoAlbumApiScreen() {
         return;
       }
       setAlbumPhotos((prev) => prev.map((photo) => successPhotoIds.has(photo.photoId) ? { ...photo, isExcluded: true } : photo));
+      bumpRouteRefreshKey();
       showToast(`${successPhotoIds.size}장의 사진을 삭제했어요.`, 'success');
       setDeleteSelectionConfirm(null);
       closeSelectionMode();
     } finally {
       setIsSubmitting(false);
     }
-  }, [closeSelectionMode, deleteSelectionConfirm, showToast]);
+  }, [bumpRouteRefreshKey, closeSelectionMode, deleteSelectionConfirm, showToast]);
 
   const handleDeleteSelectedPhotos = useCallback(async () => {
     if (!selectedPhotoIds.length) {
@@ -400,7 +437,7 @@ export default function TripPhotoAlbumApiScreen() {
         ) : (
           <>
             {selectionMode === 'delete' ? <Text style={styles.selectionHint}>사진 삭제는 내가 올린 사진만 가능해요.</Text> : null}
-            <View style={styles.grid}>
+            <View key={`grid-${selectionMode ?? 'browse'}-${gridImageVersion}`} style={styles.grid}>
               {visiblePhotos.map((photo) => {
                 const isSelected = selectedPhotoIds.includes(photo.photoId);
                 const isDeleteLocked = selectionMode === 'delete' && photo.ownerUserId !== currentUserId;
@@ -413,12 +450,15 @@ export default function TripPhotoAlbumApiScreen() {
                     setSelectedPhotoId(photo.photoId);
                   }}>
                     <View style={styles.gridImageContainer}>
-                      <Image source={photo.thumbnailUrl || photo.originalUrl} style={styles.gridImage} contentFit="cover" onLoad={() => setLoadedImages((prev) => ({ ...prev, [photo.photoId]: true }))} />
-                      {!loadedImages[photo.photoId] ? (
-                        <View style={styles.loadingOverlay}>
-                          <ActivityIndicator size="small" color="#8A978F" />
-                        </View>
-                      ) : null}
+                      <Image
+                        key={`${photo.photoId}-${gridImageVersion}`}
+                        source={photo.thumbnailUrl || photo.originalUrl}
+                        style={styles.gridImage}
+                        contentFit="cover"
+                        onLoadStart={() => setLoadedImages((prev) => ({ ...prev, [photo.photoId]: false }))}
+                        onLoad={() => setLoadedImages((prev) => ({ ...prev, [photo.photoId]: true }))}
+                        onError={() => setLoadedImages((prev) => ({ ...prev, [photo.photoId]: true }))}
+                      />
                     </View>
                     {photo.representative ? <View style={styles.representativeBadge}><Text style={styles.representativeBadgeText}>대표</Text></View> : null}
                     {selectionMode ? (

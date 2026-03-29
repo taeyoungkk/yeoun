@@ -1,6 +1,7 @@
 package com.yeoun.domain.paymentimport.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yeoun.domain.paymentimport.dto.response.UserFinanceAccountItemResponse;
 import com.yeoun.domain.paymentimport.dto.response.UserFinanceCardItemResponse;
 import com.yeoun.domain.paymentimport.dto.response.UserFinanceProfileResponse;
@@ -36,19 +37,22 @@ public class UserFinanceProfileService {
     private final UserFinanceAccountRepository userFinanceAccountRepository;
     private final UserFinanceCardRepository userFinanceCardRepository;
     private final SsafyFinanceClient ssafyFinanceClient;
+    private final CardSecretCryptoService cardSecretCryptoService;
 
     public UserFinanceProfileService(
             UserRepository userRepository,
             UserFinanceProfileRepository userFinanceProfileRepository,
             UserFinanceAccountRepository userFinanceAccountRepository,
             UserFinanceCardRepository userFinanceCardRepository,
-            SsafyFinanceClient ssafyFinanceClient
+            SsafyFinanceClient ssafyFinanceClient,
+            CardSecretCryptoService cardSecretCryptoService
     ) {
         this.userRepository = userRepository;
         this.userFinanceProfileRepository = userFinanceProfileRepository;
         this.userFinanceAccountRepository = userFinanceAccountRepository;
         this.userFinanceCardRepository = userFinanceCardRepository;
         this.ssafyFinanceClient = ssafyFinanceClient;
+        this.cardSecretCryptoService = cardSecretCryptoService;
     }
 
     public UserFinanceProfile ensureProfileAndSyncAssets(UUID userId) {
@@ -104,7 +108,7 @@ public class UserFinanceProfileService {
             throw new BaseException(ErrorCode.FINANCE_CARD_FORBIDDEN);
         }
 
-        card.updateCvc(cvc, Instant.now());
+        card.updateCvc(cardSecretCryptoService.encrypt(cvc), Instant.now());
         return toCardItem(card);
     }
 
@@ -226,10 +230,12 @@ public class UserFinanceProfileService {
             currentCardNos.add(cardNo);
             String cardName = ssafyFinanceClient.firstText(item, "cardName", "cardIssuerName", "cardDisplayName");
             String cardUniqueNo = ssafyFinanceClient.firstText(item, "cardUniqueNo");
+            String encryptedCvc = encryptCardSecret(ssafyFinanceClient.firstText(item, "cvc"));
+            JsonNode sanitizedPayload = sanitizeCardPayload(item);
 
             userFinanceCardRepository.findByFinanceProfileIdAndCardNo(profile.getFinanceProfileId(), cardNo)
                     .ifPresentOrElse(
-                            existing -> existing.refresh(cardName, cardUniqueNo, item, now),
+                            existing -> existing.refresh(cardName, cardUniqueNo, encryptedCvc, sanitizedPayload, now),
                             () -> userFinanceCardRepository.save(
                                     UserFinanceCard.builder()
                                             .financeCardId(UUID.randomUUID())
@@ -237,8 +243,8 @@ public class UserFinanceProfileService {
                                             .cardNo(cardNo)
                                             .cardName(cardName)
                                             .cardUniqueNo(cardUniqueNo)
-                                            .cvc(null)
-                                            .rawPayloadJson(item)
+                                            .cvc(encryptedCvc)
+                                            .rawPayloadJson(sanitizedPayload)
                                             .active(true)
                                             .createdAt(now)
                                             .updatedAt(now)
@@ -299,5 +305,21 @@ public class UserFinanceProfileService {
             return "****";
         }
         return "****-****-****-" + cardNo.substring(cardNo.length() - 4);
+    }
+
+    private String encryptCardSecret(String plainSecret) {
+        if (plainSecret == null || plainSecret.isBlank()) {
+            return null;
+        }
+        return cardSecretCryptoService.encrypt(plainSecret);
+    }
+
+    private JsonNode sanitizeCardPayload(JsonNode payload) {
+        if (payload == null || !payload.isObject()) {
+            return payload;
+        }
+        ObjectNode copy = payload.deepCopy();
+        copy.remove("cvc");
+        return copy;
     }
 }

@@ -18,7 +18,7 @@ import {
   SettlementDetail,
   SettlementTransferItem,
 } from '@/src/api/settlement';
-import { filterAcceptedTripMembers, getTripMembersApi, getTripsApi, TripListItem, TripMemberItem } from '@/src/api/trip';
+import { filterAcceptedTripMembers, getTripMembersApi, getTripsApi, isSettlementEligibleTrip, TripListItem, TripMemberItem } from '@/src/api/trip';
 import { useTripStore } from '@/src/store';
 
 const KRW_FORMATTER = new Intl.NumberFormat('ko-KR');
@@ -86,7 +86,7 @@ export default function PaymentMemberSummaryScreen() {
           throw new Error(tripsResponse.message ?? '여행 정보를 불러오지 못했어요.');
         }
 
-        const availableTrips = tripsResponse.data.items.filter((item) => item.status !== 'DELETED');
+        const availableTrips = tripsResponse.data.items.filter(isSettlementEligibleTrip);
         setTripOptions(availableTrips);
 
         const nextTripId =
