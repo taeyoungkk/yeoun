@@ -2,9 +2,9 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { Image } from 'expo-image';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { deletePhotoMemoApi, getPhotoDetailApi, getTripPhotosApi, type PhotoDetail, updatePhotoApi, upsertPhotoMemoApi } from '@/src/api/photo';
@@ -70,6 +70,7 @@ export default function TripPhotoAlbumApiScreen() {
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
   const [downloadResult, setDownloadResult] = useState<{ success: boolean; message: string } | null>(null);
   const [modalImageVersion, setModalImageVersion] = useState(0);
+  const [gridImageVersion, setGridImageVersion] = useState(0);
   const [deleteSelectionConfirm, setDeleteSelectionConfirm] = useState<{ photoIds: string[]; count: number } | null>(null);
 
   const loadAlbum = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
@@ -148,6 +149,32 @@ export default function TripPhotoAlbumApiScreen() {
     if (!selectedModalImageKey) return;
     setLoadedImages((prev) => ({ ...prev, [selectedModalImageKey]: false }));
   }, [selectedModalImageKey, modalImageVersion]);
+
+  const refreshGridImages = useCallback(() => {
+    setLoadedImages((prev) => {
+      const nextEntries = Object.entries(prev).filter(([key]) => key.startsWith('modal_'));
+      return Object.fromEntries(nextEntries);
+    });
+    setGridImageVersion((prev) => prev + 1);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshGridImages();
+    }, [refreshGridImages]),
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        refreshGridImages();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [refreshGridImages]);
 
   const closeSelectionMode = useCallback(() => { setSelectionMode(null); setSelectedPhotoIds([]); }, []);
   const activateActionMode = useCallback((mode: Exclude<SelectionMode, null>) => { setSelectionMode(mode); setSelectedPhotoIds([]); setSelectedPhotoId(null); }, []);
@@ -413,7 +440,15 @@ export default function TripPhotoAlbumApiScreen() {
                     setSelectedPhotoId(photo.photoId);
                   }}>
                     <View style={styles.gridImageContainer}>
-                      <Image source={photo.thumbnailUrl || photo.originalUrl} style={styles.gridImage} contentFit="cover" onLoad={() => setLoadedImages((prev) => ({ ...prev, [photo.photoId]: true }))} />
+                      <Image
+                        key={`${photo.photoId}-${gridImageVersion}`}
+                        source={photo.thumbnailUrl || photo.originalUrl}
+                        style={styles.gridImage}
+                        contentFit="cover"
+                        onLoadStart={() => setLoadedImages((prev) => ({ ...prev, [photo.photoId]: false }))}
+                        onLoad={() => setLoadedImages((prev) => ({ ...prev, [photo.photoId]: true }))}
+                        onError={() => setLoadedImages((prev) => ({ ...prev, [photo.photoId]: true }))}
+                      />
                       {!loadedImages[photo.photoId] ? (
                         <View style={styles.loadingOverlay}>
                           <ActivityIndicator size="small" color="#8A978F" />
