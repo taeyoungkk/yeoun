@@ -1070,15 +1070,6 @@ function RealTripRecordingScreen({
           const tripData = tripDetailResponse.data;
           setLoadedTripDetail(tripData);
 
-          // OWNERSHIP CHECK: If we are in recording mode but don't own this trip
-          // and it's not a trip we should be recording, treat as ghost data.
-          if (!isReviewMode && tripData.ownerUserId && currentUserId && tripData.ownerUserId !== currentUserId) {
-             console.warn('Trip ownership mismatch. Clearing stale trip state.');
-             clearTrip();
-             router.replace('/(tabs)');
-             return;
-          }
-
           if (!isReviewMode) {
             setActiveTrip(tripData);
             if (tripData.status !== 'ACTIVE') {

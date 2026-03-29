@@ -188,15 +188,6 @@ export const useTripStore = create<TripState>()(
 
         if (detailResponse.success) {
           const tripData = detailResponse.data;
-          const currentUserId = useUserStore.getState().profile?.userId;
-
-          // Ownership check: If the trip belongs to someone else, don't restore it as ACTIVE
-          if (tripData.ownerUserId && currentUserId && tripData.ownerUserId !== currentUserId) {
-            console.warn('[TripStore] Active trip ownership mismatch. Cleaning up stale state.');
-            get().clearTrip();
-            void get().fetchTrips(true);
-            return null;
-          }
 
           if (isTerminalTripStatus(detailResponse.data.status) && get().currentTripId === detailResponse.data.tripId) {
             get().clearTrip();
