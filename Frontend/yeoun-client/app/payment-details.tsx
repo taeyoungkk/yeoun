@@ -1314,7 +1314,7 @@ const styles = StyleSheet.create({
   },
   choiceChipTextActive: {
     color: '#244934',
-    fontWeight: 'bold',
+    fontFamily: 'Pretendard-Bold',
   },
   fullWidthButton: {
     marginTop: 16,
@@ -1351,7 +1351,7 @@ const styles = StyleSheet.create({
   },
   selectorItemTextActive: {
     color: '#244934',
-    fontWeight: 'bold',
+    fontFamily: 'Pretendard-Bold',
   },
   deleteItem: {
     backgroundColor: '#FFF3F1',

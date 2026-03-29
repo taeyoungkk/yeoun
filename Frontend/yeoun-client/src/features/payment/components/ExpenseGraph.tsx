@@ -122,14 +122,14 @@ export function ExpenseGraph() {
           xAxisThickness={1}
           yAxisThickness={0}
           yAxisLabelWidth={55}
-          yAxisTextStyle={{ color: 'gray', fontSize: 10, fontFamily: 'DM Sans' }}
+          yAxisTextStyle={{ color: 'gray', fontSize: 10, fontFamily: 'Pretendard-Regular' }}
           hideYAxisText={false}
           xAxisColor="#000000"
           noOfSections={4}
           maxValue={dynamicMaxValue}
           yAxisExtraHeight={20}
           labelsExtraHeight={20}
-          xAxisLabelTextStyle={{ color: '#000', fontSize: 12, fontFamily: 'DM Sans', textAlign: 'center' }}
+          xAxisLabelTextStyle={{ color: '#000', fontSize: 12, fontFamily: 'Pretendard-Regular', textAlign: 'center' }}
           onPress={(item: any) => {
             setActiveItem(item);
           }}
@@ -164,7 +164,7 @@ export function ExpenseGraph() {
                 marginRight: 6 
               }} 
             />
-            <Text className="text-gray-600 text-[11px] font-medium" style={{ fontFamily: 'DM Sans' }}>
+            <Text className="text-gray-600 text-[11px] font-medium">
               {category.label}
             </Text>
           </View>
@@ -215,14 +215,12 @@ const styles = StyleSheet.create({
   detailDate: {
     fontSize: 14,
     color: '#666',
-    fontFamily: 'DM Sans',
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
   },
   detailTotal: {
     fontSize: 16,
     color: '#000',
-    fontFamily: 'DM Sans',
-    fontWeight: 'bold',
+    fontFamily: 'Pretendard-Bold',
   },
   detailDot: {
     width: 6,
@@ -233,6 +231,6 @@ const styles = StyleSheet.create({
   detailText: {
     fontSize: 12,
     color: '#444',
-    fontFamily: 'DM Sans',
+    fontFamily: 'Pretendard-Regular',
   },
 });

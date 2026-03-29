@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerCopy: { flex: 1 },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: '#223428' },
+  headerTitle: { fontSize: 24, fontFamily: 'Pretendard-Bold', color: '#223428' },
   headerSubtitle: { marginTop: 4, fontSize: 13, color: '#607067' },
   card: {
     marginBottom: 14,
@@ -89,8 +89,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D7E1DA',
   },
-  cardTitle: { marginBottom: 10, fontSize: 20, fontWeight: '700', color: '#223428' },
-  sectionTitle: { marginBottom: 10, fontSize: 16, fontWeight: '700', color: '#223428' },
+  cardTitle: { marginBottom: 10, fontSize: 20, fontFamily: 'Pretendard-Bold', color: '#223428' },
+  sectionTitle: { marginBottom: 10, fontSize: 16, fontFamily: 'Pretendard-Bold', color: '#223428' },
   cardText: { marginBottom: 6, fontSize: 14, color: '#607067' },
   primaryButton: {
     marginTop: 8,
@@ -100,5 +100,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryButtonText: { fontSize: 16, fontWeight: '700', color: '#F7FBF6' },
+  primaryButtonText: { fontSize: 16, fontFamily: 'Pretendard-Bold', color: '#F7FBF6' },
 });

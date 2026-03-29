@@ -605,7 +605,7 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#465346',
   },
   primaryButton: {
@@ -621,7 +621,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#FFFFFF',
   },
   primaryButtonTextDisabled: {
@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#19211B',
     textAlign: 'center',
   },
@@ -663,6 +663,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     color: '#5E6962',
+    fontFamily: 'Pretendard-Regular',
     textAlign: 'center',
   },
   modalTagWrap: {
@@ -682,7 +683,7 @@ const styles = StyleSheet.create({
   modalTagText: {
     fontSize: 13,
     color: '#4E5A54',
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
   },
   summaryCard: {
     marginTop: 18,
@@ -700,13 +701,14 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 13,
+    fontFamily: 'Pretendard-Regular',
     color: '#7A877E',
   },
   summaryValue: {
     flex: 1,
     textAlign: 'right',
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
     color: '#1D2620',
   },
   modalActionRow: {
@@ -723,7 +725,7 @@ const styles = StyleSheet.create({
   },
   modalSecondaryButtonText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#425047',
   },
   modalPrimaryButton: {
@@ -744,7 +746,7 @@ const styles = StyleSheet.create({
   },
   modalPrimaryButtonText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#F7FBF5',
   },
 });

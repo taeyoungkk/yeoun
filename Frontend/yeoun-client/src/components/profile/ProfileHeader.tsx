@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
   avatarText: {
     color: '#fff',
     fontSize: 32,
-    fontWeight: '500',
+    fontFamily: 'Pretendard-Medium',
   },
   infoContainer: {
     flex: 1,
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
   },
   nickname: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontFamily: 'Pretendard-Bold',
     color: '#1A1A1A',
     marginBottom: 6,
   },
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#D97A59', // Terracotta accent color
     marginLeft: 4,
-    fontWeight: '500',
+    fontFamily: 'Pretendard-Medium',
   },
   settingsButton: {
     padding: 8,

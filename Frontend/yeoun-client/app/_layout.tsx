@@ -8,6 +8,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import "../src/styles/global.css";
+import '@/src/utils/applyGlobalPretendard';
 
 import * as WebBrowser from 'expo-web-browser';
 

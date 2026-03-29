@@ -19,6 +19,7 @@ import {
 } from '@/src/api/timeline';
 import { getTripDetailApi, getTripRouteDaysApi, type TripDetail, type TripRouteDayListItem } from '@/src/api/trip';
 import { HouseSvg } from '@/src/components/icons/HouseSvg';
+import { useUserStore } from '@/src/store';
 import { useTripStore, type CurrentTrip } from '@/src/store/trip.store';
 import { getTopDestinationName, calculateDistance } from '@/src/utils/trip-analysis-utils';
 
@@ -225,6 +226,7 @@ export default function TripReportScreen() {
   const currentTrip = useTripStore((state) => state.currentTrip);
   const reviewTrip = useTripStore((state) => state.reviewTrip);
   const inFlightLogs = useTripStore((state) => state.inFlightLogs);
+  const currentUserId = useUserStore((state) => state.profile?.userId ?? null);
   const router = useRouter();
 
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
@@ -429,14 +431,21 @@ export default function TripReportScreen() {
   }, [reportDays, totalInFlightDistance]);
   const totalPhotos = useMemo(() => reportDays.reduce((sum, day) => sum + day.photoCount, 0), [reportDays]);
   const totalLogs = timelineRows.length > 0 ? timelineRows.length : reportDays.reduce((sum, day) => sum + day.eventCount, 0);
-  const totalUsed = settlementDetail?.totalConfirmedAmount ?? expenses.reduce((sum, expense) => sum + expense.totalAmount, 0);
-  const sharedPerPerson =
-    settlementDetail && settlementDetail.memberCount > 0
-      ? Math.round(settlementDetail.totalConfirmedAmount / settlementDetail.memberCount)
-      : trip?.memberCount
-        ? Math.round(totalUsed / trip.memberCount)
-        : totalUsed;
-  const confirmedExpenseCount = settlementDetail?.confirmedExpenseCount ?? expenses.filter((expense) => expense.status !== 'DELETED').length;
+  const activeExpenses = useMemo(
+    () => expenses.filter((expense) => expense.status !== 'DELETED'),
+    [expenses],
+  );
+  const totalUsed = settlementDetail?.totalConfirmedAmount ?? activeExpenses.reduce((sum, expense) => sum + expense.totalAmount, 0);
+  const mySettlement = useMemo(
+    () => settlementDetail?.memberSettlements.find((member) => member.userId === currentUserId) ?? null,
+    [currentUserId, settlementDetail],
+  );
+  const myUsedAmount =
+    mySettlement?.paidAmount ??
+    activeExpenses.reduce(
+      (sum, expense) => sum + (currentUserId && expense.payerUserId === currentUserId ? expense.totalAmount : 0),
+      0,
+    );
   const ticketNumber = (trip?.tripId ?? 'YEOUNTRIP').replace(/-/g, '').slice(0, 8).toUpperCase() || 'YEOUN000';
   const travelerCount = String(trip?.memberCount ?? 0).padStart(2, '0');
   const tripTitle = trip?.tripName || 'Trip';
@@ -555,7 +564,7 @@ export default function TripReportScreen() {
             <View style={styles.processingNotice}>
               <MaterialIcons name="info-outline" size={16} color="#607067" />
               <Text style={styles.processingNoticeText}>
-                {'서버에서 상세 데이터 분석이 아직 진행 중입니다. 잠시 후 상단 "새로고침"을 해주세요.'}
+                {'서버에서 상세 데이터 분석이 아직 진행 중입니다.'}
               </Text>
             </View>
           )}
@@ -605,14 +614,8 @@ export default function TripReportScreen() {
                   <Text style={styles.summaryRight}>{formatWon(totalUsed)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLeft}>1인당 금액</Text>
-                  <Text style={styles.summaryRight}>{formatWon(sharedPerPerson)}</Text>
-                </View>
-              </View>
-              <View style={styles.summaryBottom}>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryBottomLeft}>확정 내역 수</Text>
-                  <Text style={styles.summaryBottomRight}>{`${confirmedExpenseCount}건`}</Text>
+                  <Text style={styles.summaryLeft}>내가 사용한 금액</Text>
+                  <Text style={styles.summaryRight}>{formatWon(myUsedAmount)}</Text>
                 </View>
               </View>
             </Animated.View>
@@ -644,7 +647,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerCopy: { flex: 1 },
-  headerTitle: { fontSize: 22, color: '#223428', fontWeight: '700' },
+  headerTitle: { fontSize: 20, color: '#223428', fontFamily: 'Pretendard-SemiBold' },
   headerActionButton: {
     width: 40,
     height: 40,
@@ -689,28 +692,28 @@ const styles = StyleSheet.create({
   ticketContent: { paddingHorizontal: 24, paddingBottom: 30 },
   ticketTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
   ticketTopRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  ticketNumberLabel: { fontSize: 14, color: '#000000' },
-  ticketNumberValue: { fontSize: 18, color: '#000000', fontWeight: '700' },
+  ticketNumberLabel: { fontSize: 14, color: '#000000', fontFamily: 'Pretendard-Regular' },
+  ticketNumberValue: { fontSize: 18, color: '#000000', fontFamily: 'Pretendard-Bold' },
   ticketRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   ticketRouteBlock: { flex: 1 },
-  ticketCode: { fontSize: 36, color: '#000000', fontWeight: '700' },
+  ticketCode: { fontSize: 30, color: '#000000', fontFamily: 'Pretendard-SemiBold' },
   ticketCodeRight: { textAlign: 'right' },
-  ticketDateText: { fontSize: 14, color: '#000000', marginTop: 4 },
+  ticketDateText: { fontSize: 14, color: '#000000', marginTop: 4, fontFamily: 'Pretendard-Regular' },
   ticketDateTextRight: { textAlign: 'right' },
   ticketRouteCenter: { width: 120, height: 60, alignItems: 'center', justifyContent: 'center' },
   flightIconCenter: { position: 'absolute' },
   ticketRule: { height: 1, backgroundColor: '#E3EBDF', marginVertical: 25 },
   ticketInfoGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 25 },
   ticketInfoCell: { width: '33.3%', alignItems: 'center' },
-  ticketInfoLabel: { fontSize: 12, color: '#000000', marginBottom: 4, textAlign: 'center' },
-  ticketInfoValue: { fontSize: 16, color: '#000000', fontWeight: '700', textAlign: 'center' },
-  ticketSectionTitle: { fontSize: 13, color: '#000000', marginBottom: 12, fontWeight: '700' },
+  ticketInfoLabel: { fontSize: 12, color: '#000000', marginBottom: 4, textAlign: 'center', fontFamily: 'Pretendard-Regular' },
+  ticketInfoValue: { fontSize: 16, color: '#000000', fontFamily: 'Pretendard-Bold', textAlign: 'center' },
+  ticketSectionTitle: { fontSize: 13, color: '#000000', marginBottom: 12, fontFamily: 'Pretendard-Bold' },
   inlineDayRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  inlineDayLabel: { fontSize: 16, color: '#000000', fontWeight: '700' },
-  inlineDayValue: { flex: 1, textAlign: 'right', fontSize: 14, color: '#000000', fontWeight: '700' },
+  inlineDayLabel: { fontSize: 16, color: '#000000', fontFamily: 'Pretendard-SemiBold' },
+  inlineDayValue: { flex: 1, textAlign: 'right', fontSize: 14, color: '#000000', fontFamily: 'Pretendard-Medium' },
   sectionCard: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFFFFF', padding: 20 },
-  sectionKicker: { fontSize: 11, color: '#607067', fontWeight: '600' },
-  sectionTitle: { fontSize: 19, color: '#223428', marginTop: 4, fontWeight: '700', marginBottom: 15 },
+  sectionKicker: { fontSize: 11, color: '#607067', fontFamily: 'Pretendard-SemiBold' },
+  sectionTitle: { fontSize: 19, color: '#223428', marginTop: 4, fontFamily: 'Pretendard-Bold', marginBottom: 15 },
   timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   timelineHeaderCopy: { flex: 1 },
   timelineBody: { marginTop: 20 },
@@ -720,20 +723,17 @@ const styles = StyleSheet.create({
   timelineLine: { flex: 1, width: 2, backgroundColor: '#DCE4DE' },
   timelineCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 15, padding: 15 },
   timelineTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  timelineTime: { fontSize: 12, fontWeight: '700', color: '#315B45' },
+  timelineTime: { fontSize: 12, fontFamily: 'Pretendard-Bold', color: '#315B45' },
   timelineChip: { backgroundColor: '#EEF3EC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
-  timelineChipText: { fontSize: 10, color: '#315B45', fontWeight: '700' },
-  timelineTitle: { fontSize: 16, fontWeight: '700', color: '#223428' },
+  timelineChipText: { fontSize: 10, color: '#315B45', fontFamily: 'Pretendard-Bold' },
+  timelineTitle: { fontSize: 16, fontFamily: 'Pretendard-Bold', color: '#223428' },
   settlementSection: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFFFFF', padding: 20 },
-  settlementTitle: { fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 15, color: '#223428' },
+  settlementTitle: { fontSize: 20, fontFamily: 'Pretendard-Bold', textAlign: 'left', marginBottom: 15, color: '#223428' },
   summaryTicket: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#D7E1DA' },
   summaryTop: { padding: 15, backgroundColor: '#FFFFFF' },
-  summaryBottom: { padding: 15, backgroundColor: '#FFFFFF' },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 5 },
-  summaryLeft: { fontSize: 14, color: '#607067' },
-  summaryRight: { fontSize: 16, fontWeight: '700', color: '#223428' },
-  summaryBottomLeft: { fontSize: 15, fontWeight: '700', color: '#315B45' },
-  summaryBottomRight: { fontSize: 18, fontWeight: '700', color: '#244934' },
+  summaryLeft: { fontSize: 14, color: '#607067', fontFamily: 'Pretendard-Regular' },
+  summaryRight: { fontSize: 16, color: '#223428', fontFamily: 'Pretendard-Bold' },
   detailButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -744,8 +744,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D7E1DA',
   },
-  detailButtonText: { fontSize: 14, color: '#607067', marginRight: 5 },
-  emptyText: { marginTop: 14, fontSize: 13, color: '#728077' },
+  detailButtonText: { fontSize: 14, color: '#607067', marginRight: 5, fontFamily: 'Pretendard-Regular' },
+  emptyText: { marginTop: 14, fontSize: 13, color: '#728077', fontFamily: 'Pretendard-Regular' },
   processingNotice: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -756,5 +756,5 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEF3EC',
     borderRadius: 12,
   },
-  processingNoticeText: { fontSize: 12, color: '#607067', fontWeight: '500' },
+  processingNoticeText: { fontSize: 12, color: '#607067', fontFamily: 'Pretendard-Medium' },
 });

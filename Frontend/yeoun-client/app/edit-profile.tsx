@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Modal, ActivityIndicator, Alert } from 'react-native';
+import { View, Text as RNText, TextInput as RNTextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Modal, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
@@ -16,6 +16,36 @@ const hasLength = (pw: string) => pw.length >= 8 && pw.length <= 20;
 const hasNumber = (pw: string) => /\d/.test(pw);
 const hasSpecial = (pw: string) =>
   /[!@#$%^&*(),.?":{}|<>_\-+=~`[\]\\;'/]/.test(pw);
+
+const getPretendardFont = (className?: string) => {
+  if (!className) return 'Pretendard-Regular';
+  if (className.includes('font-bold')) return 'Pretendard-Bold';
+  if (className.includes('font-semibold')) return 'Pretendard-SemiBold';
+  if (className.includes('font-medium')) return 'Pretendard-Medium';
+  return 'Pretendard-Regular';
+};
+
+function Text({
+  className,
+  style,
+  ...props
+}: React.ComponentProps<typeof RNText> & { className?: string }) {
+  return <RNText {...props} className={className} style={[{ fontFamily: getPretendardFont(className) }, style]} />;
+}
+
+function TextInput({
+  className,
+  style,
+  ...props
+}: React.ComponentProps<typeof RNTextInput> & { className?: string }) {
+  return (
+    <RNTextInput
+      {...props}
+      className={className}
+      style={[{ fontFamily: getPretendardFont(className) }, style]}
+    />
+  );
+}
 
 export default function EditProfileScreen() {
   const insets = useSafeAreaInsets();

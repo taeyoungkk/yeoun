@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   dividerLabel: {
     fontSize: 13,
     color: '#87938D',
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
   },
   shareCard: {
     borderRadius: 24,
@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
   },
   shareTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#151A17',
   },
   linkPreview: {
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
   copyButtonText: {
     color: '#40503F',
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
   },
   statusSection: {
     marginTop: 24,
@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
   statusSectionTitle: {
     marginBottom: 12,
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#151A17',
   },
   statusCard: {
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
   },
   memberName: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
     color: '#151A17',
   },
   memberNickname: {
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
   },
   cancelButton: {
     paddingHorizontal: 10,
@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 12,
     color: '#6D7773',
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
   },
   expireNote: {
     marginTop: 10,
