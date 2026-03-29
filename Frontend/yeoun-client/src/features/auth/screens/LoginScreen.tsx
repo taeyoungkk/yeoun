@@ -42,17 +42,49 @@ const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
 
   const status = error.response?.status;
   const responseMessage = error.response?.data?.message;
+  const localizeAuthMessage = (message: string) => {
+    const normalized = message.trim().toLowerCase();
+
+    if (
+      normalized.includes('incorrect password') ||
+      normalized.includes('wrong password') ||
+      normalized.includes('invalid password')
+    ) {
+      return '비밀번호가 올바르지 않습니다.';
+    }
+
+    if (
+      normalized.includes('user not found') ||
+      normalized.includes('email not found') ||
+      normalized.includes('account not found')
+    ) {
+      return '등록되지 않은 계정입니다.';
+    }
+
+    if (
+      normalized.includes('invalid credentials') ||
+      normalized.includes('bad credentials') ||
+      normalized.includes('invalid email or password') ||
+      normalized.includes('invail email or password') ||
+      normalized.includes('email or password')
+    ) {
+      return '이메일 또는 비밀번호가 올바르지 않습니다.';
+    }
+
+    return message;
+  };
 
   if (typeof responseMessage === "string" && responseMessage.trim().length > 0) {
-    return status ? `${responseMessage} (${status})` : responseMessage;
+    const localizedMessage = localizeAuthMessage(responseMessage);
+    return localizedMessage;
   }
 
   if (status) {
-    return `${fallbackMessage} (${status})`;
+    return fallbackMessage;
   }
 
   if (typeof error.message === "string" && error.message.trim().length > 0) {
-    return error.message;
+    return localizeAuthMessage(error.message);
   }
 
   return fallbackMessage;
