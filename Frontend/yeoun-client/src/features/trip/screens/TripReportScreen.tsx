@@ -225,6 +225,7 @@ export default function TripReportScreen() {
   const currentTrip = useTripStore((state) => state.currentTrip);
   const reviewTrip = useTripStore((state) => state.reviewTrip);
   const inFlightLogs = useTripStore((state) => state.inFlightLogs);
+  const routeRefreshKey = useTripStore((state) => state.routeRefreshKey);
   const router = useRouter();
 
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
@@ -362,7 +363,7 @@ export default function TripReportScreen() {
     return () => {
       mounted = false;
     };
-  }, [trip?.tripId]); // Only load server data when trip changes
+  }, [routeRefreshKey, trip?.tripId]); // Reload when trip data is invalidated elsewhere
 
   // Derive current distance locally to avoid loop
   const totalInFlightDistance = useMemo(() => {

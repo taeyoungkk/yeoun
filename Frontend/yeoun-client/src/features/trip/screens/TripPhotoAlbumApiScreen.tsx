@@ -11,6 +11,7 @@ import { deletePhotoMemoApi, getPhotoDetailApi, getTripPhotosApi, type PhotoDeta
 import { getEventDetailApi, type EventDetail, type EventPhoto } from '@/src/api/timeline';
 import { getTripDetailApi, getTripMembersApi, type TripMemberItem } from '@/src/api/trip';
 import { requestTripPhotoPermission } from '@/src/services/photoSyncService';
+import { useTripStore } from '@/src/store/trip.store';
 import { useUIStore } from '@/src/store/ui.store';
 import { useUserStore } from '@/src/store/user.store';
 
@@ -53,6 +54,7 @@ export default function TripPhotoAlbumApiScreen() {
   const showToast = useUIStore((state) => state.showToast);
   const currentUserId = useUserStore((state) => state.profile?.userId ?? null);
   const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
+  const bumpRouteRefreshKey = useTripStore((state) => state.bumpRouteRefreshKey);
 
   const [eventDetail, setEventDetail] = useState<EventDetail | null>(null);
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);
@@ -225,6 +227,7 @@ export default function TripPhotoAlbumApiScreen() {
               }
               setAlbumPhotos((prev) => prev.map((item) => item.photoId === photo.photoId ? { ...item, isExcluded: true } : item));
               setSelectedPhotoId(null);
+              bumpRouteRefreshKey();
               showToast('사진을 삭제했어요.', 'success');
             } finally {
               setIsSubmitting(false);
@@ -233,7 +236,7 @@ export default function TripPhotoAlbumApiScreen() {
         }
       },
     ]);
-  }, [currentUserId, showToast]);
+  }, [bumpRouteRefreshKey, currentUserId, showToast]);
 
   const handleDownloadSelectedPhotos = useCallback(async () => {
     if (!selectedPhotoIds.length) {
@@ -287,13 +290,14 @@ export default function TripPhotoAlbumApiScreen() {
         return;
       }
       setAlbumPhotos((prev) => prev.map((photo) => successPhotoIds.has(photo.photoId) ? { ...photo, isExcluded: true } : photo));
+      bumpRouteRefreshKey();
       showToast(`${successPhotoIds.size}장의 사진을 삭제했어요.`, 'success');
       setDeleteSelectionConfirm(null);
       closeSelectionMode();
     } finally {
       setIsSubmitting(false);
     }
-  }, [closeSelectionMode, deleteSelectionConfirm, showToast]);
+  }, [bumpRouteRefreshKey, closeSelectionMode, deleteSelectionConfirm, showToast]);
 
   const handleDeleteSelectedPhotos = useCallback(async () => {
     if (!selectedPhotoIds.length) {
