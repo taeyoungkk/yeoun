@@ -207,7 +207,7 @@ export default function PaymentMemberSummaryScreen() {
             </Text>
 
             <View style={styles.divider} />
-            <Text style={styles.sectionTitle}>개인별 지출금액</Text>
+            <Text style={styles.sectionTitle}>개인별 사용금액</Text>
             <View style={styles.divider} />
 
             {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
