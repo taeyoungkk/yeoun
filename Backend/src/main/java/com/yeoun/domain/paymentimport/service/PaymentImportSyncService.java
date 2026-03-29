@@ -10,6 +10,7 @@ import com.yeoun.domain.paymentimport.entity.UserFinanceCard;
 import com.yeoun.domain.paymentimport.entity.UserFinanceProfile;
 import com.yeoun.domain.paymentimport.repository.PaymentImportRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -36,19 +37,23 @@ public class PaymentImportSyncService {
     private final UserFinanceProfileService userFinanceProfileService;
     private final SsafyFinanceClient ssafyFinanceClient;
     private final PaymentImportRepository paymentImportRepository;
+    private final CardSecretCryptoService cardSecretCryptoService;
 
     public PaymentImportSyncService(
             FinanceApiProperties financeApiProperties,
             UserFinanceProfileService userFinanceProfileService,
             SsafyFinanceClient ssafyFinanceClient,
-            PaymentImportRepository paymentImportRepository
+            PaymentImportRepository paymentImportRepository,
+            CardSecretCryptoService cardSecretCryptoService
     ) {
         this.financeApiProperties = financeApiProperties;
         this.userFinanceProfileService = userFinanceProfileService;
         this.ssafyFinanceClient = ssafyFinanceClient;
         this.paymentImportRepository = paymentImportRepository;
+        this.cardSecretCryptoService = cardSecretCryptoService;
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void syncMyPaymentImports(UUID requesterUserId) {
         UserFinanceProfile profile = userFinanceProfileService.ensureProfileAndSyncAssets(requesterUserId);
         LocalDate endDate = LocalDate.now(DEFAULT_ZONE);
@@ -75,10 +80,11 @@ public class PaymentImportSyncService {
             if (card.getCvc() == null || card.getCvc().isBlank()) {
                 continue;
             }
+            String decryptedCvc = cardSecretCryptoService.decrypt(card.getCvc());
             JsonNode response = ssafyFinanceClient.inquireCreditCardTransactions(
                     profile.getFinanceUserKey(),
                     card.getCardNo(),
-                    card.getCvc(),
+                    decryptedCvc,
                     startDate,
                     endDate
             );
