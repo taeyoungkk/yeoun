@@ -217,8 +217,8 @@ const startForegroundWatcher = async () => {
     foregroundSubscription = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.High,
-        timeInterval: 5000,
-        distanceInterval: 5,
+        timeInterval: 10000,
+        distanceInterval: 15,
       },
       (loc) => {
         if (activeCollectorMode !== 'foreground') {
@@ -268,8 +268,8 @@ const startBackgroundWatcher = async () => {
 
   await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, {
     accuracy: Location.Accuracy.High,
-    timeInterval: 10000,
-    distanceInterval: 10,
+    timeInterval: 20000,
+    distanceInterval: 20,
     foregroundService: {
       notificationTitle: '여행 기록 중',
       notificationBody: '백그라운드 위치를 수집해 여행 경로를 기록하고 있습니다.',
