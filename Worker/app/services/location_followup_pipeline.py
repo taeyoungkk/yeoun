@@ -1,4 +1,6 @@
 import logging
+from decimal import Decimal
+from math import asin, cos, radians, sin, sqrt
 
 from psycopg import Connection
 
@@ -19,6 +21,62 @@ from app.services.location_timeline_candidate_writer import LocationTimelineCand
 from app.services.location_timeline_linker import LocationTimelineLinker
 
 logger = logging.getLogger(__name__)
+
+
+def _route_distance_km(coordinates: list[tuple[Decimal, Decimal]]) -> float:
+    if len(coordinates) < 2:
+        return 0.0
+
+    total_m = 0.0
+    for (left_lng, left_lat), (right_lng, right_lat) in zip(coordinates, coordinates[1:]):
+        total_m += _haversine_distance_m(
+            float(left_lat),
+            float(left_lng),
+            float(right_lat),
+            float(right_lng),
+        )
+
+    return total_m / 1000
+
+
+def _haversine_distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    earth_radius_m = 6_371_000
+    lat1_rad = radians(lat1)
+    lat2_rad = radians(lat2)
+    delta_lat = radians(lat2 - lat1)
+    delta_lng = radians(lng2 - lng1)
+
+    a = (
+        sin(delta_lat / 2) ** 2
+        + cos(lat1_rad) * cos(lat2_rad) * sin(delta_lng / 2) ** 2
+    )
+    c = 2 * asin(sqrt(a))
+    return earth_radius_m * c
+
+
+def _should_keep_raw_route(
+    raw_coordinates: list[tuple[Decimal, Decimal]],
+    matched_coordinates: list[tuple[Decimal, Decimal]],
+) -> bool:
+    if len(raw_coordinates) < 2:
+        return False
+
+    if len(matched_coordinates) < 2:
+        return True
+
+    raw_distance_km = _route_distance_km(raw_coordinates)
+    matched_distance_km = _route_distance_km(matched_coordinates)
+
+    if len(raw_coordinates) >= 6 and len(matched_coordinates) <= 3:
+        return True
+
+    if len(raw_coordinates) >= 8 and len(matched_coordinates) / len(raw_coordinates) < 0.35:
+        return True
+
+    if raw_distance_km > 0.2 and matched_distance_km / raw_distance_km < 0.55:
+        return True
+
+    return False
 
 
 class LocationFollowupPipeline:
@@ -127,6 +185,16 @@ class LocationFollowupPipeline:
         for route_day in route_days:
             matched_coordinates = await self.map_matcher.match_coordinates(route_day.coordinates)
             if matched_coordinates is None:
+                matched_route_days.append(route_day)
+                fallback_count += 1
+                continue
+
+            if _should_keep_raw_route(route_day.coordinates, matched_coordinates):
+                logger.info(
+                    "Keeping raw route geometry for tripId=%s day=%s because matched route was too simplified.",
+                    route_day.trip_id,
+                    route_day.day,
+                )
                 matched_route_days.append(route_day)
                 fallback_count += 1
                 continue

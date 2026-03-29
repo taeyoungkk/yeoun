@@ -59,7 +59,6 @@ import {
   type TripMemberItem,
   type LocationLog,
 } from '@/src/api/trip';
-import { matchMapTrace } from '@/src/api/mapbox';
 import { useTripStore, useUserStore } from '@/src/store';
 import { locationService } from '../../../services/locationService';
 import { PhotoMarker, PaymentMarker, LocationMarker } from '@/src/components/map/EventMarkers';
@@ -78,7 +77,7 @@ const MAP_TOP_OFFSET = 112;
 const PANEL_TOP_OFFSET = 118;
 const AUTO_PHOTO_SYNC_INTERVAL_MS = 3 * 60 * 1000;
 const MAX_VISIBLE_ROUTE_ACCURACY_M = 35;
-const MIN_VISIBLE_ROUTE_POINT_DISTANCE_M = 25;
+const MIN_VISIBLE_ROUTE_POINT_DISTANCE_M = 10;
 
 type DayKey = `day${number}`;
 type DayFilter = 'all' | DayKey;
@@ -118,6 +117,43 @@ const buildVisibleLiveRouteCoordinates = (logs: LocationLog[]) => {
   });
 
   return nextCoordinates;
+};
+
+const mergeLocationLogs = (...groups: LocationLog[][]) =>
+  Array.from(
+    new Map(
+      groups
+        .flat()
+        .sort((left, right) => left.recordedAt.localeCompare(right.recordedAt))
+        .map((log) => [log.clientLogUuid ?? `${log.recordedAt}-${log.latitude}-${log.longitude}`, log] as const),
+    ).values(),
+  );
+
+const shouldPreferRawRoute = (rawRoute: Coordinate[], serverRoute: Coordinate[]) => {
+  if (rawRoute.length < 2) {
+    return false;
+  }
+
+  if (serverRoute.length < 2) {
+    return true;
+  }
+
+  const rawDistanceKm = calculateDistance(rawRoute);
+  const serverDistanceKm = calculateDistance(serverRoute);
+
+  if (rawRoute.length >= 6 && serverRoute.length <= 3) {
+    return true;
+  }
+
+  if (rawRoute.length >= 8 && serverRoute.length / rawRoute.length < 0.35) {
+    return true;
+  }
+
+  if (rawDistanceKm > 0.2 && serverDistanceKm / rawDistanceKm < 0.55) {
+    return true;
+  }
+
+  return false;
 };
 
 type PhotoContributor = {
@@ -712,13 +748,15 @@ function RealTripRecordingScreen({
     // Only append session trail if we are looking at 'all' or the last day
     // AND we are in ACTIVE mode (not review) for the current active trip
     if (!isReviewMode && activeTripId === currentTripId && (activeFilter === 'all' || activeFilter === `day${tripDays.length}`)) {
-      const inFlightCoords = buildVisibleLiveRouteCoordinates(inFlightLogs);
-      // Show already matched trail + raw points that haven't been matched yet
-      const rawTrailCoords = buildVisibleLiveRouteCoordinates(sessionTrail.slice(lastMatchedIndexRef.current));
-      return [...serverRoute, ...inFlightCoords, ...matchedSessionTrail, ...rawTrailCoords];
+      const liveRouteCoords = buildVisibleLiveRouteCoordinates(mergeLocationLogs(sessionTrail, inFlightLogs));
+      if (shouldPreferRawRoute(liveRouteCoords, serverRoute)) {
+        return liveRouteCoords;
+      }
+
+      return serverRoute.length >= 2 ? serverRoute : liveRouteCoords;
     }
     return serverRoute;
-  }, [activeFilter, filteredDays, inFlightLogs, sessionTrail, matchedSessionTrail, tripDays.length, isReviewMode, activeTripId, currentTripId]);
+  }, [activeFilter, filteredDays, inFlightLogs, sessionTrail, tripDays.length, isReviewMode, activeTripId, currentTripId]);
 
   const currentLocationCoordinate = useMemo(
     () => (isReviewMode ? null : liveCurrentLocation ?? initialCurrentLocation),
@@ -1121,19 +1159,6 @@ function RealTripRecordingScreen({
           );
         }
 
-        // 3. Prune session trail based on the last synced log.
-        const lastSyncedUuid = useTripStore.getState().lastSyncedLogUuid;
-        if (lastSyncedUuid) {
-          setSessionTrail((prev: LocationLog[]) => {
-            const syncedIndex = prev.findIndex(l => l.clientLogUuid === lastSyncedUuid);
-            return syncedIndex !== -1 ? prev.slice(syncedIndex + 1) : prev;
-          });
-        } else {
-          setSessionTrail((prev: LocationLog[]) => {
-            const twoMinsAgo = new Date(Date.now() - 120000).toISOString();
-            return prev.filter(l => l.recordedAt > twoMinsAgo);
-          });
-        }
         setMatchedSessionTrail([]);
         lastMatchedIndexRef.current = 0;
       } catch (err: any) {
@@ -1228,61 +1253,13 @@ function RealTripRecordingScreen({
   }, [activeTripId, isReviewMode]);
 
   useEffect(() => {
-    if (isReviewMode || !activeTripId || isMatchingRef.current) {
+    if (isReviewMode || !activeTripId) {
       return;
     }
 
-    const rawCoords = sessionTrail.map(l => [l.longitude, l.latitude] as Coordinate);
-    const unMatchedCount = rawCoords.length - lastMatchedIndexRef.current;
-
-    // Minimum 3 points to match, and at least 5 new points since last match
-    if (unMatchedCount < 5) {
-      return;
-    }
-
-    const processMatching = async () => {
-      isMatchingRef.current = true;
-      try {
-        // Take up to 100 points for matching (Mapbox limit)
-        // We overlap by 1 point to ensure continuity
-        const startIndex = Math.max(0, lastMatchedIndexRef.current - 1);
-        const chunkToMatch = rawCoords.slice(startIndex, startIndex + 100);
-        
-        if (chunkToMatch.length < 2) {
-          isMatchingRef.current = false;
-          return;
-        }
-
-        try {
-          const matched = await matchMapTrace(chunkToMatch, 'walking');
-          if (matched && matched.length > 0) {
-            setMatchedSessionTrail((prev: Coordinate[]) => {
-              const nextBase = startIndex === 0 ? [] : prev;
-              return [...nextBase, ...matched];
-            });
-          } else {
-            // Fallback: use raw points if matching fails (e.g. non-road path like a train)
-            setMatchedSessionTrail((prev: Coordinate[]) => {
-              const nextBase = startIndex === 0 ? [] : prev;
-              return [...nextBase, ...chunkToMatch];
-            });
-          }
-          // Advance index regardless to avoid infinite retries of failing segments
-          lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
-        } catch (err) {
-          console.warn('[Map Matching] Failed to match segment, falling back to raw:', err);
-          setMatchedSessionTrail((prev: Coordinate[]) => {
-            const nextBase = startIndex === 0 ? [] : prev;
-            return [...nextBase, ...chunkToMatch];
-          });
-          lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
-        }
-      } finally {
-        isMatchingRef.current = false;
-      }
-    };
-
-    void processMatching();
+    setMatchedSessionTrail([]);
+    lastMatchedIndexRef.current = sessionTrail.length;
+    isMatchingRef.current = false;
   }, [sessionTrail, activeTripId, isReviewMode]);
 
   useEffect(() => {
