@@ -2,7 +2,6 @@ import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
 
 import { getFriendsApi } from '@/src/api/friend';
 import { TripListItem } from '@/src/api/trip';
@@ -14,8 +13,7 @@ import { TreeRingsChart } from '@/src/components/profile/TreeRingsChart';
 import { TravelMap } from '@/src/components/profile/TravelMap';
 import { UserInfoCard } from '@/src/components/profile/UserInfoCard';
 import { useFavoriteStore, useTripStore, useUserStore } from '@/src/store';
-import { reverseGeocodeKo } from '@/src/api/mapbox';
-import { getTripImage, getTripPlaceholder } from '@/src/utils/image-utils';
+import { getTripImage } from '@/src/utils/image-utils';
 
 const formatDate = (dateString?: string) => {
   if (!dateString) {
@@ -28,10 +26,10 @@ const formatDate = (dateString?: string) => {
 export default function MyPageScreen() {
   const profile = useUserStore(state => state.profile);
   const setProfile = useUserStore(state => state.setProfile);
-  const settings = useUserStore(state => state.settings);
   const { favoriteIds, toggleFavorite } = useFavoriteStore();
   const serverTrips = useTripStore((state) => state.trips);
   const fetchTrips = useTripStore((state) => state.fetchTrips);
+  const setReviewTrip = useTripStore((state) => state.setReviewTrip);
   const [friendsCount, setFriendsCount] = useState(0);
   const currentAddress = useTripStore((state) => state.currentAddress);
   const locationStatus = useTripStore((state) => state.locationStatus);
@@ -69,7 +67,7 @@ export default function MyPageScreen() {
         setProfile(response.data);
       }
       
-      const tripsResponse = await fetchTrips(true);
+      await fetchTrips(true);
       
       const friendsResponse = await getFriendsApi();
       if (friendsResponse.success) {
@@ -89,6 +87,27 @@ export default function MyPageScreen() {
   const handleToggleFavorite = (id: string) => {
     toggleFavorite(id);
   };
+
+  const handleOpenTripReport = useCallback((tripId: string) => {
+    const selectedTrip = serverTrips.find((trip) => trip.tripId === tripId);
+
+    if (selectedTrip) {
+      setReviewTrip({
+        tripId: selectedTrip.tripId,
+        tripName: selectedTrip.title,
+        startDate: selectedTrip.startDate,
+        endDate: selectedTrip.endDate,
+        memberCount: selectedTrip.memberCount,
+        origin: selectedTrip.country || '---',
+        destination: selectedTrip.region || selectedTrip.title,
+      });
+    }
+
+    router.push({
+      pathname: '/trip/report',
+      params: { tripId, mode: 'review' },
+    });
+  }, [serverTrips, setReviewTrip]);
 
   return (
     <SafeAreaView className="flex-1 bg-[#EBF3EA]" edges={['top', 'left', 'right']}>
@@ -120,6 +139,7 @@ export default function MyPageScreen() {
           trips={favoriteTrips}
           onViewMore={() => router.push('/trip/liked')}
           onToggleFavorite={handleToggleFavorite}
+          onPressTrip={(trip) => handleOpenTripReport(trip.id)}
         />
 
         <TripList
@@ -127,6 +147,7 @@ export default function MyPageScreen() {
           trips={pastTrips}
           onViewMore={() => router.push('/trip/past')}
           onToggleFavorite={handleToggleFavorite}
+          onPressTrip={(trip) => handleOpenTripReport(trip.id)}
         />
   
         <TravelMap tripIds={monitoredTripIds} />

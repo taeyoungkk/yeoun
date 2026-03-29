@@ -18,8 +18,8 @@ import {
   type TimelineDayDetail,
   type TimelineDaySummary,
 } from '@/src/api/timeline';
-import { getTripRouteDaysApi } from '@/src/api/trip';
-import { useTripStore } from '@/src/store/trip.store';
+import { getTripDetailApi, getTripRouteDaysApi, type TripDetail, type TripRouteDayListItem } from '@/src/api/trip';
+import { useTripStore, type CurrentTrip } from '@/src/store/trip.store';
 import { getTopDestinationName, calculateDistance } from '@/src/utils/trip-analysis-utils';
 
 type ReportDay = {
@@ -118,14 +118,93 @@ const buildFallbackDays = (startDate?: string, endDate?: string): ReportDay[] =>
   });
 };
 
-const mapReportDay = (day: TimelineDaySummary, index: number): ReportDay => ({
-  id: day.timelineDayId,
-  label: `${index + 1}일차`,
-  dateLabel: formatDayLabel(new Date(day.dayDate)),
-  distanceKm: day.distanceM / 1000,
-  photoCount: day.photoCount,
-  eventCount: day.eventCount,
+const normalizeDateKey = (value?: string) => value?.slice(0, 10) ?? '';
+const formatDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const buildDateKeys = (startDate?: string, endDate?: string, fallbackDates: string[] = []) => {
+  const normalizedFallback = Array.from(
+    new Set(fallbackDates.map((value) => normalizeDateKey(value)).filter(Boolean)),
+  ).sort((left, right) => left.localeCompare(right));
+
+  if (!startDate || !endDate) {
+    return normalizedFallback;
+  }
+
+  const start = new Date(`${normalizeDateKey(startDate)}T00:00:00`);
+  const end = new Date(`${normalizeDateKey(endDate)}T00:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return normalizedFallback;
+  }
+
+  const dates: string[] = [];
+  const cursor = new Date(start);
+
+  while (cursor <= end) {
+    dates.push(formatDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+};
+
+const mapTripDetailToCurrentTrip = (trip: TripDetail): CurrentTrip => ({
+  tripId: trip.tripId,
+  tripName: trip.title,
+  startDate: trip.startDate,
+  endDate: trip.endDate,
+  memberCount: trip.memberCount ?? trip.participants ?? 0,
+  origin: trip.country ?? '',
+  destination: trip.region ?? trip.country ?? trip.title,
 });
+
+const buildReportDays = (
+  timelineDays: TimelineDaySummary[],
+  routeDays: TripRouteDayListItem[],
+  startDate?: string,
+  endDate?: string,
+): ReportDay[] => {
+  const timelineDayByDate = new Map(timelineDays.map((day) => [normalizeDateKey(day.dayDate), day]));
+  const routeByDate = new Map<string, [number, number][]>();
+
+  routeDays.forEach((routeDay) => {
+    const dateKey = normalizeDateKey(routeDay.day);
+    const coordinates = routeDay.coordinates
+      .filter((coordinate): coordinate is [number, number] => Array.isArray(coordinate) && coordinate.length >= 2)
+      .map(([longitude, latitude]) => [longitude, latitude] as [number, number]);
+
+    if (coordinates.length > 0) {
+      routeByDate.set(dateKey, [...(routeByDate.get(dateKey) ?? []), ...coordinates]);
+    }
+  });
+
+  const dateKeys = buildDateKeys(startDate, endDate, [
+    ...timelineDayByDate.keys(),
+    ...routeByDate.keys(),
+  ]);
+
+  if (dateKeys.length === 0) {
+    return buildFallbackDays(startDate, endDate);
+  }
+
+  return dateKeys.map((dateKey, index) => {
+    const timelineDay = timelineDayByDate.get(dateKey);
+    const routeCoordinates = routeByDate.get(dateKey) ?? [];
+
+    return {
+      id: timelineDay?.timelineDayId ?? `fallback-${index + 1}`,
+      label: `DAY ${index + 1}`,
+      dateLabel: formatDayLabel(new Date(`${dateKey}T00:00:00`)),
+      distanceKm:
+        timelineDay && timelineDay.distanceM > 0
+          ? timelineDay.distanceM / 1000
+          : calculateDistance(routeCoordinates),
+      photoCount: timelineDay?.photoCount ?? 0,
+      eventCount: timelineDay?.eventCount ?? 0,
+    };
+  });
+};
 
 const mapTimelineRows = (dayDetails: TimelineDayDetail[]): TimelineRow[] =>
   dayDetails
@@ -142,7 +221,7 @@ const mapTimelineRows = (dayDetails: TimelineDayDetail[]): TimelineRow[] =>
     .map(({ sortKey: _sortKey, ...row }) => row);
 
 export default function TripReportScreen() {
-  const params = useLocalSearchParams<{ mode?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; tripId?: string; id?: string }>();
   const currentTrip = useTripStore((state) => state.currentTrip);
   const reviewTrip = useTripStore((state) => state.reviewTrip);
   const inFlightLogs = useTripStore((state) => state.inFlightLogs);
@@ -151,14 +230,29 @@ export default function TripReportScreen() {
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const [timelineDays, setTimelineDays] = useState<TimelineDaySummary[]>([]);
   const [timelineDayDetails, setTimelineDayDetails] = useState<TimelineDayDetail[]>([]);
+  const [routeDays, setRouteDays] = useState<TripRouteDayListItem[]>([]);
   const [expenses, setExpenses] = useState<TripExpenseItem[]>([]);
   const [settlementDetail, setSettlementDetail] = useState<SettlementDetail | null>(null);
   const [mainDestination, setMainDestination] = useState<string | null>(null);
   const [originAddress, setOriginAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [routeTrip, setRouteTrip] = useState<TripDetail | null>(null);
 
   const isReviewMode = params.mode === 'review';
-  const trip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
+  const routeTripId =
+    typeof params.tripId === 'string'
+      ? params.tripId
+      : typeof params.id === 'string'
+        ? params.id
+        : null;
+  const storeTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
+  const trip = useMemo<CurrentTrip | null>(() => {
+    if (routeTrip && routeTripId && storeTrip?.tripId !== routeTripId) {
+      return mapTripDetailToCurrentTrip(routeTrip);
+    }
+
+    return storeTrip;
+  }, [routeTrip, routeTripId, storeTrip]);
   const receiptAppear = useRef(new Animated.Value(0)).current;
 
   const handleGoHome = () => router.replace('/(tabs)');
@@ -183,11 +277,36 @@ export default function TripReportScreen() {
   useEffect(() => {
     let mounted = true;
 
+    const loadRouteTrip = async () => {
+      if (!routeTripId || storeTrip?.tripId === routeTripId) {
+        if (mounted) {
+          setRouteTrip(null);
+        }
+        return;
+      }
+
+      const response = await getTripDetailApi(routeTripId);
+      if (mounted) {
+        setRouteTrip(response.success ? response.data : null);
+      }
+    };
+
+    void loadRouteTrip();
+
+    return () => {
+      mounted = false;
+    };
+  }, [routeTripId, storeTrip?.tripId]);
+
+  useEffect(() => {
+    let mounted = true;
+
     const loadReport = async () => {
       if (!trip?.tripId) {
         if (mounted) {
           setTimelineDays([]);
           setTimelineDayDetails([]);
+          setRouteDays([]);
           setExpenses([]);
           setSettlementDetail(null);
           setIsLoading(false);
@@ -211,7 +330,7 @@ export default function TripReportScreen() {
           setExpenses(nextExpenses);
         }
 
-        const [destinationName, latestSettlementResponse, timelineDetailResponses] = await Promise.all([
+        const [destinationName, latestSettlementResponse, timelineDetailResponses, routeDaysResponse] = await Promise.all([
           getTopDestinationName(trip.tripId),
           getLatestSettlementApi(trip.tripId),
           Promise.all(nextTimelineDays.map((day) => getTimelineDayDetailApi(day.timelineDayId))),
@@ -226,7 +345,7 @@ export default function TripReportScreen() {
             .map((res) => res.data);
 
           setTimelineDayDetails(settledTimelineDetails);
-
+          setRouteDays(routeDaysResponse.success ? routeDaysResponse.data.routeDays : []);
           setSettlementDetail(latestSettlementResponse.success ? latestSettlementResponse.data : null);
         }
       } catch (error) {
@@ -298,7 +417,10 @@ export default function TripReportScreen() {
     }).start();
   }, [receiptAppear]);
 
-  const reportDays = useMemo(() => timelineDays.map(mapReportDay), [timelineDays]);
+  const reportDays = useMemo(
+    () => buildReportDays(timelineDays, routeDays, trip?.startDate, trip?.endDate),
+    [routeDays, timelineDays, trip?.endDate, trip?.startDate],
+  );
   const timelineRows = useMemo(() => mapTimelineRows(timelineDayDetails), [timelineDayDetails]);
 
   const totalDistance = useMemo(() => {
@@ -306,7 +428,7 @@ export default function TripReportScreen() {
     return serverDist > 0 ? serverDist : totalInFlightDistance;
   }, [reportDays, totalInFlightDistance]);
   const totalPhotos = useMemo(() => reportDays.reduce((sum, day) => sum + day.photoCount, 0), [reportDays]);
-  const totalLogs = timelineRows.length;
+  const totalLogs = timelineRows.length > 0 ? timelineRows.length : reportDays.reduce((sum, day) => sum + day.eventCount, 0);
   const totalUsed = settlementDetail?.totalConfirmedAmount ?? expenses.reduce((sum, expense) => sum + expense.totalAmount, 0);
   const sharedPerPerson =
     settlementDetail && settlementDetail.memberCount > 0
@@ -432,7 +554,9 @@ export default function TripReportScreen() {
           {totalDistance === 0 && !isLoading && (
             <View style={styles.processingNotice}>
               <MaterialIcons name="info-outline" size={16} color="#7182BC" />
-              <Text style={styles.processingNoticeText}>서버에서 상세 데이터 분석이 아직 진행 중입니다. 잠시 후 상단 '새로고침'을 해주세요.</Text>
+              <Text style={styles.processingNoticeText}>
+                {'서버에서 상세 데이터 분석이 아직 진행 중입니다. 잠시 후 상단 "새로고침"을 해주세요.'}
+              </Text>
             </View>
           )}
 
