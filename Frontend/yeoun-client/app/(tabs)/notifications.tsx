@@ -103,6 +103,7 @@ export default function NotificationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setActiveTab('active');
       void fetchNotifications();
 
       return () => {
@@ -124,6 +125,15 @@ export default function NotificationsScreen() {
     await markAsRead(notification.id);
     archiveNotification(notification, 'unavailable');
   };
+
+  const findTripStatus = useCallback(async (tripId?: string) => {
+    if (!tripId) {
+      return null;
+    }
+
+    const trips = await fetchTrips(true);
+    return trips.find((trip) => trip.tripId === tripId)?.status ?? null;
+  }, [fetchTrips]);
 
   const openNotificationDestination = async (notification: Notification) => {
     await markAsRead(notification.id);
@@ -161,6 +171,20 @@ export default function NotificationsScreen() {
         );
       }
     } catch (error) {
+      const errorCode = getApiErrorCode(error);
+      const statusCode = getApiStatusCode(error);
+
+      if (
+        errorCode === 'FRIEND_REQUEST_NOT_FOUND' ||
+        errorCode === 'FRIEND_REQUEST_NOT_PENDING' ||
+        statusCode === 404 ||
+        statusCode === 409
+      ) {
+        await moveNotificationToHistory(notification);
+        openNoticeModal('응답할 수 없는 친구 요청이에요', '이미 처리되었거나 더 이상 유효하지 않은 친구 요청입니다.');
+        return;
+      }
+
       console.error('[Notifications] Failed to handle friend request.', error);
       showToast('친구 요청 처리에 실패했습니다.', 'error');
     } finally {
@@ -190,18 +214,15 @@ export default function NotificationsScreen() {
 
       if (response.success) {
         if (action === 'accept' && response.data.tripId) {
-          try {
+          const trips = await fetchTrips(true);
+          const matchedTrip = trips.find((trip) => trip.tripId === response.data.tripId);
+
+          if (matchedTrip) {
             const tripDetailResponse = await getTripDetailApi(response.data.tripId);
             if (tripDetailResponse.success) {
               syncAcceptedTrip(tripDetailResponse.data);
             }
-          } catch (detailError) {
-            // Accept succeeded, but the detail may not be immediately available.
-            if (!axios.isAxiosError(detailError) || detailError.response?.status !== 404) {
-              console.error('[Notifications] Failed to fetch accepted trip detail.', detailError);
-            }
           }
-          await fetchTrips(true);
         }
 
         await markAsRead(notification.id);
@@ -219,24 +240,25 @@ export default function NotificationsScreen() {
       const errorCode = getApiErrorCode(error);
       const statusCode = getApiStatusCode(error);
 
-      if (errorCode === 'TRIP_NOT_FOUND') {
+      if (errorCode === 'TRIP_NOT_FOUND' || errorCode === 'TRIP_INVITE_NOT_FOUND') {
         await moveNotificationToHistory(notification);
         openNoticeModal('응답할 수 없는 초대예요', '이미 삭제되었거나 확인할 수 없는 여행이라 더 이상 수락하거나 거절할 수 없습니다.');
         return;
       }
 
-      if (errorCode === 'TRIP_INVITE_ACCEPT_NOT_ALLOWED' || statusCode === 409) {
-        const tripId = notification.data?.tripId;
+      if (
+        errorCode === 'TRIP_INVITE_ACCEPT_NOT_ALLOWED' ||
+        errorCode === 'TRIP_INVITE_ALREADY_PROCESSED' ||
+        errorCode === 'TRIP_INVITE_EXPIRED' ||
+        errorCode === 'TRIP_ALREADY_MEMBER' ||
+        statusCode === 409
+      ) {
+        const tripStatus = await findTripStatus(notification.data?.tripId);
 
-        if (tripId) {
-          await fetchTrips(true);
-          const tripDetailResponse = await getTripDetailApi(tripId);
-
-          if (tripDetailResponse.success && tripDetailResponse.data.status === 'ENDED') {
-            await moveNotificationToHistory(notification);
+        if (tripStatus === 'ENDED') {
+          await moveNotificationToHistory(notification);
             openNoticeModal('응답할 수 없는 초대예요', '이미 종료된 여행이라 더 이상 수락하거나 거절할 수 없습니다.');
-            return;
-          }
+          return;
         }
 
         await moveNotificationToHistory(notification);
