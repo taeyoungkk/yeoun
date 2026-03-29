@@ -28,10 +28,27 @@ export const shortenLocationName = (name?: string | null): string => {
 };
 
 /**
- * Cleans a reverse geocoding result by removing "대한민국" and leading whitespace.
+ * Cleans a reverse geocoding result by prioritizing specific administrative areas (Si, Gun, Gu) over Provinces.
+ * E.g., "대한민국 경기도 의정부시 낙양동" -> "의정부시" -> "의정부".
  */
-export const cleanLocationLabel = (address: string): string =>
-  address.replace(/대한민국\s*\d*/g, '').replace(/,/g, ' ').trim().split(/\s+/)[0] ?? '';
+export const cleanLocationLabel = (address: string): string => {
+  const parts = address
+    .replace(/대한민국\s*\d*/g, '')
+    .replace(/,/g, ' ')
+    .trim()
+    .split(/\s+/);
+
+  if (parts.length === 0) return '';
+
+  // Prioritize nouns ending with Si, Gun, or Gu
+  const specificPart = parts.find((part) => /(시|군|구)$/.test(part));
+  if (specificPart) {
+    return specificPart;
+  }
+
+  // Fallback to the first part (usually the province)
+  return parts[0] || '';
+};
 
 export interface DestinationRank {
   name: string;
