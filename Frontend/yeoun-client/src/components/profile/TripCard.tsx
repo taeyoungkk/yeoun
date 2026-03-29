@@ -6,7 +6,8 @@ import { useMainDestination } from '@/src/hooks/useMainDestination';
 export interface TripData {
   id: string;
   title: string;
-  location: string;
+  region?: string;
+  country?: string;
   dates: string;
   imageSource: any;
   isFavorite?: boolean;
@@ -21,8 +22,9 @@ interface Props {
 }
 
 export function TripCard({ data, onPress, onPressHeart }: Props) {
-  const analyzedLocation = useMainDestination(data.id, data.location);
-  const location = data.id.startsWith('mock-') ? data.location : analyzedLocation;
+  const initialLocation = data.region || data.country;
+  const analyzedLocation = useMainDestination(data.id, initialLocation);
+  const location = analyzedLocation || initialLocation || '대한민국';
   const imageSource =
     typeof data.imageSource === 'string' ? { uri: data.imageSource } : data.imageSource;
 

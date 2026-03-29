@@ -21,7 +21,7 @@ import { getTripDetailApi, getTripRouteDaysApi, type TripDetail, type TripRouteD
 import { HouseSvg } from '@/src/components/icons/HouseSvg';
 import { useUserStore } from '@/src/store';
 import { useTripStore, type CurrentTrip } from '@/src/store/trip.store';
-import { getTopDestinationName, calculateDistance } from '@/src/utils/trip-analysis-utils';
+import { getTopDestinationName, calculateDistance, shortenLocationName, cleanLocationLabel } from '@/src/utils/trip-analysis-utils';
 
 type ReportDay = {
   id: string;
@@ -63,31 +63,6 @@ const formatTime = (value?: string | null) => {
 
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 };
-
-const shortenLocationName = (name: string) => {
-  if (!name) return '';
-  const doMap: Record<string, string> = {
-    경기도: '경기',
-    강원도: '강원',
-    충청북도: '충북',
-    충청남도: '충남',
-    전라북도: '전북',
-    전라남도: '전남',
-    경상북도: '경북',
-    경상남도: '경남',
-    제주특별자치도: '제주',
-  };
-
-  if (doMap[name]) return doMap[name];
-
-  return name
-    .replace(/(특별시|광역시|특별자치시|특별자치도|시|군|구)$/, '')
-    .trim()
-    .slice(0, 3);
-};
-
-const cleanLocationLabel = (address: string) =>
-  address.replace(/대한민국\s*\d*/g, '').replace(/,/g, ' ').trim().split(/\s+/)[0] ?? '';
 
 const normalizeRouteCoordinate = (coordinate?: number[]) =>
   Array.isArray(coordinate) && coordinate.length >= 2 ? ([coordinate[0], coordinate[1]] as [number, number]) : null;

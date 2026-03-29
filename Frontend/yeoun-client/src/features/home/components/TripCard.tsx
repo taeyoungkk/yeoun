@@ -8,7 +8,8 @@ import { getTripPlaceholder } from '@/src/utils/image-utils';
 interface TripCardProps {
     tripId?: string; // Optional for analysis
     title: string;
-    location: string;
+    region?: string;
+    country?: string;
     date: string;
     imageUrl?: any;
     isFavorite?: boolean;
@@ -17,9 +18,10 @@ interface TripCardProps {
     onPress?: () => void;
 }
 
-export const TripCard = ({ tripId, title, location: initialLocation, date, imageUrl, isFavorite, showHeart = true, onPressHeart, onPress }: TripCardProps) => {
+export const TripCard = ({ tripId, title, region, country, date, imageUrl, isFavorite, showHeart = true, onPressHeart, onPress }: TripCardProps) => {
+    const initialLocation = region || country;
     const analyzedLocation = useMainDestination(tripId || '', initialLocation);
-    const location = tripId ? analyzedLocation : initialLocation;
+    const location = tripId ? analyzedLocation : (initialLocation || '대한민국');
     const resolvedImageSource = imageUrl || getTripPlaceholder(tripId || 'default');
 
     return (

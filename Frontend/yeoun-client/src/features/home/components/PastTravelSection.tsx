@@ -217,7 +217,8 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
                     <TripCard
                       tripId={trip.tripId}
                       title={trip.title}
-                      location={trip.region || trip.country || '대한민국'}
+                      region={trip.region}
+                      country={trip.country}
                       date={`${trip.startDate} ~ ${trip.endDate}`}
                       imageUrl={getTripImage(trip.tripId, trip.imageUrl)}
                       showHeart={false}
