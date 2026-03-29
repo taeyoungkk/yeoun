@@ -84,6 +84,8 @@ export interface TripListItem {
   startDate: string;
   endDate: string;
   status: string;
+  startedAt?: string | null;
+  actualEndedAt?: string | null;
   memberCount: number;
   region?: string;
   country?: string;
@@ -293,6 +295,30 @@ const roundTo = (value: number | undefined, digits: number): number | undefined 
 
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
+};
+
+const normalizeTripStatus = (status: unknown) =>
+  typeof status === 'string' ? status.trim().toUpperCase() : '';
+
+const mapTripListItem = (trip: any): TripListItem => ({
+  tripId: String(trip.tripId),
+  title: String(trip.title ?? ''),
+  startDate: String(trip.startDate ?? ''),
+  endDate: String(trip.endDate ?? ''),
+  status: normalizeTripStatus(trip.status),
+  startedAt: trip.startedAt ?? null,
+  actualEndedAt: trip.actualEndedAt ?? null,
+  memberCount: Number(trip.memberCount ?? trip.participants ?? 0),
+  region: trip.region,
+  country: trip.country,
+  imageUrl: trip.imageUrl,
+});
+
+const isVisibleTripListItem = (trip: TripListItem) => Boolean(trip.tripId) && trip.status !== 'DELETED';
+
+export const isSettlementEligibleTrip = (trip: Pick<TripListItem, 'status'> | null | undefined) => {
+  const status = normalizeTripStatus(trip?.status);
+  return status === 'ACTIVE' || status === 'ENDED';
 };
 
 const getErrorMessage = (error: any, fallback: string) =>
@@ -1034,7 +1060,17 @@ export const getTripDetailApi = async (tripId: string): Promise<TripDetailRespon
 export const getTripsApi = async (): Promise<TripListResponse> => {
   try {
     const response = await apiClient.get<TripListResponse>('/trips');
-    return response.data;
+    const normalizedItems = Array.isArray(response.data?.data?.items)
+      ? response.data.data.items.map(mapTripListItem).filter(isVisibleTripListItem)
+      : [];
+
+    return {
+      ...response.data,
+      data: {
+        ...response.data.data,
+        items: normalizedItems,
+      },
+    };
   } catch (error: any) {
     console.error('Get Trips API Error:', error);
     throw error;

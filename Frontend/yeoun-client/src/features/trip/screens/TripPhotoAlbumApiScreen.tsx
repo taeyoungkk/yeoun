@@ -178,10 +178,16 @@ export default function TripPhotoAlbumApiScreen() {
     };
   }, [refreshGridImages]);
 
-  const closeSelectionMode = useCallback(() => { setSelectionMode(null); setSelectedPhotoIds([]); }, []);
+  const closeSelectionMode = useCallback(() => {
+    setSelectionMode(null);
+    setSelectedPhotoIds([]);
+    refreshGridImages();
+    void loadAlbum('refresh');
+  }, [loadAlbum, refreshGridImages]);
   const activateActionMode = useCallback((mode: Exclude<SelectionMode, null>) => { setSelectionMode(mode); setSelectedPhotoIds([]); setSelectedPhotoId(null); }, []);
   const dismissDownloadResult = useCallback(() => {
     setDownloadResult(null);
+    setGridImageVersion((prev) => prev + 1);
     if (selectedPhotoId) setModalImageVersion((prev) => prev + 1);
   }, [selectedPhotoId]);
   const toggleSelectAll = useCallback(() => { if (!selectionMode) return; setSelectedPhotoIds((prev) => prev.length === allSelectableIds.length ? [] : allSelectableIds); }, [allSelectableIds, selectionMode]);
@@ -431,7 +437,7 @@ export default function TripPhotoAlbumApiScreen() {
         ) : (
           <>
             {selectionMode === 'delete' ? <Text style={styles.selectionHint}>사진 삭제는 내가 올린 사진만 가능해요.</Text> : null}
-            <View style={styles.grid}>
+            <View key={`grid-${selectionMode ?? 'browse'}-${gridImageVersion}`} style={styles.grid}>
               {visiblePhotos.map((photo) => {
                 const isSelected = selectedPhotoIds.includes(photo.photoId);
                 const isDeleteLocked = selectionMode === 'delete' && photo.ownerUserId !== currentUserId;
@@ -453,11 +459,6 @@ export default function TripPhotoAlbumApiScreen() {
                         onLoad={() => setLoadedImages((prev) => ({ ...prev, [photo.photoId]: true }))}
                         onError={() => setLoadedImages((prev) => ({ ...prev, [photo.photoId]: true }))}
                       />
-                      {!loadedImages[photo.photoId] ? (
-                        <View style={styles.loadingOverlay}>
-                          <ActivityIndicator size="small" color="#8A978F" />
-                        </View>
-                      ) : null}
                     </View>
                     {photo.representative ? <View style={styles.representativeBadge}><Text style={styles.representativeBadgeText}>대표</Text></View> : null}
                     {selectionMode ? (

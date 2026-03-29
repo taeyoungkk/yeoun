@@ -25,7 +25,7 @@ import {
   updateExpenseApi,
 } from '@/src/api/expense';
 import { ExpenseCategory } from '@/src/api/paymentImport';
-import { filterAcceptedTripMembers, getTripMembersApi, getTripsApi, TripListItem, TripMemberItem } from '@/src/api/trip';
+import { filterAcceptedTripMembers, getTripMembersApi, getTripsApi, isSettlementEligibleTrip, TripListItem, TripMemberItem } from '@/src/api/trip';
 import { useTripStore } from '@/src/store';
 
 const KRW_FORMATTER = new Intl.NumberFormat('ko-KR');
@@ -212,7 +212,7 @@ export default function PaymentDetailsScreen() {
           throw new Error(tripsResponse.message ?? '여행 정보를 불러오지 못했습니다.');
         }
 
-        const availableTrips = tripsResponse.data.items.filter((item) => item.status !== 'DELETED');
+        const availableTrips = tripsResponse.data.items.filter(isSettlementEligibleTrip);
         setTripOptions(availableTrips);
         const nextTripId =
           (tripId && availableTrips.some((item) => item.tripId === tripId) ? tripId : null) ??
