@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -47,6 +49,7 @@ export default function FriendScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [requestCompleteModalVisible, setRequestCompleteModalVisible] = useState(false);
 
   const trimmedKeyword = searchKeyword.trim();
   const isSearchMode = trimmedKeyword.length > 0;
@@ -127,7 +130,7 @@ export default function FriendScreen() {
       setProcessingId(friendUserId);
       try {
         await sendFriendRequestApi(friendUserId);
-        Alert.alert('요청 완료', '친구 요청을 보냈어요.');
+        setRequestCompleteModalVisible(true);
         await Promise.all([loadFriendData(true), handleSearch()]);
       } catch (error) {
         console.error('Failed to send friend request:', error);
@@ -345,6 +348,30 @@ export default function FriendScreen() {
           </View>
         ) : null}
       </ScrollView>
+
+      <Modal
+        visible={requestCompleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRequestCompleteModalVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setRequestCompleteModalVisible(false)}>
+          <Pressable style={styles.modalCard} onPress={() => undefined}>
+            <View style={styles.modalIconWrap}>
+              <Ionicons name="checkmark" size={28} color="#315B45" />
+            </View>
+            <Text style={styles.modalTitle}>요청 완료</Text>
+            <Text style={styles.modalBody}>친구 요청을 보냈어요.</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setRequestCompleteModalVisible(false)}
+              activeOpacity={0.88}
+            >
+              <Text style={styles.modalButtonText}>확인</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -565,4 +592,59 @@ const styles = StyleSheet.create({
   secondaryActionText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#5C6D63' },
   emptyWrap: { paddingVertical: 28, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontFamily: 'Pretendard-Regular', fontSize: 14, color: '#728078' },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(12, 18, 14, 0.42)',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    borderRadius: 30,
+    backgroundColor: '#FCFEFB',
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 22,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  modalIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#E7F1EA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  modalTitle: {
+    fontFamily: 'Pretendard-Bold',
+    fontSize: 20,
+    color: '#182119',
+    textAlign: 'center',
+  },
+  modalBody: {
+    marginTop: 10,
+    fontFamily: 'Pretendard-Regular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#5C6A61',
+    textAlign: 'center',
+  },
+  modalButton: {
+    width: '100%',
+    marginTop: 22,
+    borderRadius: 18,
+    backgroundColor: '#2F5A44',
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    fontFamily: 'Pretendard-Bold',
+    fontSize: 15,
+    color: '#FFFFFF',
+  },
 });

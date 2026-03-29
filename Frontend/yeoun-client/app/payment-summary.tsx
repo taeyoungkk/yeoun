@@ -156,7 +156,6 @@ export default function PaymentSummaryScreen() {
             <Text style={styles.totalLabel}>총 지출금액</Text>
             <TouchableOpacity style={styles.totalRow} activeOpacity={1} onPress={() => {}}>
               <Text style={styles.totalAmount}>{formatCurrency(totalAmount)}</Text>
-              <Ionicons name="chevron-forward" size={20} color="#8E8E8E" />
             </TouchableOpacity>
           </View>
 

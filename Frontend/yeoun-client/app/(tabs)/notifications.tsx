@@ -303,17 +303,17 @@ export default function NotificationsScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#EBF3EA]">
-      <View className="px-6 pt-4 pb-3 flex-row justify-between items-center">
+      <View style={styles.header}>
         <View className="flex-row items-end gap-6">
-          <Text className="text-2xl font-bold text-gray-900">알림함</Text>
-          <View className="flex-row items-center gap-3 pb-0.5">
-            <TouchableOpacity onPress={() => setActiveTab('active')}>
-              <Text className={`text-base font-semibold ${activeTab === 'active' ? 'text-[#244934]' : 'text-[#9AA39D]'}`}>
+          <Text style={styles.headerTitle}>알림함</Text>
+          <View style={styles.tabRow}>
+            <TouchableOpacity style={styles.tabButton} onPress={() => setActiveTab('active')}>
+              <Text style={[styles.tabText, activeTab === 'active' ? styles.tabTextActive : styles.tabTextInactive]}>
                 알림
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setActiveTab('history')}>
-              <Text className={`text-sm ${activeTab === 'history' ? 'text-[#5F6B65] font-semibold' : 'text-[#AEB5B1]'}`}>
+            <TouchableOpacity style={styles.tabButton} onPress={() => setActiveTab('history')}>
+              <Text style={[styles.tabText, activeTab === 'history' ? styles.tabTextActive : styles.tabTextInactive]}>
                 과거 알림
               </Text>
             </TouchableOpacity>
@@ -330,11 +330,11 @@ export default function NotificationsScreen() {
 
       <ScrollView
         className="flex-1 px-4"
-        contentContainerStyle={{ paddingTop: 12, paddingBottom: 100 }}
+        contentContainerStyle={visibleNotifications.length === 0 ? styles.emptyScrollContent : styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {visibleNotifications.length === 0 ? (
-          <View className="flex-1 items-center justify-center pt-20">
+          <View className="flex-1 items-center justify-center">
             <View className="w-16 h-16 bg-gray-50 rounded-full items-center justify-center mb-4">
               <MaterialIcons name="notifications-none" size={32} color="#D1D5DB" />
             </View>
@@ -483,6 +483,47 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    paddingTop: 12,
+    paddingBottom: 100,
+  },
+  emptyScrollContent: {
+    flexGrow: 1,
+    paddingBottom: 100,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 12,
+    marginTop: 40,
+  },
+  headerTitle: {
+    fontFamily: 'Pretendard-Bold',
+    fontSize: 20,
+    color: '#14291E',
+  },
+  tabRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 12,
+    paddingBottom: 2,
+  },
+  tabButton: {
+    alignItems: 'center',
+  },
+  tabText: {
+    fontFamily: 'Pretendard-SemiBold',
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  tabTextActive: {
+    color: '#244934',
+  },
+  tabTextInactive: {
+    color: '#9AA39D',
+  },
   noticeBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(12, 18, 14, 0.42)',
