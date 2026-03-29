@@ -276,7 +276,11 @@ export default function TripStartScreen() {
   };
 
   const handlePressNext = () => {
-    setNoticeModalType(isFormComplete ? 'start' : 'missing');
+    if (!isFormComplete) {
+      return;
+    }
+
+    setNoticeModalType('start');
   };
 
   const startTrackingAndNavigate = async (tripId: string) => {
@@ -485,25 +489,6 @@ export default function TripStartScreen() {
     }
   };
 
-  const handleOpenMockTrip = () => {
-    if (!isFormComplete) {
-      setNoticeModalType('missing');
-      return;
-    }
-
-    router.push({
-      pathname: '/trip/mock-recording',
-      params: {
-        tripName: tripDraft.tripName,
-        startDate: tripDraft.startDate,
-        endDate: tripDraft.endDate,
-        memberCount: String(tripDraft.memberCount),
-        origin: tripDraft.origin,
-        destination: tripDraft.destination,
-      },
-    });
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
@@ -567,17 +552,14 @@ export default function TripStartScreen() {
           <TouchableOpacity
             style={[styles.primaryButton, !isFormComplete && styles.primaryButtonDisabled]}
             onPress={handlePressNext}
-            activeOpacity={0.88}
+            activeOpacity={isFormComplete ? 0.88 : 1}
+            disabled={!isFormComplete}
           >
-            <Text style={styles.primaryButtonText}>{isEditingActiveTrip ? '수정하기' : '시작하기'}</Text>
+            <Text style={[styles.primaryButtonText, !isFormComplete && styles.primaryButtonTextDisabled]}>
+              {isEditingActiveTrip ? '수정하기' : '시작하기'}
+            </Text>
           </TouchableOpacity>
         </View>
-
-        {__DEV__ ? (
-          <TouchableOpacity style={styles.mockButton} onPress={handleOpenMockTrip} activeOpacity={0.88}>
-            <Text style={styles.mockButtonText}>Mock 기록 화면 열기</Text>
-          </TouchableOpacity>
-        ) : null}
       </ScrollView>
 
       <FieldNoticeModal
@@ -632,27 +614,18 @@ const styles = StyleSheet.create({
     borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#DCE6D9',
+    backgroundColor: '#315B45',
   },
   primaryButtonDisabled: {
-    backgroundColor: '#E7ECE5',
+    backgroundColor: '#DCE6D9',
   },
   primaryButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1A211C',
+    color: '#FFFFFF',
   },
-  mockButton: {
-    marginTop: 18,
-    paddingVertical: 15,
-    borderRadius: 24,
-    alignItems: 'center',
-    backgroundColor: '#40503F',
-  },
-  mockButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#F5F8F3',
+  primaryButtonTextDisabled: {
+    color: '#7A867B',
   },
   modalBackdrop: {
     flex: 1,
