@@ -23,11 +23,13 @@ interface Props {
 export function TripCard({ data, onPress, onPressHeart }: Props) {
   const analyzedLocation = useMainDestination(data.id, data.location);
   const location = data.id.startsWith('mock-') ? data.location : analyzedLocation;
+  const imageSource =
+    typeof data.imageSource === 'string' ? { uri: data.imageSource } : data.imageSource;
 
   return (
     <Pressable onPress={onPress}>
-      <ImageBackground 
-        source={data.imageSource} 
+      <ImageBackground
+        source={imageSource}
         style={styles.card}
         imageStyle={styles.image}
       >

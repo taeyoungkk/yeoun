@@ -241,9 +241,7 @@ export default function PaymentScreen() {
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void loadData(true)} />}
       >
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={22} color="#14291E" />
-          </TouchableOpacity>
+          <View style={styles.headerSpacer} />
           <Text style={styles.headerTitle}>정산</Text>
           <View style={styles.headerSpacer} />
         </View>
@@ -551,14 +549,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 40,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   headerTitle: {
     fontFamily: 'Pretendard-Bold',

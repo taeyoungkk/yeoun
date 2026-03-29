@@ -185,14 +185,6 @@ const MAP_FILTER_META: Array<{ key: MapFilterKey; label: string; icon: keyof typ
   { key: 'showPhotoPins', label: '사진', icon: 'photo-library' },
   { key: 'showPaymentPins', label: '결제', icon: 'credit-card' },
 ];
-const EMOTION_OPTIONS = [
-  { emoji: '😊', label: '설렘' },
-  { emoji: '😌', label: '든든함' },
-  { emoji: '😍', label: '행복' },
-  { emoji: '😮', label: '신기함' },
-  { emoji: '😴', label: '피곤함' },
-  { emoji: '🥲', label: '뭉클함' },
-] as const;
 function getBounds(route: Coordinate[]) {
   const longitudes = route.map(([longitude]) => longitude);
   const latitudes = route.map(([, latitude]) => latitude);
@@ -205,6 +197,41 @@ function getBounds(route: Coordinate[]) {
 
 function formatDayTabLabel(date: Date) {
   return `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function buildTripDateKeys(startDate?: string, endDate?: string, fallbackDates: string[] = []) {
+  const normalizedFallback = Array.from(
+    new Set(
+      fallbackDates
+        .map((date) => date?.slice(0, 10))
+        .filter((date): date is string => Boolean(date)),
+    ),
+  ).sort((left, right) => left.localeCompare(right));
+
+  if (!startDate || !endDate) {
+    return normalizedFallback;
+  }
+
+  const start = new Date(`${startDate.slice(0, 10)}T00:00:00`);
+  const end = new Date(`${endDate.slice(0, 10)}T00:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return normalizedFallback;
+  }
+
+  const dates: string[] = [];
+  const cursor = new Date(start);
+
+  while (cursor <= end) {
+    dates.push(formatDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
 }
 
 function buildTripDays(startDate?: string, endDate?: string): TripDay[] {
@@ -286,34 +313,28 @@ function normalizeRouteCoordinates(routeDays: Array<{ coordinates: number[][] }>
 function buildRealTripDays(
   timelineDays: TimelineDayDetail[],
   routeByDate: Map<string, Coordinate[]>,
-  activeTripId: string,
   tripStartDate?: string,
   tripEndDate?: string,
 ): TripDay[] {
-  // If timelineDays is empty, we must at least show Day 1 for active trips
-  const dates = timelineDays.map(d => d.dayDate);
-  const today = new Date().toISOString().split('T')[0];
-  if (!dates.includes(today) && activeTripId) {
-    dates.push(today);
-  }
-
-  // If we still have no dates, fallback to startDate or today
-  if (dates.length === 0) {
-    dates.push(tripStartDate?.split('T')[0] || today);
-  }
+  const timelineDayByDate = new Map(timelineDays.map((day) => [day.dayDate.slice(0, 10), day]));
+  const dates = buildTripDateKeys(tripStartDate, tripEndDate, [
+    ...timelineDayByDate.keys(),
+    ...routeByDate.keys(),
+  ]);
 
   return dates.map((date, index) => {
-    const timelineDay = timelineDays.find(d => d.dayDate === date);
+    const timelineDay = timelineDayByDate.get(date);
     const route = routeByDate.get(date) ?? [];
     return {
       id: `day${index + 1}` as DayKey,
       label: `DAY ${index + 1}`,
       dateLabel: formatDateLabel(date),
-      distanceKm: timelineDay ? Math.round((timelineDay.distanceM / 1000) * 10) / 10 : 0,
+      distanceKm:
+        timelineDay && timelineDay.distanceM > 0
+          ? Math.round((timelineDay.distanceM / 1000) * 10) / 10
+          : Math.round(calculateDistance(route) * 10) / 10,
       summary: timelineDay?.summaryText || '',
       route,
-      // We don't have timestamps for server route points easily here, 
-      // so we use the day's date as a baseline if needed.
     };
   });
 }
@@ -578,11 +599,6 @@ function RealTripRecordingScreen({
     selectedMemberUserIds: string[];
     memo: string;
   } | null>(null);
-  const [emotionPicker, setEmotionPicker] = useState<{
-    eventId: string;
-    selectedEmoji?: string;
-    selectedLabel?: string;
-  } | null>(null);
   const settings = useUserStore((state) => state.settings);
   const { showPhotoPins, showPaymentPins } = settings;
   const updateSettings = useUserStore((state) => state.updateSettings);
@@ -730,10 +746,6 @@ function RealTripRecordingScreen({
   );
   const selectedPhotoItem = selectedPhotoEvent?.photoItems?.[photoViewer?.photoIndex ?? -1] ?? null;
   const selectedPhotoItems = selectedPhotoEvent?.photoItems ?? [];
-  const selectedPhotoEmotion =
-    selectedPhotoEvent?.emotionOwnerId === currentUserId && selectedPhotoEvent?.emotionEmoji && selectedPhotoEvent?.emotionLabel
-      ? `${selectedPhotoEvent.emotionEmoji} ${selectedPhotoEvent.emotionLabel}`
-      : null;
   const mapHeight = scrollY.interpolate({
     inputRange: [0, MAP_COLLAPSE_DISTANCE],
     outputRange: [MAX_MAP_HEIGHT, MIN_MAP_HEIGHT],
@@ -1004,10 +1016,11 @@ function RealTripRecordingScreen({
 
           // Fetch Routes
           const routeByDate = new Map<string, Coordinate[]>();
-          const uniqueDates = Array.from(new Set([
-            ...timelineDays.map(d => d.dayDate),
-            new Date().toISOString().split('T')[0]
-          ]));
+          const uniqueDates = buildTripDateKeys(
+            tripDetailResponse.data?.startDate,
+            tripDetailResponse.data?.endDate,
+            timelineDays.map((day) => day.dayDate),
+          );
 
           await Promise.all(
             uniqueDates.map(async (date) => {
@@ -1042,7 +1055,6 @@ function RealTripRecordingScreen({
           setRealTripDays(buildRealTripDays(
             timelineDays, 
             routeByDate, 
-            activeTripId, 
             tripDetailResponse.data?.startDate,
             tripDetailResponse.data?.endDate
           ));
@@ -1532,7 +1544,13 @@ function RealTripRecordingScreen({
   }, [activeTripId, isReviewMode, runAutoPhotoSync]);
 
   const handleOpenReport = () => {
-    router.push(isReviewMode ? `${reportRoute}?mode=review` : reportRoute);
+    router.push({
+      pathname: reportRoute,
+      params: {
+        tripId: activeTripId,
+        mode: isReviewMode ? 'review' : undefined,
+      },
+    });
   };
 
   const handleEndTrip = () => {
@@ -1637,7 +1655,10 @@ function RealTripRecordingScreen({
         resetLocationSyncState(); // CLEAR SYNC TOAST BEFORE NAVIGATING
         endTrip();
         void fetchTrips(true);
-        router.replace(`${reportRoute}?mode=review`);
+        router.replace({
+          pathname: reportRoute,
+          params: { tripId: activeTripId, mode: 'review' },
+        });
       } finally {
         setIsSyncing(false);
         setIsSubmittingAction(false);
@@ -2006,27 +2027,6 @@ function RealTripRecordingScreen({
     }
   };
 
-  const openEmotionPicker = (event: TimelineEvent) => {
-    Alert.alert('감정 기능 준비 중', '감정 기록은 아직 실데이터와 연결되지 않았어요.');
-  };
-
-  const selectEmotion = (_emoji: string, _label: string) => {
-    if (!emotionPicker) {
-      return;
-    }
-
-    Alert.alert('감정 기능 준비 중', '감정 기록은 아직 실데이터와 연결되지 않았어요.');
-    setEmotionPicker(null);
-  };
-
-  const clearEmotion = () => {
-    if (!emotionPicker) {
-      return;
-    }
-
-    Alert.alert('감정 기능 준비 중', '감정 기록은 아직 실데이터와 연결되지 않았어요.');
-    setEmotionPicker(null);
-  };
 
   if (!activeTripId && !isReviewMode) {
     return (
@@ -2333,11 +2333,6 @@ function RealTripRecordingScreen({
                           {selectedPhotoEvent?.eventMemo ?? selectedPhotoEvent?.subtitle}
                         </Text>
 
-                        {selectedPhotoEmotion ? <Text style={styles.photoModalSectionLabel}>내 감정 기록</Text> : null}
-                        {selectedPhotoEmotion ? (
-                          <Text style={styles.photoModalSectionBody}>{selectedPhotoEmotion}</Text>
-                        ) : null}
-
                         <Text style={styles.photoModalSectionLabel}>사진 메모</Text>
                         <Text style={styles.photoModalSectionBody}>
                           {photoItem.memo ?? '이 사진에 대한 메모가 아직 없어요.'}
@@ -2444,42 +2439,6 @@ function RealTripRecordingScreen({
               </TouchableOpacity>
               <TouchableOpacity style={styles.importConfirmButton} onPress={confirmPaymentImport} activeOpacity={0.88}>
                 <Text style={styles.importConfirmButtonText}>정산 정보 저장</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      <Modal visible={Boolean(emotionPicker)} transparent animationType="slide" onRequestClose={() => setEmotionPicker(null)}>
-        <Pressable style={styles.sheetBackdrop} onPress={() => setEmotionPicker(null)}>
-          <Pressable style={styles.importSheetCard} onPress={() => undefined}>
-            <View style={styles.importSheetHandle} />
-            <Text style={styles.importSheetEyebrow}>내 감정 기록</Text>
-            <Text style={styles.importSheetTitle}>이 이벤트에 대한 내 기분을 남겨보세요.</Text>
-            <View style={styles.emotionOptionGrid}>
-              {EMOTION_OPTIONS.map((option) => {
-                const isActive =
-                  emotionPicker?.selectedEmoji === option.emoji && emotionPicker?.selectedLabel === option.label;
-
-                return (
-                  <TouchableOpacity
-                    key={`${option.emoji}-${option.label}`}
-                    style={[styles.emotionOptionCard, isActive && styles.emotionOptionCardActive]}
-                    activeOpacity={0.88}
-                    onPress={() => selectEmotion(option.emoji, option.label)}
-                  >
-                    <Text style={styles.emotionOptionEmoji}>{option.emoji}</Text>
-                    <Text style={[styles.emotionOptionLabel, isActive && styles.emotionOptionLabelActive]}>{option.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={styles.importActionRow}>
-              <TouchableOpacity style={styles.deleteDialogGhostButton} onPress={() => setEmotionPicker(null)} activeOpacity={0.88}>
-                <Text style={styles.deleteDialogGhostButtonText}>취소</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.emotionClearButton} onPress={clearEmotion} activeOpacity={0.88}>
-                <Text style={styles.emotionClearButtonText}>기록 삭제</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -2773,10 +2732,6 @@ function RealTripRecordingScreen({
               const theme = EVENT_THEME[event.type];
               const isSelected = selectedEventId === event.id;
               const isPaymentConfirmed = event.type === 'payment' && event.paymentStatus === 'confirmed';
-              const emotionValue =
-                event.emotionOwnerId === currentUserId && event.emotionEmoji && event.emotionLabel
-                  ? `${event.emotionEmoji} ${event.emotionLabel}`
-                  : null;
 
               return (
                 <View key={event.id} style={styles.timelineRow} onLayout={(layoutEvent) => handleEventLayout(event.id, layoutEvent)}>
@@ -2874,19 +2829,6 @@ function RealTripRecordingScreen({
                             <Text style={[styles.eventChipText, { color: theme.accent }]}>{chip}</Text>
                           </View>
                         ))}
-                        <TouchableOpacity
-                          style={[styles.eventEmotionChip, emotionValue && styles.eventEmotionChipActive]}
-                          activeOpacity={0.82}
-                          onPress={(pressEvent) => {
-                            pressEvent.stopPropagation();
-                            openEmotionPicker(event);
-                          }}
-                        >
-                          <MaterialIcons name="mood" size={13} color={emotionValue ? '#8C561A' : '#7A867F'} />
-                          <Text style={[styles.eventEmotionChipText, emotionValue && styles.eventEmotionChipTextActive]}>
-                            {emotionValue ?? '감정 추가'}
-                          </Text>
-                        </TouchableOpacity>
                       </View>
                       <View style={styles.photoEventActionRow}>
                         <TouchableOpacity
@@ -3266,34 +3208,6 @@ const styles = StyleSheet.create({
   importMemberChipText: { fontFamily: 'Pretendard-Medium', fontSize: 13, color: '#52635A' },
   importMemberChipTextActive: { color: '#F7FBF6' },
   importMemoInput: { minHeight: 92 },
-  emotionOptionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 18 },
-  emotionOptionCard: {
-    width: '31%',
-    minWidth: 92,
-    borderRadius: 20,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F4F7F3',
-    borderWidth: 1,
-    borderColor: '#DCE4DE',
-  },
-  emotionOptionCardActive: {
-    backgroundColor: '#FFF1E3',
-    borderColor: '#D98935',
-  },
-  emotionOptionEmoji: { fontSize: 24 },
-  emotionOptionLabel: { marginTop: 8, fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#52635A' },
-  emotionOptionLabelActive: { color: '#9A5B16' },
-  emotionClearButton: {
-    flex: 1,
-    height: 50,
-    borderRadius: 18,
-    backgroundColor: '#FFF1EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emotionClearButtonText: { fontFamily: 'Pretendard-SemiBold', fontSize: 15, color: '#B25543' },
   importSummaryCard: {
     marginTop: 14,
     borderRadius: 18,
@@ -3421,24 +3335,6 @@ const styles = StyleSheet.create({
   paymentHelperText: { fontFamily: 'Pretendard-Medium', fontSize: 12, color: '#6E7B74' },
   eventSubtitle: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 21, color: '#708076' },
   eventMemoText: { marginTop: 8, fontFamily: 'Pretendard-Regular', fontSize: 13, lineHeight: 20, color: '#55635B' },
-  eventEmotionChip: {
-    height: 30,
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    backgroundColor: '#F5F7F4',
-    borderWidth: 1,
-    borderColor: '#DEE5DF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  eventEmotionChipActive: {
-    backgroundColor: '#FFF5E8',
-    borderColor: '#E7CDA5',
-  },
-  eventEmotionChipText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#78857D' },
-  eventEmotionChipTextActive: { color: '#86531C' },
   photoByWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   photoByText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#708076' },
   avatarStack: { flexDirection: 'row', alignItems: 'center', paddingLeft: 10 },
