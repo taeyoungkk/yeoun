@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { getLatestSettlementApi, SettlementDetail } from '@/src/api/settlement';
 import { getTripsApi, TripListItem } from '@/src/api/trip';
@@ -12,7 +12,6 @@ const formatCurrency = (amount: number) => `${KRW_FORMATTER.format(Math.round(am
 const resolveMessage = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback);
 
 export default function PaymentSettlementScreen() {
-  const router = useRouter();
   const params = useLocalSearchParams<{ tripId?: string }>();
   const currentTripId = useTripStore((state) => state.currentTripId);
   const currentTrip = useTripStore((state) => state.currentTrip);
@@ -95,9 +94,6 @@ export default function PaymentSettlementScreen() {
         >
           <View style={styles.hero}>
             <View style={styles.headerRowAligned}>
-              <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-                <Ionicons name="arrow-back" size={26} color="#333" />
-              </TouchableOpacity>
               <Text style={styles.heroPeriod}>{formatPeriod(displayTrip?.startDate, displayTrip?.endDate)}</Text>
             </View>
             <Text style={styles.heroTitle}>{(displayTrip as any)?.title ?? (displayTrip as any)?.tripName ?? '도쿄 여행'}</Text>
@@ -174,12 +170,7 @@ const styles = StyleSheet.create({
   headerRowAligned: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginLeft: -4,
     marginBottom: 4,
-  },
-  backButton: {
-    padding: 4,
   },
   content: {
     paddingTop: 32,
