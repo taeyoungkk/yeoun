@@ -15,7 +15,7 @@ import {
 
 import { getTripExpensesApi, TripExpenseItem } from '@/src/api/expense';
 import { FinanceCardItem, FinanceProfile, getMyFinanceProfileApi, syncMyFinanceProfileApi } from '@/src/api/finance';
-import { getTripsApi, TripListItem } from '@/src/api/trip';
+import { getTripsApi, isSettlementEligibleTrip, TripListItem } from '@/src/api/trip';
 import { useTripStore } from '@/src/store';
 
 const KRW_FORMATTER = new Intl.NumberFormat('ko-KR');
@@ -88,7 +88,7 @@ export default function PaymentScreen() {
       if (!tripsResponse.success) {
         throw new Error(tripsResponse.message ?? '여행 목록을 불러오지 못했습니다.');
       }
-      const availableTrips = tripsResponse.data.items;
+      const availableTrips = tripsResponse.data.items.filter(isSettlementEligibleTrip);
 
       setTripOptions(availableTrips);
 
