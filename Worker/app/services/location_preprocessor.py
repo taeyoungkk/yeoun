@@ -37,6 +37,9 @@ class LocationPreprocessor:
     def __init__(self, settings: Settings):
         self.accuracy_threshold_m = settings.gps_accuracy_threshold_m
         self.jump_speed_threshold_mps = settings.gps_jump_speed_threshold_mps
+        self.min_move_distance_m = settings.gps_min_move_distance_m
+        self.stationary_speed_threshold_mps = settings.gps_stationary_speed_threshold_mps
+        self.near_duplicate_window_seconds = settings.gps_near_duplicate_window_seconds
 
     def preprocess(
         self,
@@ -66,6 +69,10 @@ class LocationPreprocessor:
                 continue
 
             if clean_points and self._is_duplicate_point(clean_points[-1], point):
+                filtered_duplicate_count += 1
+                continue
+
+            if clean_points and self._is_stationary_noise(clean_points[-1], point):
                 filtered_duplicate_count += 1
                 continue
 
@@ -120,6 +127,26 @@ class LocationPreprocessor:
         same_lat = abs(previous.latitude - current.latitude) < 0.000001
         same_lng = abs(previous.longitude - current.longitude) < 0.000001
         return same_time and same_lat and same_lng
+
+    def _is_stationary_noise(self, previous: _Point, current: _Point) -> bool:
+        time_delta_seconds = (current.recorded_at - previous.recorded_at).total_seconds()
+        if time_delta_seconds <= 0 or time_delta_seconds > self.near_duplicate_window_seconds:
+            return False
+
+        distance_m = self._haversine_distance_m(
+            previous.latitude,
+            previous.longitude,
+            current.latitude,
+            current.longitude,
+        )
+        if distance_m > self.min_move_distance_m:
+            return False
+
+        if current.speed_mps is not None:
+            return current.speed_mps <= self.stationary_speed_threshold_mps
+
+        inferred_speed_mps = distance_m / max(time_delta_seconds, 1)
+        return inferred_speed_mps <= self.stationary_speed_threshold_mps
 
     def _is_jump_outlier(self, previous: _Point, current: _Point) -> bool:
         time_delta_seconds = (current.recorded_at - previous.recorded_at).total_seconds()
