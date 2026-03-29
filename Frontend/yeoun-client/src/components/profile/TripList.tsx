@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontFamily: 'Pretendard-Bold',
     color: '#1A1A1A',
   },
   viewMoreBtn: {
@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
   viewMoreText: {
     fontSize: 15,
     color: '#D97A59',
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
     marginRight: 4,
   },
   scrollContent: {

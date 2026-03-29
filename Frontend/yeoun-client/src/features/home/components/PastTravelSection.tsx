@@ -163,7 +163,7 @@ export const PastTravelSection = ({ isTripActive = false }: PastTravelSectionPro
   };
 
   return (
-    <View className="w-full min-h-[600px] bg-[#EBF3EA] rounded-t-[200px] pt-20 px-6 items-center overflow-visible">
+    <View className="w-full min-h-[600px] bg-[#EBF3EA] rounded-t-[200px] pt-20 pb-20 px-6 items-center overflow-visible">
       <View className="items-center gap-4 mb-8">
         <View className="flex-row items-center gap-2">
           <Text className="text-black text-2xl font-pretendard-bold text-center">

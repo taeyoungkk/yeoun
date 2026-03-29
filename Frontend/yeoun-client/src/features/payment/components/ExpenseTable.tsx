@@ -100,7 +100,6 @@ const ExpenseRow = ({
         {isSubItem && <View className="w-4" />}
         <Text 
           className={`text-sm ${canDrop ? 'text-blue-600 font-bold' : 'text-black'}`} 
-          style={{ fontFamily: 'DM Sans' }} 
           numberOfLines={2}
         >
           {item.name}
@@ -112,7 +111,7 @@ const ExpenseRow = ({
         onPress={() => onOpenCategorySelector(item.id)}
       >
         <View className="flex-row items-center bg-gray-100 px-2 py-1 rounded-md">
-          <Text className="text-gray-600 text-[11px] font-bold mr-1" style={{ fontFamily: 'DM Sans' }}>
+          <Text className="text-gray-600 text-[11px] font-bold mr-1">
             {item.category}
           </Text>
           <Ionicons name="chevron-down" size={10} color="#666" />
@@ -120,17 +119,17 @@ const ExpenseRow = ({
       </TouchableOpacity>
 
       <View className="w-16 justify-center items-center border-r border-gray-200 px-1">
-        <Text className="text-gray-500 text-xs" style={{ fontFamily: 'DM Sans' }}>{item.time}</Text>
+        <Text className="text-gray-500 text-xs">{item.time}</Text>
       </View>
 
       <View className="w-24 justify-center items-end border-r border-gray-200 px-2">
-        <Text className="text-black text-sm font-bold tracking-tight" style={{ fontFamily: 'DM Sans' }}>
+        <Text className="text-black text-sm font-bold tracking-tight">
           {item.amount.toLocaleString()}
         </Text>
       </View>
 
       <View className="w-24 justify-center items-end border-r border-gray-200 px-2 bg-gray-50/50">
-        <Text className="text-black text-sm font-medium tracking-tight" style={{ fontFamily: 'DM Sans' }}>
+        <Text className="text-black text-sm font-medium tracking-tight">
           {perPerson > 0 ? perPerson.toLocaleString() : ''}
         </Text>
       </View>
@@ -276,22 +275,22 @@ export function ExpenseTable() {
           <View>
             <View className="flex-row border-b border-gray-300 py-3 bg-gray-100" style={{ minWidth: 580 }}>
               <View className="w-32 justify-center items-center border-r border-gray-300">
-                <Text className="font-bold text-xs" style={{ fontFamily: 'DM Sans' }}>지점/아이템</Text>
+                <Text className="font-bold text-xs">지점/아이템</Text>
               </View>
               <View className="w-20 justify-center items-center border-r border-gray-300">
-                <Text className="font-bold text-xs" style={{ fontFamily: 'DM Sans' }}>카테고리</Text>
+                <Text className="font-bold text-xs">카테고리</Text>
               </View>
               <View className="w-16 justify-center items-center border-r border-gray-300">
-                <Text className="font-bold text-xs" style={{ fontFamily: 'DM Sans' }}>시간</Text>
+                <Text className="font-bold text-xs">시간</Text>
               </View>
               <View className="w-24 justify-center items-center border-r border-gray-300">
-                <Text className="font-bold text-xs" style={{ fontFamily: 'DM Sans' }}>액수</Text>
+                <Text className="font-bold text-xs">액수</Text>
               </View>
               <View className="w-24 justify-center items-center border-r border-gray-300">
-                <Text className="font-bold text-xs flex-wrap text-center" style={{ fontFamily: 'DM Sans' }}>인당 액수</Text>
+                <Text className="font-bold text-xs flex-wrap text-center">인당 액수</Text>
               </View>
               <View className="w-32 justify-center items-center">
-                <Text className="font-bold text-xs" style={{ fontFamily: 'DM Sans' }}>멤버</Text>
+                <Text className="font-bold text-xs">멤버</Text>
               </View>
             </View>
 
@@ -342,14 +341,14 @@ export function ExpenseTable() {
       </View>
 
       <View className="mt-6 bg-white rounded-xl shadow-sm p-5 border border-gray-200">
-        <Text className="text-black font-bold text-lg mb-4" style={{ fontFamily: 'DM Sans' }}>멤버별 정산 (총액)</Text>
+        <Text className="text-black font-bold text-lg mb-4">멤버별 정산 (총액)</Text>
         {members.map(member => (
           <View key={member.id} className="flex-row items-center justify-between py-2 border-b border-gray-50">
             <View className="flex-row items-center">
               <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: member.color, marginRight: 12 }} />
-              <Text className="font-medium text-black text-base" style={{ fontFamily: 'DM Sans' }}>{member.name}</Text>
+              <Text className="font-medium text-black text-base">{member.name}</Text>
             </View>
-            <Text className="font-bold text-black text-base tracking-tight" style={{ fontFamily: 'DM Sans' }}>
+            <Text className="font-bold text-black text-base tracking-tight">
               {Math.round(memberTotals[member.id] || 0).toLocaleString()} 원
             </Text>
           </View>
@@ -364,9 +363,9 @@ export function ExpenseTable() {
           <Pressable className="bg-white w-10/12 rounded-2xl p-6 shadow-xl" onPress={(e) => e.stopPropagation()}>
             <View className="flex-row justify-between items-center mb-6">
                <View>
-                 <Text className="font-bold text-xl text-black" style={{ fontFamily: 'DM Sans' }}>멤버 추가</Text>
+                 <Text className="font-bold text-xl text-black">멤버 추가</Text>
                  {activeExpense && (
-                   <Text className="text-gray-500 text-sm mt-1" style={{ fontFamily: 'DM Sans' }}>
+                   <Text className="text-gray-500 text-sm mt-1">
                      {activeExpense.name} 정산에 포함
                    </Text>
                  )}
@@ -388,7 +387,7 @@ export function ExpenseTable() {
                  >
                    <View className="flex-row items-center">
                      <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: member.color, marginRight: 12 }} />
-                     <Text className="font-medium text-base text-black" style={{ fontFamily: 'DM Sans' }}>{member.name}</Text>
+                     <Text className="font-medium text-base text-black">{member.name}</Text>
                    </View>
                    <View className={`w-6 h-6 rounded-full border items-center justify-center ${isSelected ? 'border-black bg-black' : 'border-gray-300 bg-white'}`}>
                      {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
@@ -401,7 +400,7 @@ export function ExpenseTable() {
               onPress={() => setModalVisible(false)}
               className="mt-6 w-full py-4 rounded-3xl bg-black items-center"
             >
-              <Text className="text-white font-bold text-lg" style={{ fontFamily: 'DM Sans' }}>완료</Text>
+              <Text className="text-white font-bold text-lg">완료</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>
@@ -414,7 +413,7 @@ export function ExpenseTable() {
         >
           <Pressable className="bg-white w-8/12 rounded-2xl p-6 shadow-xl" onPress={(e) => e.stopPropagation()}>
             <View className="flex-row justify-between items-center mb-6">
-              <Text className="font-bold text-xl text-black" style={{ fontFamily: 'DM Sans' }}>카테고리 선택</Text>
+              <Text className="font-bold text-xl text-black">카테고리 선택</Text>
               <TouchableOpacity onPress={() => setCategoryModalVisible(false)}>
                 <Ionicons name="close-circle" size={28} color="#d1d5db" />
               </TouchableOpacity>
@@ -434,7 +433,7 @@ export function ExpenseTable() {
                    className={`p-4 mb-2 rounded-xl border ${isSelected ? 'border-black bg-gray-50' : 'border-gray-200'}`}
                  >
                    <View className="flex-row justify-between items-center">
-                     <Text className={`font-medium text-base ${isSelected ? 'text-black' : 'text-gray-600'}`} style={{ fontFamily: 'DM Sans' }}>{cat}</Text>
+                     <Text className={`font-medium text-base ${isSelected ? 'text-black' : 'text-gray-600'}`}>{cat}</Text>
                      {isSelected && <Ionicons name="checkmark-circle" size={20} color="black" />}
                    </View>
                  </TouchableOpacity>

@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#40503F',
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
   },
   fab: {
     shadowColor: '#000',

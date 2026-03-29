@@ -1,3 +1,5 @@
+const plugin = require("tailwindcss/plugin");
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   // NOTE: Update this to include the paths to all of your component files.
@@ -23,5 +25,16 @@ module.exports = {
       }
     },
   },
-  plugins: [],
+  plugins: [
+    plugin(function ({ addUtilities }) {
+      addUtilities({
+        ".font-normal": { fontFamily: "Pretendard-Regular", fontWeight: "400" },
+        ".font-medium": { fontFamily: "Pretendard-Medium", fontWeight: "500" },
+        ".font-semibold": { fontFamily: "Pretendard-SemiBold", fontWeight: "600" },
+        ".font-bold": { fontFamily: "Pretendard-Bold", fontWeight: "700" },
+        ".font-extrabold": { fontFamily: "Pretendard-ExtraBold", fontWeight: "800" },
+        ".font-black": { fontFamily: "Pretendard-Black", fontWeight: "900" },
+      });
+    }),
+  ],
 };

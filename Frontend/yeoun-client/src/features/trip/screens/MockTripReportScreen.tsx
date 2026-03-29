@@ -34,7 +34,7 @@ export default function MockTripReportScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
           <TouchableOpacity style={styles.iconButton} onPress={() => router.back()}>
-            <MaterialIcons name="arrow-back" size={22} color="#1C2751" />
+            <MaterialIcons name="arrow-back" size={22} color="#223428" />
           </TouchableOpacity>
           <View style={styles.headerCopy}>
             <Text style={styles.headerTitle}>목업 여행 리포트</Text>
@@ -65,40 +65,40 @@ export default function MockTripReportScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F7F8FF' },
+  safeArea: { flex: 1, backgroundColor: '#EBF3EA' },
   content: { padding: 20, paddingBottom: 40 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 },
   iconButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFF',
+    backgroundColor: '#FCFEFB',
     borderWidth: 1,
-    borderColor: '#DCE4FF',
+    borderColor: '#D7E1DA',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerCopy: { flex: 1 },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: '#182245' },
-  headerSubtitle: { marginTop: 4, fontSize: 13, color: '#7481AE' },
+  headerTitle: { fontSize: 24, fontFamily: 'Pretendard-Bold', color: '#223428' },
+  headerSubtitle: { marginTop: 4, fontSize: 13, color: '#607067' },
   card: {
     marginBottom: 14,
     borderRadius: 24,
-    backgroundColor: '#FFF',
+    backgroundColor: '#FCFEFB',
     padding: 20,
     borderWidth: 1,
-    borderColor: '#E8ECFA',
+    borderColor: '#D7E1DA',
   },
-  cardTitle: { marginBottom: 10, fontSize: 20, fontWeight: '700', color: '#1C2751' },
-  sectionTitle: { marginBottom: 10, fontSize: 16, fontWeight: '700', color: '#1C2751' },
-  cardText: { marginBottom: 6, fontSize: 14, color: '#52607F' },
+  cardTitle: { marginBottom: 10, fontSize: 20, fontFamily: 'Pretendard-Bold', color: '#223428' },
+  sectionTitle: { marginBottom: 10, fontSize: 16, fontFamily: 'Pretendard-Bold', color: '#223428' },
+  cardText: { marginBottom: 6, fontSize: 14, color: '#607067' },
   primaryButton: {
     marginTop: 8,
     height: 56,
     borderRadius: 18,
-    backgroundColor: '#3852D6',
+    backgroundColor: '#244934',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryButtonText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+  primaryButtonText: { fontSize: 16, fontFamily: 'Pretendard-Bold', color: '#F7FBF6' },
 });

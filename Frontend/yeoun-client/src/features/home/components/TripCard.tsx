@@ -3,6 +3,7 @@ import { Text, View, TouchableOpacity, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useMainDestination } from '@/src/hooks/useMainDestination';
+import { getTripPlaceholder } from '@/src/utils/image-utils';
 
 interface TripCardProps {
     tripId?: string; // Optional for analysis
@@ -19,6 +20,8 @@ interface TripCardProps {
 export const TripCard = ({ tripId, title, location: initialLocation, date, imageUrl, isFavorite, showHeart = true, onPressHeart, onPress }: TripCardProps) => {
     const analyzedLocation = useMainDestination(tripId || '', initialLocation);
     const location = tripId ? analyzedLocation : initialLocation;
+    const resolvedImageSource = imageUrl || getTripPlaceholder(tripId || 'default');
+
     return (
         <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
             <View 
@@ -34,7 +37,7 @@ export const TripCard = ({ tripId, title, location: initialLocation, date, image
                 }}
             >
                 <Image
-                    source={imageUrl || require('@/assets/images/base.png')}
+                    source={resolvedImageSource}
                     style={{
                         width: 120,
                         height: '100%',

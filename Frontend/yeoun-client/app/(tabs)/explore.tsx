@@ -11,7 +11,7 @@ export default function ExploreScreen() {
   const isTripActive = useTripStore((state) => state.isTripActive);
 
   return (
-    <SafeAreaView className="flex-1 bg-[#FCFEFB]" edges={['top']}>
+    <SafeAreaView className="flex-1 bg-[#EBF3EA]" edges={['top']}>
       <StatusBar style="dark" />
       <View className="flex-1">
         {/* 여행 중이라면 ActiveTripMap, 아니라면 CurrentLocationMap을 보여줍니다. */}

@@ -33,7 +33,7 @@ export function BankCard({ card, onDelete }: BankCardProps) {
       >
         <Text 
           className="text-xs font-bold" 
-          style={{ color: bank.textColor, fontFamily: 'DM Sans' }}
+          style={{ color: bank.textColor }}
         >
           {bank.initial}
         </Text>
@@ -41,10 +41,10 @@ export function BankCard({ card, onDelete }: BankCardProps) {
       
       {/* Bank info and card number */}
       <View className="flex-1">
-        <Text className="text-gray-500 text-xs mb-1" style={{ fontFamily: 'DM Sans' }}>
+        <Text className="text-gray-500 text-xs mb-1">
           {bank.name}
         </Text>
-        <Text className="text-black text-base font-medium tracking-widest" style={{ fontFamily: 'DM Sans' }}>
+        <Text className="text-black text-base font-medium tracking-widest">
           {displayNum}
         </Text>
       </View>

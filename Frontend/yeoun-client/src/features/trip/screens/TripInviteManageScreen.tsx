@@ -221,7 +221,7 @@ export default function TripInviteManageScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#EDF3EA',
+    backgroundColor: '#EBF3EA',
   },
   centerWrap: {
     flex: 1,
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
   },
   noticeTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#182119',
     textAlign: 'center',
   },
@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
   },
   noticeButtonText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#FFFFFF',
   },
 });

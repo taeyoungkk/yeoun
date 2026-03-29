@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pillText: {
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     fontSize: 14,
     textTransform: 'uppercase',
     letterSpacing: 0.5,

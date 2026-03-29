@@ -514,7 +514,7 @@ const formatAmount = (amount: number | null, currencyCode: string | null) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F6F7F5',
+    backgroundColor: '#EBF3EA',
   },
   centerContent: {
     flex: 1,
@@ -525,7 +525,7 @@ const styles = StyleSheet.create({
   loadingTitle: {
     marginTop: 16,
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#111827',
   },
   loadingDescription: {
@@ -556,7 +556,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#111827',
   },
   headerSpacer: {
@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
   statusTitle: {
     color: 'white',
     fontSize: 24,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
   },
   statusSubtext: {
     marginTop: 10,
@@ -606,7 +606,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#111827',
   },
   infoRow: {
@@ -622,7 +622,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'right',
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
     color: '#111827',
   },
   lineItemRow: {
@@ -635,7 +635,7 @@ const styles = StyleSheet.create({
   },
   lineItemName: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
     color: '#111827',
   },
   lineItemMeta: {
@@ -645,7 +645,7 @@ const styles = StyleSheet.create({
   },
   lineItemAmount: {
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#244934',
   },
   emptyText: {
@@ -670,11 +670,11 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: 'white',
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
   },
   fieldLabel: {
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#111827',
     marginBottom: -2,
   },
@@ -697,7 +697,7 @@ const styles = StyleSheet.create({
   },
   choiceChipText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
     color: '#4B5563',
   },
   choiceChipTextActive: {
@@ -717,6 +717,6 @@ const styles = StyleSheet.create({
   confirmButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
   },
 });

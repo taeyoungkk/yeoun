@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 
 import { IconSymbol } from '@/src/components/ui/icon-symbol';
 
-import { getTripImage } from '@/src/utils/image-utils';
+import { getTripPlaceholder } from '@/src/utils/image-utils';
 
 interface CurrentTripCardProps {
   tripId: string;
@@ -32,6 +32,8 @@ export const CurrentTripCard = ({
   onPressHeart,
   onPress,
 }: CurrentTripCardProps) => {
+  const resolvedImageSource = imageUrl || getTripPlaceholder(tripId);
+
   return (
     <View className="w-full">
       <TouchableOpacity
@@ -41,7 +43,7 @@ export const CurrentTripCard = ({
         style={{ elevation: 5 }}
       >
         <Image
-          source={imageUrl || require('@/assets/images/trip_placeholder_1.png')}
+          source={resolvedImageSource}
           style={{ width: '100%', height: '100%' }}
           contentFit="cover"
         />
