@@ -349,14 +349,7 @@ export const syncTripPhotosForDateRange = async ({
   const storedCursor = await getStoredPhotoSyncCursor(tripId);
   const normalizedStoredCursor =
     storedCursor && storedCursor >= tripStartBoundary && storedCursor <= tripEndBoundary ? storedCursor : null;
-  const effectiveCursor = normalizedStoredCursor ?? tripStartBoundary;
-  const createdAfter = clampDate(
-    effectiveCursor.getTime() === tripStartBoundary.getTime()
-      ? effectiveCursor
-      : subtractMilliseconds(effectiveCursor, 1000),
-    tripStartBoundary,
-    tripEndBoundary,
-  );
+  const createdAfter = tripStartBoundary;
   const createdBefore = clampDate(tripEndBoundary, tripStartBoundary, tripEndBoundary);
 
   logPhotoSync('Resolved sync candidate window.', {

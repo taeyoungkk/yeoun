@@ -302,6 +302,15 @@ function buildTripDateKeys(startDate?: string, endDate?: string, fallbackDates: 
   return dates;
 }
 
+function getTodayDateKey() {
+  return formatDateKey(new Date());
+}
+
+function clampTripDateKeysToToday(dateKeys: string[]) {
+  const todayKey = getTodayDateKey();
+  return dateKeys.filter((dateKey) => dateKey <= todayKey);
+}
+
 function buildTripDays(startDate?: string, endDate?: string): TripDay[] {
   const start = startDate ? new Date(startDate) : null;
   const end = endDate ? new Date(endDate) : null;
@@ -1098,11 +1107,12 @@ function RealTripRecordingScreen({
 
           // Fetch Routes
           const routeByDate = new Map<string, Coordinate[]>();
-          const uniqueDates = buildTripDateKeys(
+          const tripDateKeys = buildTripDateKeys(
             tripDetailResponse.data?.startDate,
             tripDetailResponse.data?.endDate,
             timelineDays.map((day) => day.dayDate),
           );
+          const uniqueDates = isReviewMode ? tripDateKeys : clampTripDateKeysToToday(tripDateKeys);
 
           await Promise.all(
             uniqueDates.map(async (date) => {
