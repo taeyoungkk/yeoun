@@ -70,7 +70,7 @@ const mergeArchivedNotifications = (
   });
 
   return Array.from(archivedById.values()).sort(
-    (a, b) => new Date(b.decidedAt ?? b.timestamp).getTime() - new Date(a.decidedAt ?? a.timestamp).getTime(),
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
   );
 };
 

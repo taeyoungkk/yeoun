@@ -49,8 +49,11 @@ function TabItem({
           isPressed.value = 0;
         }}
       >
-        <Animated.View style={animatedStyle} className="relative">
-          {item.icon({ color: iconColor, size: 26 })}
+        <Animated.View
+          style={[animatedStyle, { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }]}
+          className="relative"
+        >
+          {item.icon({ color: iconColor, size: 24 })}
           {badgeCount > 0 ? (
             <View className="absolute -top-2 -right-3 min-w-[18px] h-[18px] px-1 bg-red-500 rounded-full border border-white items-center justify-center">
               <Animated.Text className="text-[10px] font-bold text-white">

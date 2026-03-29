@@ -9,9 +9,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import { getTripExpensesApi, type TripExpenseItem } from '@/src/api/expense';
 import {
-  createSettlementApi,
-  getSettlementDetailApi,
-  getTripSettlementsApi,
+  getLatestSettlementApi,
   type SettlementDetail,
 } from '@/src/api/settlement';
 import {
@@ -20,9 +18,9 @@ import {
   type TimelineDayDetail,
   type TimelineDaySummary,
 } from '@/src/api/timeline';
-import { CommonApiResponse, getTripRouteDaysApi } from '@/src/api/trip';
-import { useTripStore } from '@/src/store/trip.store';
-import { getTopDestinationName } from '@/src/utils/trip-analysis-utils';
+import { getTripDetailApi, getTripRouteDaysApi, type TripDetail, type TripRouteDayListItem } from '@/src/api/trip';
+import { useTripStore, type CurrentTrip } from '@/src/store/trip.store';
+import { getTopDestinationName, calculateDistance } from '@/src/utils/trip-analysis-utils';
 
 type ReportDay = {
   id: string;
@@ -52,7 +50,18 @@ const formatWon = (value: number) => `${Math.round(value).toLocaleString('ko-KR'
 const formatTripDate = (date?: string) => (date ? date.slice(2, 10).replace(/-/g, '.') : '--.--.--');
 const formatDayLabel = (date: Date) =>
   `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
-const formatTime = (date?: string | null) => (date ? date.slice(11, 16) : '--:--');
+const formatTime = (value?: string | null) => {
+  if (!value) {
+    return '--:--';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '--:--';
+  }
+
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+};
 
 const shortenLocationName = (name: string) => {
   if (!name) return '';
@@ -74,14 +83,6 @@ const shortenLocationName = (name: string) => {
     .replace(/(특별시|광역시|특별자치시|특별자치도|시|군|구)$/, '')
     .trim()
     .slice(0, 3);
-};
-
-const getExpenseSnapshot = (items: TripExpenseItem[]) => {
-  const confirmedExpenses = items.filter((expense) => expense.status !== 'DELETED');
-  return {
-    count: confirmedExpenses.length,
-    totalAmount: confirmedExpenses.reduce((sum, expense) => sum + expense.totalAmount, 0),
-  };
 };
 
 const buildFallbackDays = (startDate?: string, endDate?: string): ReportDay[] => {
@@ -117,14 +118,93 @@ const buildFallbackDays = (startDate?: string, endDate?: string): ReportDay[] =>
   });
 };
 
-const mapReportDay = (day: TimelineDaySummary, index: number): ReportDay => ({
-  id: day.timelineDayId,
-  label: `${index + 1}일차`,
-  dateLabel: formatDayLabel(new Date(day.dayDate)),
-  distanceKm: day.distanceM / 1000,
-  photoCount: day.photoCount,
-  eventCount: day.eventCount,
+const normalizeDateKey = (value?: string) => value?.slice(0, 10) ?? '';
+const formatDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const buildDateKeys = (startDate?: string, endDate?: string, fallbackDates: string[] = []) => {
+  const normalizedFallback = Array.from(
+    new Set(fallbackDates.map((value) => normalizeDateKey(value)).filter(Boolean)),
+  ).sort((left, right) => left.localeCompare(right));
+
+  if (!startDate || !endDate) {
+    return normalizedFallback;
+  }
+
+  const start = new Date(`${normalizeDateKey(startDate)}T00:00:00`);
+  const end = new Date(`${normalizeDateKey(endDate)}T00:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return normalizedFallback;
+  }
+
+  const dates: string[] = [];
+  const cursor = new Date(start);
+
+  while (cursor <= end) {
+    dates.push(formatDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+};
+
+const mapTripDetailToCurrentTrip = (trip: TripDetail): CurrentTrip => ({
+  tripId: trip.tripId,
+  tripName: trip.title,
+  startDate: trip.startDate,
+  endDate: trip.endDate,
+  memberCount: trip.memberCount ?? trip.participants ?? 0,
+  origin: trip.country ?? '',
+  destination: trip.region ?? trip.country ?? trip.title,
 });
+
+const buildReportDays = (
+  timelineDays: TimelineDaySummary[],
+  routeDays: TripRouteDayListItem[],
+  startDate?: string,
+  endDate?: string,
+): ReportDay[] => {
+  const timelineDayByDate = new Map(timelineDays.map((day) => [normalizeDateKey(day.dayDate), day]));
+  const routeByDate = new Map<string, [number, number][]>();
+
+  routeDays.forEach((routeDay) => {
+    const dateKey = normalizeDateKey(routeDay.day);
+    const coordinates = routeDay.coordinates
+      .filter((coordinate): coordinate is [number, number] => Array.isArray(coordinate) && coordinate.length >= 2)
+      .map(([longitude, latitude]) => [longitude, latitude] as [number, number]);
+
+    if (coordinates.length > 0) {
+      routeByDate.set(dateKey, [...(routeByDate.get(dateKey) ?? []), ...coordinates]);
+    }
+  });
+
+  const dateKeys = buildDateKeys(startDate, endDate, [
+    ...timelineDayByDate.keys(),
+    ...routeByDate.keys(),
+  ]);
+
+  if (dateKeys.length === 0) {
+    return buildFallbackDays(startDate, endDate);
+  }
+
+  return dateKeys.map((dateKey, index) => {
+    const timelineDay = timelineDayByDate.get(dateKey);
+    const routeCoordinates = routeByDate.get(dateKey) ?? [];
+
+    return {
+      id: timelineDay?.timelineDayId ?? `fallback-${index + 1}`,
+      label: `DAY ${index + 1}`,
+      dateLabel: formatDayLabel(new Date(`${dateKey}T00:00:00`)),
+      distanceKm:
+        timelineDay && timelineDay.distanceM > 0
+          ? timelineDay.distanceM / 1000
+          : calculateDistance(routeCoordinates),
+      photoCount: timelineDay?.photoCount ?? 0,
+      eventCount: timelineDay?.eventCount ?? 0,
+    };
+  });
+};
 
 const mapTimelineRows = (dayDetails: TimelineDayDetail[]): TimelineRow[] =>
   dayDetails
@@ -141,22 +221,38 @@ const mapTimelineRows = (dayDetails: TimelineDayDetail[]): TimelineRow[] =>
     .map(({ sortKey: _sortKey, ...row }) => row);
 
 export default function TripReportScreen() {
-  const params = useLocalSearchParams<{ mode?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; tripId?: string; id?: string }>();
   const currentTrip = useTripStore((state) => state.currentTrip);
   const reviewTrip = useTripStore((state) => state.reviewTrip);
+  const inFlightLogs = useTripStore((state) => state.inFlightLogs);
   const router = useRouter();
 
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const [timelineDays, setTimelineDays] = useState<TimelineDaySummary[]>([]);
   const [timelineDayDetails, setTimelineDayDetails] = useState<TimelineDayDetail[]>([]);
+  const [routeDays, setRouteDays] = useState<TripRouteDayListItem[]>([]);
   const [expenses, setExpenses] = useState<TripExpenseItem[]>([]);
   const [settlementDetail, setSettlementDetail] = useState<SettlementDetail | null>(null);
   const [mainDestination, setMainDestination] = useState<string | null>(null);
   const [originAddress, setOriginAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [routeTrip, setRouteTrip] = useState<TripDetail | null>(null);
 
   const isReviewMode = params.mode === 'review';
-  const trip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
+  const routeTripId =
+    typeof params.tripId === 'string'
+      ? params.tripId
+      : typeof params.id === 'string'
+        ? params.id
+        : null;
+  const storeTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
+  const trip = useMemo<CurrentTrip | null>(() => {
+    if (routeTrip && routeTripId && storeTrip?.tripId !== routeTripId) {
+      return mapTripDetailToCurrentTrip(routeTrip);
+    }
+
+    return storeTrip;
+  }, [routeTrip, routeTripId, storeTrip]);
   const receiptAppear = useRef(new Animated.Value(0)).current;
 
   const handleGoHome = () => router.replace('/(tabs)');
@@ -181,11 +277,36 @@ export default function TripReportScreen() {
   useEffect(() => {
     let mounted = true;
 
+    const loadRouteTrip = async () => {
+      if (!routeTripId || storeTrip?.tripId === routeTripId) {
+        if (mounted) {
+          setRouteTrip(null);
+        }
+        return;
+      }
+
+      const response = await getTripDetailApi(routeTripId);
+      if (mounted) {
+        setRouteTrip(response.success ? response.data : null);
+      }
+    };
+
+    void loadRouteTrip();
+
+    return () => {
+      mounted = false;
+    };
+  }, [routeTripId, storeTrip?.tripId]);
+
+  useEffect(() => {
+    let mounted = true;
+
     const loadReport = async () => {
       if (!trip?.tripId) {
         if (mounted) {
           setTimelineDays([]);
           setTimelineDayDetails([]);
+          setRouteDays([]);
           setExpenses([]);
           setSettlementDetail(null);
           setIsLoading(false);
@@ -196,7 +317,6 @@ export default function TripReportScreen() {
       try {
         setIsLoading(true);
 
-        // STAGE 1: Basic Trip Data (Fast)
         const [timelineDaysResponse, expensesResponse] = await Promise.all([
           getTripTimelineDaysApi(trip.tripId),
           getTripExpensesApi(trip.tripId),
@@ -208,14 +328,11 @@ export default function TripReportScreen() {
         if (mounted) {
           setTimelineDays(nextTimelineDays);
           setExpenses(nextExpenses);
-          // SET Stage 1 complete! This allows the Ticket to show basic info immediately.
-          setIsLoading(false);
         }
 
-        // STAGE 2: Deep Details (Can be slow)
-        const [destinationName, settlementsResponse, timelineDetailResponses, routeResponse] = await Promise.all([
+        const [destinationName, latestSettlementResponse, timelineDetailResponses, routeDaysResponse] = await Promise.all([
           getTopDestinationName(trip.tripId),
-          getTripSettlementsApi(trip.tripId),
+          getLatestSettlementApi(trip.tripId),
           Promise.all(nextTimelineDays.map((day) => getTimelineDayDetailApi(day.timelineDayId))),
           getTripRouteDaysApi(trip.tripId),
         ]);
@@ -228,66 +345,8 @@ export default function TripReportScreen() {
             .map((res) => res.data);
 
           setTimelineDayDetails(settledTimelineDetails);
-
-          // Try to resolve origin address from the first route day's first coordinate
-          if (!trip.origin && routeResponse.success && routeResponse.data.routeDays.length > 0) {
-            const firstDay = routeResponse.data.routeDays[0];
-            if (firstDay.coordinates && firstDay.coordinates.length > 0) {
-              const [lon, lat] = firstDay.coordinates[0];
-              import('@/src/api/mapbox').then(({ reverseGeocodeKo }) => {
-                reverseGeocodeKo(lon, lat).then((addr) => {
-                  if (mounted && addr) {
-                    const cleaned = addr.replace(/대한민국\s*\d*/g, '').replace(/,/g, '').trim().split(' ')[0];
-                    setOriginAddress(cleaned);
-                  }
-                });
-              });
-            }
-          }
-        }
-
-        let nextSettlementDetail: SettlementDetail | null = null;
-        const expenseSnapshot = getExpenseSnapshot(nextExpenses);
-
-        if (settlementsResponse.success) {
-          let latestSettlement = [...settlementsResponse.data.items].sort((a, b) => {
-            const createdAtA = new Date(a.createdAt).getTime();
-            const createdAtB = new Date(b.createdAt).getTime();
-            return createdAtB - createdAtA;
-          })[0];
-
-          if (!latestSettlement && expenseSnapshot.count > 0) {
-            const createResponse = await createSettlementApi(trip.tripId, {});
-            if (createResponse.success) {
-              latestSettlement = createResponse.data;
-            }
-          }
-
-          if (latestSettlement) {
-            let detailResponse = await getSettlementDetailApi(latestSettlement.settlementId);
-
-            if (detailResponse.success) {
-              const needsRecalculation =
-                expenseSnapshot.count > 0 &&
-                (detailResponse.data.confirmedExpenseCount !== expenseSnapshot.count ||
-                  detailResponse.data.totalConfirmedAmount !== expenseSnapshot.totalAmount);
-
-              if (needsRecalculation) {
-                const recreateResponse = await createSettlementApi(trip.tripId, {});
-                if (recreateResponse.success) {
-                  detailResponse = await getSettlementDetailApi(recreateResponse.data.settlementId);
-                }
-              }
-
-              if (detailResponse.success) {
-                nextSettlementDetail = detailResponse.data;
-              }
-            }
-          }
-        }
-
-        if (mounted) {
-          setSettlementDetail(nextSettlementDetail);
+          setRouteDays(routeDaysResponse.success ? routeDaysResponse.data.routeDays : []);
+          setSettlementDetail(latestSettlementResponse.success ? latestSettlementResponse.data : null);
         }
       } catch (error) {
         console.error('[TripReport] Failed to load details:', error);
@@ -303,6 +362,49 @@ export default function TripReportScreen() {
     return () => {
       mounted = false;
     };
+  }, [trip?.tripId]); // Only load server data when trip changes
+
+  // Derive current distance locally to avoid loop
+  const totalInFlightDistance = useMemo(() => {
+    if (inFlightLogs.length < 2) return 0;
+    const coords = inFlightLogs.map(l => [l.longitude, l.latitude] as [number, number]);
+    return calculateDistance(coords);
+  }, [inFlightLogs]);
+
+  // Geocode origin address once per trip
+  useEffect(() => {
+    if (!trip?.tripId || originAddress || trip.origin) return;
+
+    const findOrigin = async () => {
+      let coords: [number, number] | null = null;
+      
+      // Try server route first
+      const routeRes = await getTripRouteDaysApi(trip.tripId);
+      if (routeRes.success && routeRes.data.routeDays.length > 0) {
+        const firstDay = routeRes.data.routeDays[0];
+        if (firstDay.coordinates && firstDay.coordinates.length > 0) {
+          coords = firstDay.coordinates[0] as [number, number];
+        }
+      }
+
+      // Fallback to in-flight
+      if (!coords && inFlightLogs.length > 0) {
+        coords = [inFlightLogs[0].longitude, inFlightLogs[0].latitude] as [number, number];
+      }
+
+      if (coords) {
+        try {
+          const { reverseGeocodeKo } = await import('@/src/api/mapbox');
+          const addr = await reverseGeocodeKo(coords[0], coords[1]);
+          if (addr) {
+            const cleaned = addr.replace(/대한민국\s*\d*/g, '').replace(/,/g, '').trim().split(' ')[0];
+            setOriginAddress(cleaned);
+          }
+        } catch {}
+      }
+    };
+
+    void findOrigin();
   }, [trip?.tripId]);
 
   useEffect(() => {
@@ -315,12 +417,18 @@ export default function TripReportScreen() {
     }).start();
   }, [receiptAppear]);
 
-  const reportDays = useMemo(() => timelineDays.map(mapReportDay), [timelineDays]);
+  const reportDays = useMemo(
+    () => buildReportDays(timelineDays, routeDays, trip?.startDate, trip?.endDate),
+    [routeDays, timelineDays, trip?.endDate, trip?.startDate],
+  );
   const timelineRows = useMemo(() => mapTimelineRows(timelineDayDetails), [timelineDayDetails]);
 
-  const totalDistance = useMemo(() => reportDays.reduce((sum, day) => sum + day.distanceKm, 0), [reportDays]);
+  const totalDistance = useMemo(() => {
+    const serverDist = reportDays.reduce((sum, day) => sum + day.distanceKm, 0);
+    return serverDist > 0 ? serverDist : totalInFlightDistance;
+  }, [reportDays, totalInFlightDistance]);
   const totalPhotos = useMemo(() => reportDays.reduce((sum, day) => sum + day.photoCount, 0), [reportDays]);
-  const totalLogs = timelineRows.length;
+  const totalLogs = timelineRows.length > 0 ? timelineRows.length : reportDays.reduce((sum, day) => sum + day.eventCount, 0);
   const totalUsed = settlementDetail?.totalConfirmedAmount ?? expenses.reduce((sum, expense) => sum + expense.totalAmount, 0);
   const sharedPerPerson =
     settlementDetail && settlementDetail.memberCount > 0
@@ -423,13 +531,16 @@ export default function TripReportScreen() {
               <View style={styles.ticketRule} />
 
               <View>
-                <Text style={styles.ticketSectionTitle}>일정 요약</Text>
                 {reportDays.length > 0 ? (
                   reportDays.map((day) => (
                     <View key={day.id} style={styles.inlineDayRow}>
                       <Text style={styles.inlineDayLabel}>{day.label}</Text>
                       <Text style={styles.inlineDayValue}>
-                        {`${day.distanceKm.toFixed(1)}km · 사진 ${day.photoCount}장 · 기록 ${day.eventCount}개`}
+                        {day.distanceKm > 0 || day.photoCount > 0 || day.eventCount > 0 ? (
+                          `${day.distanceKm.toFixed(1)}km · 사진 ${day.photoCount}장 · 기록 ${day.eventCount}개`
+                        ) : (
+                          '분석 중...'
+                        )}
                       </Text>
                     </View>
                   ))
@@ -439,6 +550,15 @@ export default function TripReportScreen() {
               </View>
             </View>
           </View>
+
+          {totalDistance === 0 && !isLoading && (
+            <View style={styles.processingNotice}>
+              <MaterialIcons name="info-outline" size={16} color="#7182BC" />
+              <Text style={styles.processingNoticeText}>
+                {'서버에서 상세 데이터 분석이 아직 진행 중입니다. 잠시 후 상단 "새로고침"을 해주세요.'}
+              </Text>
+            </View>
+          )}
 
           <View style={styles.sectionCard}>
             <TouchableOpacity style={styles.timelineHeader} activeOpacity={0.8} onPress={() => setIsTimelineOpen((prev) => !prev)}>
@@ -630,4 +750,15 @@ const styles = StyleSheet.create({
   },
   detailButtonText: { fontSize: 14, color: '#666', marginRight: 5 },
   emptyText: { marginTop: 14, fontSize: 13, color: '#8A95B4' },
+  processingNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 15,
+    padding: 10,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 12,
+  },
+  processingNoticeText: { fontSize: 12, color: '#7182BC', fontWeight: '500' },
 });

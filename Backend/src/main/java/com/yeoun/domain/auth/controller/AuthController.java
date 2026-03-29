@@ -130,6 +130,15 @@ public class AuthController {
         return ApiResponse.ok(response);
     }
 
+    @PostMapping("/password/reset/verify")
+    @Operation(summary = "비밀번호 재설정 인증코드 검증", description = "이메일과 인증코드를 검증해 비밀번호 재설정 가능 여부를 확인합니다.")
+    public ApiResponse<EmailVerificationResponse> verifyPasswordResetCode(
+            @Valid @RequestBody VerifyEmailCodeRequest request
+    ) {
+        EmailVerificationResponse response = passwordResetService.verifyResetCode(request.email(), request.code());
+        return ApiResponse.ok(response);
+    }
+
     @PostMapping("/password/reset/confirm")
     @Operation(summary = "비밀번호 재설정 완료", description = "이메일/인증코드 검증 후 새 비밀번호로 변경합니다.")
     public ApiResponse<PasswordResetConfirmResponse> confirmPasswordReset(

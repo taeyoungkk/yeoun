@@ -280,6 +280,11 @@ export interface ResetConfirmRequest {
   newPassword: string;
 }
 
+export interface PasswordResetVerificationData {
+  verified: boolean;
+  message: string;
+}
+
 /**
  * Requests a password reset code to be sent to the email.
  */
@@ -295,6 +300,37 @@ export const requestPasswordReset = async (email: string): Promise<CommonRespons
         code: 'SUCCESS',
         message: 'Reset code sent (MOCK)',
         data: 'OK',
+        timestamp: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
+};
+
+/**
+ * Verifies the password reset code before allowing the user to continue.
+ */
+export const verifyPasswordResetCode = async (
+  email: string,
+  code: string,
+): Promise<CommonResponse<PasswordResetVerificationData>> => {
+  try {
+    const response = await apiClient.post<CommonResponse<PasswordResetVerificationData>>(
+      '/auth/password/reset/verify',
+      { email, code },
+    );
+    return response.data;
+  } catch (error) {
+    if (shouldMockInDev(error)) {
+      console.log('verifyPasswordResetCode failed, mocking success in dev');
+      return {
+        success: true,
+        code: 'SUCCESS',
+        message: 'Reset code verified (MOCK)',
+        data: {
+          verified: true,
+          message: 'Reset code verified (MOCK)',
+        },
         timestamp: new Date().toISOString(),
       };
     }

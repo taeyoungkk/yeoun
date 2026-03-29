@@ -50,6 +50,7 @@ import {
 import {
   deleteTripApi,
   endTripApi,
+  filterAcceptedTripMembers,
   getTripDetailApi,
   getTripMembersApi,
   getTripRouteByDayApi,
@@ -85,7 +86,7 @@ type MapFilterKey = 'showPhotoPins' | 'showPaymentPins';
 type ActionConfirmKind = 'end' | 'leave' | 'delete';
 type PaymentDialogMode = 'edit';
 type PaymentSplitType = 'equal';
-type PhotoSyncOutcome = 'synced' | 'empty' | 'skipped_permission' | 'skipped_range' | 'failed';
+type PhotoSyncOutcome = 'synced' | 'empty' | 'skipped_permission' | 'skipped_app_setting' | 'skipped_range' | 'failed';
 
 type PhotoContributor = {
   id: string;
@@ -184,14 +185,6 @@ const MAP_FILTER_META: Array<{ key: MapFilterKey; label: string; icon: keyof typ
   { key: 'showPhotoPins', label: '사진', icon: 'photo-library' },
   { key: 'showPaymentPins', label: '결제', icon: 'credit-card' },
 ];
-const EMOTION_OPTIONS = [
-  { emoji: '😊', label: '설렘' },
-  { emoji: '😌', label: '든든함' },
-  { emoji: '😍', label: '행복' },
-  { emoji: '😮', label: '신기함' },
-  { emoji: '😴', label: '피곤함' },
-  { emoji: '🥲', label: '뭉클함' },
-] as const;
 function getBounds(route: Coordinate[]) {
   const longitudes = route.map(([longitude]) => longitude);
   const latitudes = route.map(([, latitude]) => latitude);
@@ -204,6 +197,41 @@ function getBounds(route: Coordinate[]) {
 
 function formatDayTabLabel(date: Date) {
   return `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function buildTripDateKeys(startDate?: string, endDate?: string, fallbackDates: string[] = []) {
+  const normalizedFallback = Array.from(
+    new Set(
+      fallbackDates
+        .map((date) => date?.slice(0, 10))
+        .filter((date): date is string => Boolean(date)),
+    ),
+  ).sort((left, right) => left.localeCompare(right));
+
+  if (!startDate || !endDate) {
+    return normalizedFallback;
+  }
+
+  const start = new Date(`${startDate.slice(0, 10)}T00:00:00`);
+  const end = new Date(`${endDate.slice(0, 10)}T00:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return normalizedFallback;
+  }
+
+  const dates: string[] = [];
+  const cursor = new Date(start);
+
+  while (cursor <= end) {
+    dates.push(formatDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
 }
 
 function buildTripDays(startDate?: string, endDate?: string): TripDay[] {
@@ -285,34 +313,28 @@ function normalizeRouteCoordinates(routeDays: Array<{ coordinates: number[][] }>
 function buildRealTripDays(
   timelineDays: TimelineDayDetail[],
   routeByDate: Map<string, Coordinate[]>,
-  activeTripId: string,
   tripStartDate?: string,
   tripEndDate?: string,
 ): TripDay[] {
-  // If timelineDays is empty, we must at least show Day 1 for active trips
-  const dates = timelineDays.map(d => d.dayDate);
-  const today = new Date().toISOString().split('T')[0];
-  if (!dates.includes(today) && activeTripId) {
-    dates.push(today);
-  }
-
-  // If we still have no dates, fallback to startDate or today
-  if (dates.length === 0) {
-    dates.push(tripStartDate?.split('T')[0] || today);
-  }
+  const timelineDayByDate = new Map(timelineDays.map((day) => [day.dayDate.slice(0, 10), day]));
+  const dates = buildTripDateKeys(tripStartDate, tripEndDate, [
+    ...timelineDayByDate.keys(),
+    ...routeByDate.keys(),
+  ]);
 
   return dates.map((date, index) => {
-    const timelineDay = timelineDays.find(d => d.dayDate === date);
+    const timelineDay = timelineDayByDate.get(date);
     const route = routeByDate.get(date) ?? [];
     return {
       id: `day${index + 1}` as DayKey,
       label: `DAY ${index + 1}`,
       dateLabel: formatDateLabel(date),
-      distanceKm: timelineDay ? Math.round((timelineDay.distanceM / 1000) * 10) / 10 : 0,
+      distanceKm:
+        timelineDay && timelineDay.distanceM > 0
+          ? Math.round((timelineDay.distanceM / 1000) * 10) / 10
+          : Math.round(calculateDistance(route) * 10) / 10,
       summary: timelineDay?.summaryText || '',
       route,
-      // We don't have timestamps for server route points easily here, 
-      // so we use the day's date as a baseline if needed.
     };
   });
 }
@@ -529,7 +551,7 @@ function RealTripRecordingScreen({
   const scrollRef = useRef<ScrollView | null>(null);
   const photoPagerRef = useRef<ScrollView | null>(null);
   const cardPositionsRef = useRef<Record<string, number>>({});
-  const [scrollOffset, setScrollOffset] = useState(0);
+  const scrollY = useRef(new Animated.Value(0)).current;
   const [tripEvents, setTripEvents] = useState<TimelineEvent[]>([]);
   const [tripMembers, setTripMembers] = useState<TripMemberItem[]>([]);
   const params = useLocalSearchParams();
@@ -549,6 +571,7 @@ function RealTripRecordingScreen({
   const resetLocationSyncState = useTripStore((state) => state.resetLocationSyncState);
   const currentUserId = useUserStore((state) => state.profile?.userId);
   const currentUserNickname = useUserStore((state) => state.profile?.nickname ?? null);
+  const inFlightLogs = useTripStore((state) => state.inFlightLogs);
   const removeTrip = useTripStore((state) => state.removeTrip);
   const fetchTrips = useTripStore((state) => state.fetchTrips);
 
@@ -575,11 +598,6 @@ function RealTripRecordingScreen({
     payerUserId: string;
     selectedMemberUserIds: string[];
     memo: string;
-  } | null>(null);
-  const [emotionPicker, setEmotionPicker] = useState<{
-    eventId: string;
-    selectedEmoji?: string;
-    selectedLabel?: string;
   } | null>(null);
   const settings = useUserStore((state) => state.settings);
   const { showPhotoPins, showPaymentPins } = settings;
@@ -620,6 +638,11 @@ function RealTripRecordingScreen({
     }
   }, []);
   const isReviewMode = params.mode === 'review';
+  const routeTripId = typeof params.tripId === 'string' ? params.tripId.trim() : '';
+  const storeTripId = isReviewMode
+    ? reviewTrip?.tripId ?? currentTrip?.tripId ?? ''
+    : currentTripId ?? currentTrip?.tripId ?? '';
+  const activeTripId = (routeTripId || storeTripId || '').trim();
   const displayTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
 
   const tripDays = useMemo(() => {
@@ -655,13 +678,15 @@ function RealTripRecordingScreen({
   const routeCoordinates = useMemo(() => {
     const serverRoute = filteredDays.flatMap((day) => day.route);
     // Only append session trail if we are looking at 'all' or the last day
-    if (activeFilter === 'all' || activeFilter === `day${tripDays.length}`) {
+    // AND we are in ACTIVE mode (not review) for the current active trip
+    if (!isReviewMode && activeTripId === currentTripId && (activeFilter === 'all' || activeFilter === `day${tripDays.length}`)) {
+      const inFlightCoords = inFlightLogs.map(l => [l.longitude, l.latitude] as Coordinate);
       // Show already matched trail + raw points that haven't been matched yet
       const rawTrailCoords = sessionTrail.slice(lastMatchedIndexRef.current).map(l => [l.longitude, l.latitude] as Coordinate);
-      return [...serverRoute, ...matchedSessionTrail, ...rawTrailCoords];
+      return [...serverRoute, ...inFlightCoords, ...matchedSessionTrail, ...rawTrailCoords];
     }
     return serverRoute;
-  }, [activeFilter, filteredDays, sessionTrail, matchedSessionTrail, tripDays.length]);
+  }, [activeFilter, filteredDays, inFlightLogs, sessionTrail, matchedSessionTrail, tripDays.length, isReviewMode, activeTripId, currentTripId]);
 
   const currentLocationCoordinate = useMemo(
     () => liveCurrentLocation ?? initialCurrentLocation,
@@ -713,7 +738,7 @@ function RealTripRecordingScreen({
         paymentCount: filteredEvents.filter((event) => event.type === 'payment').length,
       };
     },
-    [activeFilter, filteredDays, filteredEvents, sessionTrail, tripDays.length]
+    [routeCoordinates, filteredEvents]
   );
   const selectedPhotoEvent = useMemo(
     () => filteredEvents.find((event) => event.id === photoViewer?.eventId) ?? null,
@@ -721,23 +746,28 @@ function RealTripRecordingScreen({
   );
   const selectedPhotoItem = selectedPhotoEvent?.photoItems?.[photoViewer?.photoIndex ?? -1] ?? null;
   const selectedPhotoItems = selectedPhotoEvent?.photoItems ?? [];
-  const selectedPhotoEmotion =
-    selectedPhotoEvent?.emotionOwnerId === currentUserId && selectedPhotoEvent?.emotionEmoji && selectedPhotoEvent?.emotionLabel
-      ? `${selectedPhotoEvent.emotionEmoji} ${selectedPhotoEvent.emotionLabel}`
-      : null;
-  const collapseProgress = Math.min(scrollOffset / MAP_COLLAPSE_DISTANCE, 1);
-  const mapHeight = MAX_MAP_HEIGHT - (MAX_MAP_HEIGHT - MIN_MAP_HEIGHT) * collapseProgress;
-  const mapRadius = 32 - 8 * collapseProgress;
-  const panelLift = -145 * collapseProgress;
-  const routeTripId = typeof params.tripId === 'string' ? params.tripId.trim() : '';
-  const storeTripId = isReviewMode ? reviewTrip?.tripId ?? currentTrip?.tripId ?? '' : currentTripId ?? currentTrip?.tripId ?? '';
-  const activeTripId = (routeTripId || storeTripId || '').trim();
+  const mapHeight = scrollY.interpolate({
+    inputRange: [0, MAP_COLLAPSE_DISTANCE],
+    outputRange: [MAX_MAP_HEIGHT, MIN_MAP_HEIGHT],
+    extrapolate: 'clamp',
+  });
+  const mapRadius = scrollY.interpolate({
+    inputRange: [0, MAP_COLLAPSE_DISTANCE],
+    outputRange: [32, 24],
+    extrapolate: 'clamp',
+  });
+  const panelLift = scrollY.interpolate({
+    inputRange: [0, MAP_COLLAPSE_DISTANCE],
+    outputRange: [0, -145],
+    extrapolate: 'clamp',
+  });
   const tripTitle = (displayTrip as { title?: string; tripName?: string } | null)?.title || displayTrip?.tripName || 'Trip';
   const isTripOwner = Boolean(
     loadedTripDetail?.ownerUserId && currentUserId && loadedTripDetail.ownerUserId === currentUserId,
   );
   const recordingStatusText = isReviewMode ? '기록완료' : '기록중';
   const canUseActiveTripActions = !isReviewMode && loadedTripDetail?.status === 'ACTIVE';
+  const canEndActiveTrip = canUseActiveTripActions && isTripOwner;
 
   const syncActionInFlight =
     isSyncing || locationSyncStatus === 'uploading' || locationSyncStatus === 'processing';
@@ -758,7 +788,7 @@ function RealTripRecordingScreen({
   );
 
   const updateRealTimelinePhotoMemo = useCallback((eventId: string, photoId: string, memo?: string) => {
-    setTripEvents((prev) =>
+    setTripEvents((prev: TimelineEvent[]) =>
       prev.map((event) => {
         if (event.id !== eventId || !event.photoItems) {
           return event;
@@ -780,7 +810,7 @@ function RealTripRecordingScreen({
   }, []);
 
   const removeRealTimelinePhoto = useCallback((eventId: string, photoId: string) => {
-    setTripEvents((prev) =>
+    setTripEvents((prev: TimelineEvent[]) =>
       prev.flatMap((event) => {
         if (event.id !== eventId || !event.photoItems) {
           return [event];
@@ -812,7 +842,7 @@ function RealTripRecordingScreen({
 
   const updateRealTimelineEvent = useCallback(
     (eventId: string, updates: Partial<Pick<TimelineEvent, 'title' | 'placeName' | 'subtitle' | 'eventMemo'>>) => {
-      setTripEvents((prev) =>
+      setTripEvents((prev: TimelineEvent[]) =>
         prev.map((event) =>
           event.id === eventId
             ? {
@@ -827,7 +857,7 @@ function RealTripRecordingScreen({
   );
 
   const removeRealTimelineEvent = useCallback((eventId: string) => {
-    setTripEvents((prev) => prev.filter((event) => event.id !== eventId));
+    setTripEvents((prev: TimelineEvent[]) => prev.filter((event) => event.id !== eventId));
   }, []);
 
   const updateRealExpenseEvent = useCallback(
@@ -845,7 +875,7 @@ function RealTripRecordingScreen({
         >
       >,
     ) => {
-      setTripEvents((prev) =>
+      setTripEvents((prev: TimelineEvent[]) =>
         prev.map((event) =>
           event.id === eventId
             ? {
@@ -909,6 +939,7 @@ function RealTripRecordingScreen({
     let cancelled = false;
 
     const loadRealTripData = async () => {
+      console.log(`[TripRecording] Loading data for ${activeTripId}. Current user: ${currentUserId}`);
       try {
         const [tripDetailResponse, timelineDaysResponse, expensesResponse, tripMembersResponse] = await Promise.all([
           getTripDetailApi(activeTripId),
@@ -917,144 +948,170 @@ function RealTripRecordingScreen({
           getTripMembersApi(activeTripId),
         ]);
 
-        const timelineDays = (await Promise.all(
-          timelineDaysResponse.data.timelineDays.map(async (timelineDay) => {
-            try {
-              const detailResponse = await getTimelineDayDetailApi(timelineDay.timelineDayId);
-              return detailResponse.success ? detailResponse.data : null;
-            } catch (e) {
-              console.warn(`Failed to fetch detail for day ${timelineDay.timelineDayId}`, e);
-              return null;
-            }
-          }),
-        )).filter((d): d is TimelineDayDetail => Boolean(d));
-        const eventDetails = await Promise.all(
-          timelineDays.flatMap((timelineDay) =>
-            timelineDay.events
-              .filter((event) => !event.hidden)
-              .map(async (event) => {
-                const detailResponse = await getEventDetailApi(event.eventId);
-                return detailResponse.success ? detailResponse.data : null;
-              }),
-          ),
-        );
-        const validEventDetails = eventDetails.filter((eventDetail): eventDetail is EventDetail => Boolean(eventDetail));
-        const uniquePhotoIds = Array.from(
-          new Set(validEventDetails.flatMap((eventDetail) => eventDetail.photos.map((photo) => photo.photoId))),
-        );
-        const photoDetails = await Promise.all(
-          uniquePhotoIds.map(async (photoId) => {
-            const photoDetailResponse = await getPhotoDetailApi(photoId);
-            return photoDetailResponse.success ? photoDetailResponse.data : null;
-          }),
-        );
-        const routeByDate = new Map<string, Coordinate[]>();
-        const uniqueDates = Array.from(new Set([
-          ...timelineDays.map(d => d.dayDate),
-          new Date().toISOString().split('T')[0]
-        ]));
+        if (cancelled) return;
 
-        await Promise.all(
-          uniqueDates.map(async (date) => {
-            try {
-              const routeResponse = await getTripRouteByDayApi(activeTripId, date);
-              if (routeResponse.success) {
-                routeByDate.set(date, normalizeRouteCoordinates(routeResponse.data.routeDays));
-              }
-            } catch (e) {
-              console.warn(`Failed to fetch route for date ${date}`, e);
-            }
-          })
-        );
-
-        if (cancelled) {
-          return;
-        }
-
-        const eventDetailsById = Object.fromEntries(validEventDetails.map((eventDetail) => [eventDetail.eventId, eventDetail]));
-        const photoDetailsById = Object.fromEntries(
-          photoDetails
-            .filter((photoDetail): photoDetail is PhotoDetail => Boolean(photoDetail))
-            .map((photoDetail) => [photoDetail.photoId, photoDetail]),
-        );
-        const memberMap = tripMembersResponse.success
-          ? Object.fromEntries(tripMembersResponse.data.items.map((member) => [member.userId, member]))
-          : {};
-
+        // 1. Set Trip Detail immediately for UI titles and 'End Trip' button visibility
         if (tripDetailResponse.success) {
-          setLoadedTripDetail(tripDetailResponse.data);
-          if (!isReviewMode && tripDetailResponse.data.status !== 'ACTIVE') {
-            setActiveTrip(tripDetailResponse.data);
-            router.replace({
-              pathname: '/trip/recording',
-              params: { mode: 'review', tripId: activeTripId },
-            });
-            return;
+          const tripData = tripDetailResponse.data;
+          setLoadedTripDetail(tripData);
+
+          // OWNERSHIP CHECK: If we are in recording mode but don't own this trip
+          // and it's not a trip we should be recording, treat as ghost data.
+          if (!isReviewMode && tripData.ownerUserId && currentUserId && tripData.ownerUserId !== currentUserId) {
+             console.warn('Trip ownership mismatch. Clearing stale trip state.');
+             clearTrip();
+             router.replace('/(tabs)');
+             return;
           }
 
           if (!isReviewMode) {
-            setActiveTrip(tripDetailResponse.data);
+            setActiveTrip(tripData);
+            if (tripData.status !== 'ACTIVE') {
+              router.replace({
+                pathname: '/trip/recording',
+                params: { mode: 'review', tripId: activeTripId },
+              });
+              return;
+            }
           }
         }
-        setTripMembers(tripMembersResponse.success ? tripMembersResponse.data.items : []);
-        setRealTripDays(buildRealTripDays(
-          timelineDays, 
-          routeByDate, 
-          activeTripId, 
-          tripDetailResponse.data?.startDate,
-          tripDetailResponse.data?.endDate
-        ));
-        setTripEvents(
-          appendRealExpenseEvents(
-            buildRealTripEvents(
+
+        // 2. Process secondary data (Timeline, Events, Photos, Routes)
+        if (timelineDaysResponse.success && timelineDaysResponse.data?.timelineDays) {
+          const timelineDays = (await Promise.all(
+            timelineDaysResponse.data.timelineDays.map(async (timelineDay) => {
+              try {
+                const detailResponse = await getTimelineDayDetailApi(timelineDay.timelineDayId);
+                return detailResponse.success ? detailResponse.data : null;
+              } catch (e) {
+                console.warn(`Failed to fetch detail for day ${timelineDay.timelineDayId}`, e);
+                return null;
+              }
+            }),
+          )).filter((d): d is TimelineDayDetail => Boolean(d));
+
+          // Fetch Event Details
+          const eventDetails = await Promise.all(
+            timelineDays.flatMap((timelineDay) =>
+              timelineDay.events
+                .filter((event) => !event.hidden)
+                .map(async (event) => {
+                  const detailResponse = await getEventDetailApi(event.eventId);
+                  return detailResponse.success ? detailResponse.data : null;
+                }),
+            ),
+          );
+          const validEventDetails = eventDetails.filter((eventDetail): eventDetail is EventDetail => Boolean(eventDetail));
+
+          // Fetch Photo Details
+          const uniquePhotoIds = Array.from(
+            new Set(validEventDetails.flatMap((eventDetail) => eventDetail.photos.map((photo) => photo.photoId))),
+          );
+          const photoDetails = await Promise.all(
+            uniquePhotoIds.map(async (photoId) => {
+              const photoDetailResponse = await getPhotoDetailApi(photoId);
+              return photoDetailResponse.success ? photoDetailResponse.data : null;
+            }),
+          );
+
+          // Fetch Routes
+          const routeByDate = new Map<string, Coordinate[]>();
+          const uniqueDates = buildTripDateKeys(
+            tripDetailResponse.data?.startDate,
+            tripDetailResponse.data?.endDate,
+            timelineDays.map((day) => day.dayDate),
+          );
+
+          await Promise.all(
+            uniqueDates.map(async (date) => {
+              try {
+                if (!activeTripId) return;
+                const routeResponse = await getTripRouteByDayApi(activeTripId, date);
+                if (routeResponse.success) {
+                  routeByDate.set(date, normalizeRouteCoordinates(routeResponse.data.routeDays));
+                }
+              } catch (e) {
+                console.warn(`Failed to fetch route for date ${date}`, e);
+              }
+            })
+          );
+
+          if (cancelled) return;
+
+          // Mapping helpers
+          const eventDetailsById = Object.fromEntries(validEventDetails.map((eventDetail) => [eventDetail.eventId, eventDetail]));
+          const photoDetailsById = Object.fromEntries(
+            photoDetails
+              .filter((photoDetail): photoDetail is PhotoDetail => Boolean(photoDetail))
+              .map((photoDetail) => [photoDetail.photoId, photoDetail]),
+          );
+          const acceptedTripMembers = tripMembersResponse.success
+            ? filterAcceptedTripMembers(tripMembersResponse.data.items)
+            : [];
+          const memberMap = Object.fromEntries(acceptedTripMembers.map((member) => [member.userId, member]));
+
+          // Final State Updates
+          setTripMembers(acceptedTripMembers);
+          setRealTripDays(buildRealTripDays(
+            timelineDays, 
+            routeByDate, 
+            tripDetailResponse.data?.startDate,
+            tripDetailResponse.data?.endDate
+          ));
+          setTripEvents(
+            appendRealExpenseEvents(
+              buildRealTripEvents(
+                timelineDays,
+                eventDetailsById,
+                photoDetailsById,
+                memberMap,
+                currentUserId,
+                currentUserNickname,
+              ),
               timelineDays,
-              eventDetailsById,
-              photoDetailsById,
+              expensesResponse?.data?.items ?? [],
               memberMap,
               currentUserId,
               currentUserNickname,
             ),
-            timelineDays,
-            expensesResponse?.data?.items ?? [],
-            memberMap,
-            currentUserId,
-            currentUserNickname,
-          ),
-        );
-        
-        // Prune session trail based on the last synced log.
+          );
+        }
+
+        // 3. Prune session trail based on the last synced log.
         const lastSyncedUuid = useTripStore.getState().lastSyncedLogUuid;
         if (lastSyncedUuid) {
-          setSessionTrail(prev => {
+          setSessionTrail((prev: LocationLog[]) => {
             const syncedIndex = prev.findIndex(l => l.clientLogUuid === lastSyncedUuid);
-            if (syncedIndex !== -1) {
-              return prev.slice(syncedIndex + 1);
-            }
-            return prev;
+            return syncedIndex !== -1 ? prev.slice(syncedIndex + 1) : prev;
           });
-          // Reset matched trail so it starts fresh from the pruned session trail
-          setMatchedSessionTrail([]);
-          lastMatchedIndexRef.current = 0;
         } else {
-          // Fallback to time-based pruning if no UUID (e.g. initial load)
-          setSessionTrail(prev => {
+          setSessionTrail((prev: LocationLog[]) => {
             const twoMinsAgo = new Date(Date.now() - 120000).toISOString();
             return prev.filter(l => l.recordedAt > twoMinsAgo);
           });
-          setMatchedSessionTrail([]);
-          lastMatchedIndexRef.current = 0;
         }
-      } catch (error) {
-        if (cancelled) {
+        setMatchedSessionTrail([]);
+        lastMatchedIndexRef.current = 0;
+      } catch (err: any) {
+        if (cancelled) return;
+
+        console.error('Failed to load real trip data', err);
+
+        // SELF-HEALING: If the Trip ID is not found on the server (404),
+        // it means our local storage is stale (e.g. from a different account).
+        if (err?.response?.status === 404 || err?.status === 404) {
+          Alert.alert(
+            '여행을 찾을 수 없음',
+            '해당 여행 정보를 찾을 수 없습니다. 홈화면으로 이동합니다.',
+            [{ text: '확인', onPress: () => {
+              clearTrip();
+              router.replace('/(tabs)');
+            }}]
+          );
           return;
         }
 
-        console.error('Failed to load real trip data', error);
-        setLoadedTripDetail(null);
-        setRealTripDays(null);
-        setTripEvents([]);
-        setTripMembers([]);
-        Alert.alert('Trip data load failed', 'Could not load real trip data.');
+        Alert.alert('Trip data partially failed', 'Could not load your full travel history.');
       }
     };
 
@@ -1063,7 +1120,7 @@ function RealTripRecordingScreen({
     return () => {
       cancelled = true;
     };
-  }, [activeTripId, currentUserId, currentUserNickname, isReviewMode, routeRefreshKey, setActiveTrip]);
+  }, [activeTripId, currentUserId, currentUserNickname, isReviewMode, routeRefreshKey, setActiveTrip, router, clearTrip]);
 
 
   useEffect(() => {
@@ -1077,7 +1134,7 @@ function RealTripRecordingScreen({
       const coord: Coordinate = [location.longitude, location.latitude];
       setLiveCurrentLocation(coord);
       if (!isReviewMode) {
-        setSessionTrail((prev) => {
+        setSessionTrail((prev: LocationLog[]) => {
           // Avoid duplicates
           if (prev.length > 0 && prev[prev.length - 1].recordedAt === location.recordedAt) return prev;
           return [...prev, location];
@@ -1090,9 +1147,9 @@ function RealTripRecordingScreen({
       
       const refreshPendingLogs = () => {
         locationService.getPendingLogs().then((logs) => {
-          setSessionTrail((prev) => {
+          setSessionTrail((prev: LocationLog[]) => {
             const combined = [...logs, ...prev];
-            const unique = Array.from(new Map(combined.map(l => [l.recordedAt, l])).values())
+            const unique = Array.from(new Map(combined.map((l: LocationLog) => [l.recordedAt, l] as const)).values())
               .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
             return unique;
           });
@@ -1151,22 +1208,22 @@ function RealTripRecordingScreen({
         try {
           const matched = await matchMapTrace(chunkToMatch, 'walking');
           if (matched && matched.length > 0) {
-            setMatchedSessionTrail(prev => {
+            setMatchedSessionTrail((prev: Coordinate[]) => {
               const nextBase = startIndex === 0 ? [] : prev;
               return [...nextBase, ...matched];
             });
           } else {
             // Fallback: use raw points if matching fails (e.g. non-road path like a train)
-            setMatchedSessionTrail(prev => {
+            setMatchedSessionTrail((prev: Coordinate[]) => {
               const nextBase = startIndex === 0 ? [] : prev;
               return [...nextBase, ...chunkToMatch];
             });
           }
           // Advance index regardless to avoid infinite retries of failing segments
           lastMatchedIndexRef.current = startIndex + chunkToMatch.length;
-        } catch (error) {
-          console.warn('[Map Matching] Failed to match segment, falling back to raw:', error);
-          setMatchedSessionTrail(prev => {
+        } catch (err) {
+          console.warn('[Map Matching] Failed to match segment, falling back to raw:', err);
+          setMatchedSessionTrail((prev: Coordinate[]) => {
             const nextBase = startIndex === 0 ? [] : prev;
             return [...nextBase, ...chunkToMatch];
           });
@@ -1309,6 +1366,11 @@ function RealTripRecordingScreen({
       }
 
       try {
+        const { photoPerm } = useUserStore.getState().settings;
+        if (!photoPerm) {
+          return { outcome: 'skipped_app_setting', syncedCount: 0 };
+        }
+
         const photoPermission = await requestTripPhotoPermission();
 
         if (!photoPermission.granted) {
@@ -1396,6 +1458,14 @@ function RealTripRecordingScreen({
       return false;
     }
 
+    const { locationPerm, photoPerm } = useUserStore.getState().settings;
+
+    // Early exit if both are disabled - don't show "Success" toast for nothing
+    if (!locationPerm && !photoPerm) {
+      setLocationSyncState('idle', '설정에서 위치와 사진 정보 수집이 모두 비활성화되어 있어 동기화를 건너뛰었습니다.');
+      return true;
+    }
+
     const photoResult = await syncTripPhotosOnly({ showStatus: true });
     const locationSynced = await locationService.syncLocations(activeTripId);
 
@@ -1403,27 +1473,25 @@ function RealTripRecordingScreen({
       return false;
     }
 
+    let finalMessage = '';
+    const locStatus = locationPerm ? '위치 기록 동기화를 완료했습니다' : '위치 기록은 건너뛰었습니다';
+
     if (photoResult.outcome === 'synced') {
-      setLocationSyncState('completed', `위치 기록과 여행 사진 ${photoResult.syncedCount}장을 동기화했습니다.`);
-      return true;
+      finalMessage = `${locationPerm ? '위치 기록과 ' : ''}여행 사진 ${photoResult.syncedCount}장을 동기화했습니다.`;
+    } else if (photoResult.outcome === 'failed') {
+      finalMessage = `${locStatus}, 사진 동기화는 실패했습니다.`;
+    } else if (photoResult.outcome === 'skipped_permission') {
+      finalMessage = `${locStatus}, 사진 접근 권한이 없어 사진은 건너뛰었습니다.`;
+    } else if (photoResult.outcome === 'skipped_app_setting') {
+      finalMessage = `${locStatus}, 설정에서 사진 수집이 비활성화되어 있어 사진은 건너뛰었습니다.`;
+    } else if (photoResult.outcome === 'skipped_range') {
+      finalMessage = `${locStatus}, 여행 기간 정보가 없어 사진은 건너뛰었습니다.`;
+    } else {
+      // outcome === 'empty'
+      finalMessage = `${locStatus} (새로 동기화할 사진은 없습니다).`;
     }
 
-    if (photoResult.outcome === 'failed') {
-      setLocationSyncState('completed', '위치 기록은 동기화했고, 사진 동기화는 실패했습니다.');
-      return true;
-    }
-
-    if (photoResult.outcome === 'skipped_permission') {
-      setLocationSyncState('completed', '위치 기록은 동기화했고, 사진 권한이 없어 사진은 건너뛰었습니다.');
-      return true;
-    }
-
-    if (photoResult.outcome === 'skipped_range') {
-      setLocationSyncState('completed', '위치 기록은 동기화했고, 여행 기간 정보가 없어 사진은 건너뛰었습니다.');
-      return true;
-    }
-
-    setLocationSyncState('completed', '위치 기록 동기화가 완료되었습니다. 새로 가져올 여행 사진은 없습니다.');
+    setLocationSyncState('completed', finalMessage);
     return true;
   }, [activeTripId, setLocationSyncState, syncTripPhotosOnly]);
 
@@ -1476,7 +1544,13 @@ function RealTripRecordingScreen({
   }, [activeTripId, isReviewMode, runAutoPhotoSync]);
 
   const handleOpenReport = () => {
-    router.push(isReviewMode ? `${reportRoute}?mode=review` : reportRoute);
+    router.push({
+      pathname: reportRoute,
+      params: {
+        tripId: activeTripId,
+        mode: isReviewMode ? 'review' : undefined,
+      },
+    });
   };
 
   const handleEndTrip = () => {
@@ -1546,7 +1620,24 @@ function RealTripRecordingScreen({
       try {
         setIsSyncing(true);
         stopAutoPhotoSync();
-        await syncTripAssets();
+        
+        // Ownership check before calling end api (extra safety)
+        if (!isTripOwner) {
+          Alert.alert('권한 없음', '여행 종료는 방장(생성자)만 할 수 있습니다.');
+          return;
+        }
+
+        // Start sync but we can proceed as soon as status becomes 'processing' (upload complete)
+        const syncPromise = syncTripAssets();
+        
+        // Wait a bit to see if sync reaches 'processing' quickly
+        let iters = 0;
+        while (iters < 15 && useTripStore.getState().locationSyncStatus !== 'processing' 
+               && useTripStore.getState().locationSyncStatus !== 'completed') {
+          await new Promise(r => setTimeout(r, 1000));
+          iters++;
+        }
+
         const response = await endTripApi(activeTripId);
 
         if (!response.success) {
@@ -1561,9 +1652,13 @@ function RealTripRecordingScreen({
 
         await locationService.stopTracking();
         locationService.stopAutoSync();
+        resetLocationSyncState(); // CLEAR SYNC TOAST BEFORE NAVIGATING
         endTrip();
         void fetchTrips(true);
-        router.push(`${reportRoute}?mode=review`);
+        router.replace({
+          pathname: reportRoute,
+          params: { tripId: activeTripId, mode: 'review' },
+        });
       } finally {
         setIsSyncing(false);
         setIsSubmittingAction(false);
@@ -1876,13 +1971,13 @@ function RealTripRecordingScreen({
   };
 
   const togglePaymentMember = (memberUserId: string) => {
-    setPaymentImportDialog((prev) => {
+    setPaymentImportDialog((prev: any) => {
       if (!prev) {
         return prev;
       }
 
       const nextMembers = prev.selectedMemberUserIds.includes(memberUserId)
-        ? prev.selectedMemberUserIds.filter((member) => member !== memberUserId)
+        ? prev.selectedMemberUserIds.filter((member: string) => member !== memberUserId)
         : [...prev.selectedMemberUserIds, memberUserId];
 
       return {
@@ -1932,27 +2027,6 @@ function RealTripRecordingScreen({
     }
   };
 
-  const openEmotionPicker = (event: TimelineEvent) => {
-    Alert.alert('감정 기능 준비 중', '감정 기록은 아직 실데이터와 연결되지 않았어요.');
-  };
-
-  const selectEmotion = (_emoji: string, _label: string) => {
-    if (!emotionPicker) {
-      return;
-    }
-
-    Alert.alert('감정 기능 준비 중', '감정 기록은 아직 실데이터와 연결되지 않았어요.');
-    setEmotionPicker(null);
-  };
-
-  const clearEmotion = () => {
-    if (!emotionPicker) {
-      return;
-    }
-
-    Alert.alert('감정 기능 준비 중', '감정 기록은 아직 실데이터와 연결되지 않았어요.');
-    setEmotionPicker(null);
-  };
 
   if (!activeTripId && !isReviewMode) {
     return (
@@ -2015,7 +2089,7 @@ function RealTripRecordingScreen({
               <Text style={styles.syncHeaderButtonText}>{syncActionInFlight ? '동기화 중' : '동기화'}</Text>
             </TouchableOpacity>
           ) : null}
-          <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev) => !prev)} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.moreButton} onPress={() => setIsMenuOpen((prev: boolean) => !prev)} activeOpacity={0.85}>
             <MaterialIcons name="more-horiz" size={22} color="#274232" />
           </TouchableOpacity>
           </View>
@@ -2068,7 +2142,7 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>앨범 보기</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, (!isTripOwner || !canUseActiveTripActions) && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); handleEndTrip(); }} activeOpacity={0.85}>
               <MaterialIcons name="flag" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 종료</Text>
             </TouchableOpacity>
@@ -2082,7 +2156,7 @@ function RealTripRecordingScreen({
                 <Text style={styles.menuItemText}>여행 삭제</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={[styles.menuItem, !canUseActiveTripActions && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); router.push('/trip/start?mode=edit'); }} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.menuItem, (!isTripOwner || !canUseActiveTripActions) && styles.hiddenAction]} onPress={() => { setIsMenuOpen(false); router.push('/trip/start?mode=edit'); }} activeOpacity={0.85}>
               <MaterialIcons name="edit" size={18} color="#244934" />
               <Text style={styles.menuItemText}>여행 수정</Text>
             </TouchableOpacity>
@@ -2259,11 +2333,6 @@ function RealTripRecordingScreen({
                           {selectedPhotoEvent?.eventMemo ?? selectedPhotoEvent?.subtitle}
                         </Text>
 
-                        {selectedPhotoEmotion ? <Text style={styles.photoModalSectionLabel}>내 감정 기록</Text> : null}
-                        {selectedPhotoEmotion ? (
-                          <Text style={styles.photoModalSectionBody}>{selectedPhotoEmotion}</Text>
-                        ) : null}
-
                         <Text style={styles.photoModalSectionLabel}>사진 메모</Text>
                         <Text style={styles.photoModalSectionBody}>
                           {photoItem.memo ?? '이 사진에 대한 메모가 아직 없어요.'}
@@ -2376,42 +2445,6 @@ function RealTripRecordingScreen({
         </Pressable>
       </Modal>
 
-      <Modal visible={Boolean(emotionPicker)} transparent animationType="slide" onRequestClose={() => setEmotionPicker(null)}>
-        <Pressable style={styles.sheetBackdrop} onPress={() => setEmotionPicker(null)}>
-          <Pressable style={styles.importSheetCard} onPress={() => undefined}>
-            <View style={styles.importSheetHandle} />
-            <Text style={styles.importSheetEyebrow}>내 감정 기록</Text>
-            <Text style={styles.importSheetTitle}>이 이벤트에 대한 내 기분을 남겨보세요.</Text>
-            <View style={styles.emotionOptionGrid}>
-              {EMOTION_OPTIONS.map((option) => {
-                const isActive =
-                  emotionPicker?.selectedEmoji === option.emoji && emotionPicker?.selectedLabel === option.label;
-
-                return (
-                  <TouchableOpacity
-                    key={`${option.emoji}-${option.label}`}
-                    style={[styles.emotionOptionCard, isActive && styles.emotionOptionCardActive]}
-                    activeOpacity={0.88}
-                    onPress={() => selectEmotion(option.emoji, option.label)}
-                  >
-                    <Text style={styles.emotionOptionEmoji}>{option.emoji}</Text>
-                    <Text style={[styles.emotionOptionLabel, isActive && styles.emotionOptionLabelActive]}>{option.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={styles.importActionRow}>
-              <TouchableOpacity style={styles.deleteDialogGhostButton} onPress={() => setEmotionPicker(null)} activeOpacity={0.88}>
-                <Text style={styles.deleteDialogGhostButtonText}>취소</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.emotionClearButton} onPress={clearEmotion} activeOpacity={0.88}>
-                <Text style={styles.emotionClearButtonText}>기록 삭제</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
       <Modal visible={Boolean(eventEditor)} transparent animationType="fade" onRequestClose={() => setEventEditor(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setEventEditor(null)}>
           <Pressable style={styles.modalCard} onPress={() => undefined}>
@@ -2476,7 +2509,7 @@ function RealTripRecordingScreen({
         </Pressable>
       </Modal>
 
-      <View style={[styles.floatingMapWrap, { height: mapHeight, borderRadius: mapRadius }]}>
+      <Animated.View style={[styles.floatingMapWrap, { height: mapHeight, borderRadius: mapRadius }]}>
         <Mapbox.MapView
           style={StyleSheet.absoluteFill}
           styleURL={Mapbox.StyleURL.Outdoors}
@@ -2608,16 +2641,17 @@ function RealTripRecordingScreen({
             );
           })}
         </ScrollView>
-      </View>
+      </Animated.View>
 
       <Animated.ScrollView
         ref={scrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
-        onScroll={(event) => {
-          setScrollOffset(event.nativeEvent.contentOffset.y);
-        }}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false },
+        )}
         refreshControl={
           <RefreshControl
             refreshing={false}
@@ -2630,7 +2664,7 @@ function RealTripRecordingScreen({
           />
         }
       >
-        <View
+        <Animated.View
           style={[
             styles.panel,
             {
@@ -2698,10 +2732,6 @@ function RealTripRecordingScreen({
               const theme = EVENT_THEME[event.type];
               const isSelected = selectedEventId === event.id;
               const isPaymentConfirmed = event.type === 'payment' && event.paymentStatus === 'confirmed';
-              const emotionValue =
-                event.emotionOwnerId === currentUserId && event.emotionEmoji && event.emotionLabel
-                  ? `${event.emotionEmoji} ${event.emotionLabel}`
-                  : null;
 
               return (
                 <View key={event.id} style={styles.timelineRow} onLayout={(layoutEvent) => handleEventLayout(event.id, layoutEvent)}>
@@ -2799,19 +2829,6 @@ function RealTripRecordingScreen({
                             <Text style={[styles.eventChipText, { color: theme.accent }]}>{chip}</Text>
                           </View>
                         ))}
-                        <TouchableOpacity
-                          style={[styles.eventEmotionChip, emotionValue && styles.eventEmotionChipActive]}
-                          activeOpacity={0.82}
-                          onPress={(pressEvent) => {
-                            pressEvent.stopPropagation();
-                            openEmotionPicker(event);
-                          }}
-                        >
-                          <MaterialIcons name="mood" size={13} color={emotionValue ? '#8C561A' : '#7A867F'} />
-                          <Text style={[styles.eventEmotionChipText, emotionValue && styles.eventEmotionChipTextActive]}>
-                            {emotionValue ?? '감정 추가'}
-                          </Text>
-                        </TouchableOpacity>
                       </View>
                       <View style={styles.photoEventActionRow}>
                         <TouchableOpacity
@@ -2853,13 +2870,13 @@ function RealTripRecordingScreen({
               </TouchableOpacity>
             </View>
           ) : null}
-          <View style={[styles.bottomActions, !canUseActiveTripActions && styles.hiddenAction]}>
+          <View style={[styles.bottomActions, !canEndActiveTrip && styles.hiddenAction]}>
             <TouchableOpacity style={styles.endButton} onPress={handleEndTrip} activeOpacity={0.88}>
               <Text style={styles.endButtonText}>여행 종료</Text>
             </TouchableOpacity>
           </View>
           </View>
-        </View>
+        </Animated.View>
       </Animated.ScrollView>
     </SafeAreaView>
   );
@@ -3191,34 +3208,6 @@ const styles = StyleSheet.create({
   importMemberChipText: { fontFamily: 'Pretendard-Medium', fontSize: 13, color: '#52635A' },
   importMemberChipTextActive: { color: '#F7FBF6' },
   importMemoInput: { minHeight: 92 },
-  emotionOptionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 18 },
-  emotionOptionCard: {
-    width: '31%',
-    minWidth: 92,
-    borderRadius: 20,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F4F7F3',
-    borderWidth: 1,
-    borderColor: '#DCE4DE',
-  },
-  emotionOptionCardActive: {
-    backgroundColor: '#FFF1E3',
-    borderColor: '#D98935',
-  },
-  emotionOptionEmoji: { fontSize: 24 },
-  emotionOptionLabel: { marginTop: 8, fontFamily: 'Pretendard-SemiBold', fontSize: 13, color: '#52635A' },
-  emotionOptionLabelActive: { color: '#9A5B16' },
-  emotionClearButton: {
-    flex: 1,
-    height: 50,
-    borderRadius: 18,
-    backgroundColor: '#FFF1EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emotionClearButtonText: { fontFamily: 'Pretendard-SemiBold', fontSize: 15, color: '#B25543' },
   importSummaryCard: {
     marginTop: 14,
     borderRadius: 18,
@@ -3346,24 +3335,6 @@ const styles = StyleSheet.create({
   paymentHelperText: { fontFamily: 'Pretendard-Medium', fontSize: 12, color: '#6E7B74' },
   eventSubtitle: { marginTop: 6, fontFamily: 'Pretendard-Regular', fontSize: 14, lineHeight: 21, color: '#708076' },
   eventMemoText: { marginTop: 8, fontFamily: 'Pretendard-Regular', fontSize: 13, lineHeight: 20, color: '#55635B' },
-  eventEmotionChip: {
-    height: 30,
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    backgroundColor: '#F5F7F4',
-    borderWidth: 1,
-    borderColor: '#DEE5DF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  eventEmotionChipActive: {
-    backgroundColor: '#FFF5E8',
-    borderColor: '#E7CDA5',
-  },
-  eventEmotionChipText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#78857D' },
-  eventEmotionChipTextActive: { color: '#86531C' },
   photoByWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   photoByText: { fontFamily: 'Pretendard-SemiBold', fontSize: 12, color: '#708076' },
   avatarStack: { flexDirection: 'row', alignItems: 'center', paddingLeft: 10 },

@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { createSettlementApi, getSettlementDetailApi, getTripSettlementsApi, SettlementDetail } from '@/src/api/settlement';
+import { getLatestSettlementApi, SettlementDetail } from '@/src/api/settlement';
 import { getTripsApi, TripListItem } from '@/src/api/trip';
 import { useTripStore, useUserStore } from '@/src/store';
 
@@ -12,7 +12,6 @@ const formatCurrency = (amount: number) => `${KRW_FORMATTER.format(Math.round(am
 const resolveMessage = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback);
 
 export default function PaymentSettlementScreen() {
-  const router = useRouter();
   const params = useLocalSearchParams<{ tripId?: string }>();
   const currentTripId = useTripStore((state) => state.currentTripId);
   const currentTrip = useTripStore((state) => state.currentTrip);
@@ -49,18 +48,12 @@ export default function PaymentSettlementScreen() {
       const selectedTrip = availableTrips.find((item) => item.tripId === activeTripId) ?? null;
       setTrip(selectedTrip);
 
-      const settlementsResponse = await getTripSettlementsApi(activeTripId);
-      if (!settlementsResponse.success) throw new Error(settlementsResponse.message ?? '정산 목록을 불러오지 못했습니다.');
-
-      const latestSettlement = settlementsResponse.data.items[0];
-      if (!latestSettlement) {
-        setSettlementDetail(null);
-        return;
+      const latestSettlementResponse = await getLatestSettlementApi(activeTripId);
+      if (!latestSettlementResponse.success) {
+        throw new Error(latestSettlementResponse.message ?? '정산 상세를 불러오지 못했습니다.');
       }
 
-      const detailResponse = await getSettlementDetailApi(latestSettlement.settlementId);
-      if (!detailResponse.success) throw new Error(detailResponse.message ?? '정산 상세를 불러오지 못했습니다.');
-      setSettlementDetail(detailResponse.data);
+      setSettlementDetail(latestSettlementResponse.data);
     } catch (error) {
       setErrorMessage(resolveMessage(error, '정산 정보를 불러오지 못했습니다.'));
     } finally {
@@ -72,24 +65,6 @@ export default function PaymentSettlementScreen() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
-
-  const handleCreateSettlement = useCallback(async () => {
-    if (!activeTripId) return;
-
-    setIsLoading(true);
-    try {
-      const response = await createSettlementApi(activeTripId, {});
-      if (!response.success) throw new Error(response.message ?? '정산 생성에 실패했습니다.');
-
-      const detailResponse = await getSettlementDetailApi(response.data.settlementId);
-      if (!detailResponse.success) throw new Error(detailResponse.message ?? '정산 상세를 불러오지 못했습니다.');
-      setSettlementDetail(detailResponse.data);
-    } catch (error) {
-      setErrorMessage(resolveMessage(error, '정산 생성에 실패했습니다.'));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activeTripId]);
 
   const mySettlement = useMemo(
     () => settlementDetail?.memberSettlements.find((item) => item.userId === currentUserId) ?? null,
@@ -119,9 +94,6 @@ export default function PaymentSettlementScreen() {
         >
           <View style={styles.hero}>
             <View style={styles.headerRowAligned}>
-              <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-                <Ionicons name="arrow-back" size={26} color="#333" />
-              </TouchableOpacity>
               <Text style={styles.heroPeriod}>{formatPeriod(displayTrip?.startDate, displayTrip?.endDate)}</Text>
             </View>
             <Text style={styles.heroTitle}>{(displayTrip as any)?.title ?? (displayTrip as any)?.tripName ?? '도쿄 여행'}</Text>
@@ -141,10 +113,9 @@ export default function PaymentSettlementScreen() {
           {!settlementDetail ? (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>아직 생성된 정산이 없습니다</Text>
-              <Text style={styles.emptyDescription}>가계부에서 기록된 비용을 기준으로 정산을 생성해 주세요.</Text>
-              <TouchableOpacity style={styles.createButton} onPress={() => void handleCreateSettlement()}>
-                <Text style={styles.createButtonText}>정산 생성</Text>
-              </TouchableOpacity>
+              <Text style={styles.emptyDescription}>
+                확정된 지출이 없어 최신 정산을 불러오지 못했습니다. 비용 정보를 확인한 뒤 다시 시도해 주세요.
+              </Text>
             </View>
           ) : (
             <>
@@ -199,12 +170,7 @@ const styles = StyleSheet.create({
   headerRowAligned: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginLeft: -4,
     marginBottom: 4,
-  },
-  backButton: {
-    padding: 4,
   },
   content: {
     paddingTop: 32,
@@ -276,19 +242,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 24,
     color: '#8E8E8E',
-  },
-  createButton: {
-    marginTop: 12,
-    backgroundColor: '#4D8BEF',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-  },
-  createButtonText: {
-    fontFamily: 'Pretendard-SemiBold',
-    fontSize: 16,
-    color: '#FFFFFF',
   },
   summarySection: {
     gap: 10,

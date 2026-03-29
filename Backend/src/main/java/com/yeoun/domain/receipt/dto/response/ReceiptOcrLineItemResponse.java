@@ -3,21 +3,25 @@ package com.yeoun.domain.receipt.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public record ReceiptOcrLineItemResponse(
-        @Schema(description = "정렬 순서")
+        @Schema(description = "OCR line item id")
+        UUID ocrLineItemId,
+
+        @Schema(description = "Line item sort order")
         int sortOrder,
 
-        @Schema(description = "품목명")
+        @Schema(description = "Line item name")
         String name,
 
-        @Schema(description = "수량")
+        @Schema(description = "Quantity")
         BigDecimal quantity,
 
-        @Schema(description = "단가")
+        @Schema(description = "Unit price")
         BigDecimal unitPrice,
 
-        @Schema(description = "금액")
+        @Schema(description = "Amount")
         BigDecimal amount
 ) {
 }

@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getTripPlaceholder } from '@/src/utils/image-utils';
 import { TripCard, TripData } from './TripCard';
 
 interface Props {
@@ -9,9 +8,10 @@ interface Props {
   trips: TripData[];
   onViewMore?: () => void;
   onToggleFavorite?: (id: string) => void;
+  onPressTrip?: (trip: TripData) => void;
 }
 
-export function TripList({ title, trips, onViewMore, onToggleFavorite }: Props) {
+export function TripList({ title, trips, onViewMore, onToggleFavorite, onPressTrip }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -41,8 +41,7 @@ export function TripList({ title, trips, onViewMore, onToggleFavorite }: Props) 
                 if (isLastVisible && onViewMore) {
                   onViewMore();
                 } else {
-                  console.log('Trip pressed:', trip.id);
-                  // Optional: navigate to trip details here if available
+                  onPressTrip?.(trip);
                 }
               }} 
               onPressHeart={() => onToggleFavorite?.(trip.id)}

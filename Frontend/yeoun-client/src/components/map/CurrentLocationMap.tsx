@@ -8,6 +8,7 @@ import { configureMapbox } from '@/src/lib/mapbox';
 
 import { FogOverlay } from './FogOverlay';
 import { PastRoutesLayer } from './PastRoutesLayer';
+import { useFogData } from '@/src/hooks/useFogData';
 
 const hasMapboxToken = configureMapbox();
 
@@ -19,6 +20,7 @@ export function CurrentLocationMap() {
   const [isFogEnabled, setIsFogEnabled] = useState(true);
   const [isFollowing, setIsFollowing] = useState(true);
   const [isCentred, setIsCentred] = useState(false);
+  const { fogFeature } = useFogData(currentLocation);
 
   useEffect(() => {
     let locationSubscription: Location.LocationSubscription | null = null;
@@ -120,25 +122,9 @@ export function CurrentLocationMap() {
 
         <PastRoutesLayer routes={[]} isFogEnabled={false} />
 
-        {isFogEnabled && currentLocation && (
+        {isFogEnabled && fogFeature && (
           <FogOverlay
-            feature={{
-              type: 'Feature',
-              properties: {},
-              geometry: {
-                type: 'GeometryCollection',
-                geometries: [
-                  {
-                    type: 'Point',
-                    coordinates: currentLocation,
-                  },
-                  {
-                    type: 'MultiLineString',
-                    coordinates: [],
-                  },
-                ],
-              },
-            }}
+            feature={fogFeature}
             radiusKm={1}
           />
         )}

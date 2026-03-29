@@ -10,6 +10,7 @@ import { useAuthStore, useUserStore } from '@/src/store';
 import { logoutApi } from '@/src/api/auth';
 import { withdrawAccount } from '@/src/api/user';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { locationService } from '@/src/services/locationService';
 
 const IosSwitch = ({
   value,
@@ -93,6 +94,7 @@ export default function SettingsScreen() {
       }
     }
     updateSettings({ locationPerm: val });
+    void locationService.onPermissionChange(val);
   };
 
   const handlePhotoPermission = async (val: boolean) => {
@@ -216,7 +218,7 @@ export default function SettingsScreen() {
         <Text className="text-xl font-bold text-[#1A1A1A] mb-4">지도 표시 항목</Text>
         <View className="bg-white rounded-[32px] p-5 mb-8">
           <View className="mb-5">
-            <Text className="text-lg font-medium text-[#1A1A1A]">동선만 보기</Text>
+            <Text className="text-lg font-medium text-[#1A1A1A]">기록 전체 보기</Text>
             <Text className="text-sm text-[#7B867E] mt-1">
               지도 위 기록 마커를 모두 숨기고 이동 경로만 보여줘요.
             </Text>

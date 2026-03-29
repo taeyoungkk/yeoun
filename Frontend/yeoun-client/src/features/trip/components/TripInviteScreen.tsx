@@ -35,7 +35,7 @@ type TripInviteScreenProps = {
   onBack: () => void;
   onChangeQuery: (value: string) => void;
   onInviteMember: (candidate: InviteCandidate) => void;
-  onCancelInvite: (memberId: string) => void;
+  onCancelInvite?: (memberId: string) => void;
 };
 
 function getStatusLabel(status: InviteStatus) {
@@ -216,7 +216,7 @@ export function TripInviteScreen({
                       </Text>
                     </View>
 
-                    {member.status === 'pending' ? (
+                    {member.status === 'pending' && onCancelInvite ? (
                       <TouchableOpacity
                         style={styles.cancelButton}
                         onPress={() => onCancelInvite(member.id)}

@@ -398,7 +398,9 @@ export const RegisterScreen = () => {
                 className={`rounded-[15px] py-[18px] items-center mt-10 ${
                   emailStatus !== 'available' || isSendingCode ? 'bg-[#8FA3B8]' : 'bg-primary'
                 }`}
-                onPress={handleNextFromEmail}
+                onPress={() => {
+                  void handleNextFromEmail();
+                }}
                 disabled={emailStatus !== 'available' || isSendingCode}
               >
                 {isSendingCode ? (
@@ -459,7 +461,12 @@ export const RegisterScreen = () => {
 
               <View className="flex-row justify-start mt-2">
                 <Text className="text-[12px] text-[#ABABAB]">인증코드를 받지 못하셨나요? </Text>
-                <TouchableOpacity onPress={handleResendCode} disabled={resendCooldown > 0 || isResendingCode}>
+                <TouchableOpacity
+                  onPress={() => {
+                    void handleResendCode();
+                  }}
+                  disabled={resendCooldown > 0 || isResendingCode}
+                >
                   <Text className="text-[12px] text-primary font-pretendard-bold underline">재전송</Text>
                 </TouchableOpacity>
               </View>
