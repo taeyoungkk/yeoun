@@ -1454,10 +1454,10 @@ function RealTripRecordingScreen({
 
         const photoResult = await syncTripPhotosForDateRange({
           tripId: activeTripId,
-          tripStartedAt: (displayTrip as { startedAt?: string | null } | null)?.startedAt ?? null,
+          tripStartedAt: loadedTripDetail?.startedAt ?? (displayTrip as { startedAt?: string | null } | null)?.startedAt ?? null,
           startDate: displayTrip.startDate,
           endDate: displayTrip.endDate,
-          syncRequestedAt: new Date().toISOString(),
+          syncRequestedAt: loadedTripDetail?.actualEndedAt ?? new Date().toISOString(),
         });
 
         if (!photoResult.success) {
@@ -1475,7 +1475,7 @@ function RealTripRecordingScreen({
         return { outcome: 'failed', syncedCount: 0 };
       }
     },
-    [activeTripId, displayTrip?.endDate, displayTrip?.startDate, setLocationSyncState],
+    [activeTripId, displayTrip?.endDate, displayTrip?.startDate, loadedTripDetail?.actualEndedAt, loadedTripDetail?.startedAt, setLocationSyncState],
   );
 
   const runAutoPhotoSync = useCallback(

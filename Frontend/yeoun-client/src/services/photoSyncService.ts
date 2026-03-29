@@ -91,8 +91,6 @@ const clampDate = (value: Date, min?: Date | null, max?: Date | null) => {
   return next;
 };
 
-const subtractMilliseconds = (value: Date, amount: number) => new Date(value.getTime() - amount);
-
 const parseIsoDate = (value?: string | null) => {
   if (!value) {
     return null;
@@ -345,18 +343,23 @@ export const syncTripPhotosForDateRange = async ({
   syncRequestedAt?: string;
 }): Promise<TripPhotoSyncResult> => {
   const tripStartBoundary = parseIsoDate(tripStartedAt) ?? getStartOfDay(startDate);
-  const tripEndBoundary = parseIsoDate(syncRequestedAt) ?? getEndOfDay(endDate);
+  const tripRangeStart = getStartOfDay(startDate);
+  const tripRangeEnd = getEndOfDay(endDate);
+  const syncUpperBoundary = parseIsoDate(syncRequestedAt) ?? tripRangeEnd;
+  const tripEndBoundary = clampDate(syncUpperBoundary, tripRangeStart, tripRangeEnd);
   const storedCursor = await getStoredPhotoSyncCursor(tripId);
   const normalizedStoredCursor =
     storedCursor && storedCursor >= tripStartBoundary && storedCursor <= tripEndBoundary ? storedCursor : null;
-  const createdAfter = tripStartBoundary;
-  const createdBefore = clampDate(tripEndBoundary, tripStartBoundary, tripEndBoundary);
+  const createdAfter = tripRangeStart;
+  const createdBefore = tripEndBoundary;
 
   logPhotoSync('Resolved sync candidate window.', {
     tripId,
     tripStartedAt: tripStartedAt ?? null,
     startDate,
     endDate,
+    tripRangeStart: tripRangeStart.toISOString(),
+    tripRangeEnd: tripRangeEnd.toISOString(),
     storedCursor: storedCursor?.toISOString() ?? null,
     normalizedStoredCursor: normalizedStoredCursor?.toISOString() ?? null,
     createdAfter: createdAfter.toISOString(),
