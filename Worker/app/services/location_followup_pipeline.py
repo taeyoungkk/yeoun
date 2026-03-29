@@ -114,7 +114,7 @@ class LocationFollowupPipeline:
         route_days = self.route_builder.build_route_days(
             payload.trip_id,
             payload.user_id,
-            move_segments,
+            clean_logs,
         )
         route_days, map_matched_route_day_count, route_day_fallback_count = await self._apply_map_matching(route_days)
         places = self.place_builder.build(

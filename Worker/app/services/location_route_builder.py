@@ -48,31 +48,27 @@ class LocationRouteBuilder:
         self,
         trip_id: str,
         user_id: str,
-        move_segments: list[LocationMoveSegment],
+        clean_logs: list[LocationCleanLog],
     ) -> list[LocationRouteDay]:
-        grouped: dict[str, list[LocationMoveSegment]] = defaultdict(list)
-        for segment in move_segments:
-            grouped[segment.started_at.date().isoformat()].append(segment)
+        grouped: dict[str, list[LocationCleanLog]] = defaultdict(list)
+        for log in clean_logs:
+            grouped[log.recorded_at.date().isoformat()].append(log)
 
         route_days: list[LocationRouteDay] = []
-        for day, segments in sorted(grouped.items()):
-            coordinates = [
-                coordinate
-                for segment in segments
-                for coordinate in segment.coordinates
-            ]
+        for day, logs in sorted(grouped.items()):
+            coordinates = [(log.longitude, log.latitude) for log in logs]
             deduped_coordinates = self._dedupe_coordinates(coordinates)
             if len(deduped_coordinates) < 2:
                 continue
 
-            total_distance = sum(float(segment.distance_m) for segment in segments)
+            total_distance = self._calculate_distance(logs)
             route_days.append(
                 LocationRouteDay(
                     tripId=trip_id,
                     userId=user_id,
                     day=day,
-                    startedAt=segments[0].started_at,
-                    endedAt=segments[-1].ended_at,
+                    startedAt=logs[0].recorded_at,
+                    endedAt=logs[-1].recorded_at,
                     pointCount=len(deduped_coordinates),
                     distanceM=Decimal(str(round(total_distance, 2))),
                     coordinates=deduped_coordinates,
