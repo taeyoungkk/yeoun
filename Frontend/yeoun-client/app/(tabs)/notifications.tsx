@@ -214,15 +214,12 @@ export default function NotificationsScreen() {
 
       if (response.success) {
         if (action === 'accept' && response.data.tripId) {
-          const trips = await fetchTrips(true);
-          const matchedTrip = trips.find((trip) => trip.tripId === response.data.tripId);
-
-          if (matchedTrip) {
-            const tripDetailResponse = await getTripDetailApi(response.data.tripId);
-            if (tripDetailResponse.success) {
-              syncAcceptedTrip(tripDetailResponse.data);
-            }
+          const tripDetailResponse = await getTripDetailApi(response.data.tripId);
+          if (tripDetailResponse.success) {
+            syncAcceptedTrip(tripDetailResponse.data);
           }
+
+          await fetchTrips(true);
         }
 
         await markAsRead(notification.id);
