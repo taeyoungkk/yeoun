@@ -33,6 +33,7 @@ export default function MyPageScreen() {
   const [friendsCount, setFriendsCount] = useState(0);
   const currentAddress = useTripStore((state) => state.currentAddress);
   const locationStatus = useTripStore((state) => state.locationStatus);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
 
   const mapToTripData = (trip: TripListItem): TripData => ({
     id: trip.tripId,
@@ -111,7 +112,10 @@ export default function MyPageScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#EBF3EA]" edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView 
+        contentContainerStyle={{ paddingBottom: 120 }}
+        scrollEnabled={scrollEnabled}
+      >
         <ProfileHeader
           nickname={profile?.nickname || 'Guest'}
           avatarUrl={profile?.profileImageUrl || undefined}
@@ -150,7 +154,11 @@ export default function MyPageScreen() {
           onPressTrip={(trip) => handleOpenTripReport(trip.id)}
         />
   
-        <TravelMap tripIds={monitoredTripIds} />
+        <TravelMap 
+          tripIds={monitoredTripIds} 
+          onInteractionStart={() => setScrollEnabled(false)}
+          onInteractionEnd={() => setScrollEnabled(true)}
+        />
         <TreeRingsChart />
       </ScrollView>
     </SafeAreaView>
