@@ -25,6 +25,27 @@ const getPretendardFont = (className?: string) => {
   return 'Pretendard-Regular';
 };
 
+const localizePasswordErrorMessage = (message?: string) => {
+  if (!message) {
+    return '비밀번호가 올바르지 않습니다. 다시 확인해주세요.';
+  }
+
+  const normalized = message.trim().toLowerCase();
+
+  if (
+    normalized.includes('incorrect password') ||
+    normalized.includes('wrong password') ||
+    normalized.includes('invalid password') ||
+    normalized.includes('current password') ||
+    normalized.includes('password does not match') ||
+    normalized.includes('password mismatch')
+  ) {
+    return '비밀번호가 올바르지 않습니다. 다시 확인해주세요.';
+  }
+
+  return message;
+};
+
 function Text({
   className,
   style,
@@ -176,11 +197,14 @@ export default function EditProfileScreen() {
         alert('프로필과 비밀번호가 성공적으로 변경되었습니다.');
         router.back();
       } else {
-        alert(pwResponse.message || '비밀번호 변경에 실패했습니다. 현재 비밀번호를 확인해주세요.');
+        alert(localizePasswordErrorMessage(pwResponse.message));
       }
     } catch (error) {
       console.error('Failed to update password:', error);
-      alert('비밀번호 변경 중 오류가 발생했습니다.');
+      const serverMessage =
+        (error as any)?.response?.data?.message ||
+        (error as any)?.message;
+      alert(localizePasswordErrorMessage(serverMessage));
     } finally {
       setIsSaving(false);
     }

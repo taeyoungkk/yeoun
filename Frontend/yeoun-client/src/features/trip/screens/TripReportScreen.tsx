@@ -86,6 +86,40 @@ const shortenLocationName = (name: string) => {
     .slice(0, 3);
 };
 
+const cleanLocationLabel = (address: string) =>
+  address.replace(/대한민국\s*\d*/g, '').replace(/,/g, ' ').trim().split(/\s+/)[0] ?? '';
+
+const normalizeRouteCoordinate = (coordinate?: number[]) =>
+  Array.isArray(coordinate) && coordinate.length >= 2 ? ([coordinate[0], coordinate[1]] as [number, number]) : null;
+
+const getRouteBoundaryCoordinates = (
+  routeDays: TripRouteDayListItem[],
+  inFlightLogs: { longitude: number; latitude: number }[],
+) => {
+  const sortedRouteDays = [...routeDays].sort((left, right) => left.day.localeCompare(right.day));
+  const routeCoordinates = sortedRouteDays.flatMap((routeDay) =>
+    routeDay.coordinates
+      .map((coordinate) => normalizeRouteCoordinate(coordinate))
+      .filter((coordinate): coordinate is [number, number] => coordinate !== null),
+  );
+
+  if (routeCoordinates.length > 0) {
+    return {
+      start: routeCoordinates[0],
+      end: routeCoordinates[routeCoordinates.length - 1],
+    };
+  }
+
+  if (inFlightLogs.length > 0) {
+    return {
+      start: [inFlightLogs[0].longitude, inFlightLogs[0].latitude] as [number, number],
+      end: [inFlightLogs[inFlightLogs.length - 1].longitude, inFlightLogs[inFlightLogs.length - 1].latitude] as [number, number],
+    };
+  }
+
+  return null;
+};
+
 const buildFallbackDays = (startDate?: string, endDate?: string): ReportDay[] => {
   const start = startDate ? new Date(startDate) : null;
   const end = endDate ? new Date(endDate) : null;
@@ -238,6 +272,7 @@ export default function TripReportScreen() {
   const [settlementDetail, setSettlementDetail] = useState<SettlementDetail | null>(null);
   const [mainDestination, setMainDestination] = useState<string | null>(null);
   const [originAddress, setOriginAddress] = useState<string | null>(null);
+  const [destinationAddress, setDestinationAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [routeTrip, setRouteTrip] = useState<TripDetail | null>(null);
 
@@ -374,41 +409,56 @@ export default function TripReportScreen() {
     return calculateDistance(coords);
   }, [inFlightLogs]);
 
-  // Geocode origin address once per trip
   useEffect(() => {
-    if (!trip?.tripId || originAddress || trip.origin) return;
+    let mounted = true;
 
-    const findOrigin = async () => {
-      let coords: [number, number] | null = null;
-      
-      // Try server route first
-      const routeRes = await getTripRouteDaysApi(trip.tripId);
-      if (routeRes.success && routeRes.data.routeDays.length > 0) {
-        const firstDay = routeRes.data.routeDays[0];
-        if (firstDay.coordinates && firstDay.coordinates.length > 0) {
-          coords = firstDay.coordinates[0] as [number, number];
+    if (!trip?.tripId) {
+      setOriginAddress(null);
+      setDestinationAddress(null);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    const boundaryCoordinates = getRouteBoundaryCoordinates(routeDays, inFlightLogs);
+    if (!boundaryCoordinates) {
+      setOriginAddress(null);
+      setDestinationAddress(null);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    const geocodeRouteBoundaries = async () => {
+      try {
+        const { reverseGeocodeKo } = await import('@/src/api/mapbox');
+        const [startAddress, endAddress] = await Promise.all([
+          reverseGeocodeKo(boundaryCoordinates.start[0], boundaryCoordinates.start[1]),
+          reverseGeocodeKo(boundaryCoordinates.end[0], boundaryCoordinates.end[1]),
+        ]);
+
+        if (!mounted) {
+          return;
         }
-      }
 
-      // Fallback to in-flight
-      if (!coords && inFlightLogs.length > 0) {
-        coords = [inFlightLogs[0].longitude, inFlightLogs[0].latitude] as [number, number];
-      }
+        setOriginAddress(startAddress ? cleanLocationLabel(startAddress) : null);
+        setDestinationAddress(endAddress ? cleanLocationLabel(endAddress) : null);
+      } catch {
+        if (!mounted) {
+          return;
+        }
 
-      if (coords) {
-        try {
-          const { reverseGeocodeKo } = await import('@/src/api/mapbox');
-          const addr = await reverseGeocodeKo(coords[0], coords[1]);
-          if (addr) {
-            const cleaned = addr.replace(/대한민국\s*\d*/g, '').replace(/,/g, '').trim().split(' ')[0];
-            setOriginAddress(cleaned);
-          }
-        } catch {}
+        setOriginAddress(null);
+        setDestinationAddress(null);
       }
     };
 
-    void findOrigin();
-  }, [trip?.tripId]);
+    void geocodeRouteBoundaries();
+
+    return () => {
+      mounted = false;
+    };
+  }, [inFlightLogs, routeDays, trip?.tripId]);
 
   useEffect(() => {
     Animated.spring(receiptAppear, {
@@ -454,7 +504,7 @@ export default function TripReportScreen() {
   const tripStartLabel = formatTripDate(trip?.startDate);
   const tripEndLabel = formatTripDate(trip?.endDate);
   const tripOrigin = shortenLocationName(originAddress || trip?.origin || 'KR');
-  const tripDestination = shortenLocationName(mainDestination || trip?.destination || tripTitle);
+  const tripDestination = shortenLocationName(destinationAddress || mainDestination || trip?.destination || tripTitle);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -561,14 +611,6 @@ export default function TripReportScreen() {
             </View>
           </View>
 
-          {totalDistance === 0 && !isLoading && (
-            <View style={styles.processingNotice}>
-              <MaterialIcons name="info-outline" size={16} color="#607067" />
-              <Text style={styles.processingNoticeText}>
-                {'서버에서 상세 데이터 분석이 아직 진행 중입니다.'}
-              </Text>
-            </View>
-          )}
           <View style={styles.sectionCard}>
             <TouchableOpacity style={styles.timelineHeader} activeOpacity={0.8} onPress={() => setIsTimelineOpen((prev) => !prev)}>
               <View style={styles.timelineHeaderCopy}>
@@ -721,7 +763,14 @@ const styles = StyleSheet.create({
   timelineRail: { width: 12, alignItems: 'center' },
   timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#315B45', marginTop: 6 },
   timelineLine: { flex: 1, width: 2, backgroundColor: '#DCE4DE' },
-  timelineCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 15, padding: 15 },
+  timelineCard: {
+    flex: 1,
+    backgroundColor: '#F8FAF6',
+    borderRadius: 15,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#E3EBDF',
+  },
   timelineTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
   timelineTime: { fontSize: 12, fontFamily: 'Pretendard-Bold', color: '#315B45' },
   timelineChip: { backgroundColor: '#EEF3EC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
@@ -746,15 +795,4 @@ const styles = StyleSheet.create({
   },
   detailButtonText: { fontSize: 14, color: '#607067', marginRight: 5, fontFamily: 'Pretendard-Regular' },
   emptyText: { marginTop: 14, fontSize: 13, color: '#728077', fontFamily: 'Pretendard-Regular' },
-  processingNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 15,
-    padding: 10,
-    backgroundColor: '#EEF3EC',
-    borderRadius: 12,
-  },
-  processingNoticeText: { fontSize: 12, color: '#607067', fontFamily: 'Pretendard-Medium' },
 });

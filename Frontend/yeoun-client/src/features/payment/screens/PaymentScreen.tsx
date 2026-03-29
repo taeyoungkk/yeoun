@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,7 +15,7 @@ import {
 
 import { getTripExpensesApi, TripExpenseItem } from '@/src/api/expense';
 import { FinanceCardItem, FinanceProfile, getMyFinanceProfileApi, syncMyFinanceProfileApi } from '@/src/api/finance';
-import { getTripsApi, isSettlementEligibleTrip, TripListItem } from '@/src/api/trip';
+import { getTripsApi, TripListItem } from '@/src/api/trip';
 import { useTripStore } from '@/src/store';
 
 const KRW_FORMATTER = new Intl.NumberFormat('ko-KR');
@@ -88,33 +88,16 @@ export default function PaymentScreen() {
       if (!tripsResponse.success) {
         throw new Error(tripsResponse.message ?? '여행 목록을 불러오지 못했습니다.');
       }
-      const settlementEligibleTrips = tripsResponse.data.items.filter(isSettlementEligibleTrip);
-      const expenseResponses = await Promise.allSettled(
-        settlementEligibleTrips.map(async (trip) => {
-          const expenseResponse = await getTripExpensesApi(trip.tripId);
-          return {
-            trip,
-            hasExpenses: expenseResponse.success && expenseResponse.data.items.length > 0,
-          };
-        }),
-      );
-
-      const availableTrips = expenseResponses
-        .flatMap((result) => {
-          if (result.status !== 'fulfilled' || !result.value.hasExpenses) {
-            return [];
-          }
-
-          return [result.value.trip];
-        });
+      const availableTrips = tripsResponse.data.items;
 
       setTripOptions(availableTrips);
 
       const fallbackTripId = isTripActive
         ? availableTrips.find((trip) => trip.tripId === currentTripId)?.tripId ??
           availableTrips.find((trip) => trip.status === 'ACTIVE')?.tripId ??
+          availableTrips[0]?.tripId ??
           null
-        : null;
+        : availableTrips[0]?.tripId ?? null;
 
       const nextSelectedTripId =
         selectedTripId && availableTrips.some((trip) => trip.tripId === selectedTripId)
@@ -141,6 +124,12 @@ export default function PaymentScreen() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadData(true);
+    }, [loadData]),
+  );
 
   const handleSync = useCallback(async () => {
     setIsSyncing(true);
