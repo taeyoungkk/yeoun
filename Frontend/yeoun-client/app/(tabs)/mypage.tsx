@@ -38,10 +38,8 @@ export default function MyPageScreen() {
   const mapToTripData = (trip: TripListItem): TripData => ({
     id: trip.tripId,
     title: trip.title,
-    location:
-      trip.region && trip.country
-        ? `${trip.region}, ${trip.country}`
-        : trip.region || trip.country || '대한민국',
+    region: trip.region,
+    country: trip.country,
     dates: `${trip.startDate.replace(/-/g, '.')} ~ ${trip.endDate.split('-').pop()}`,
     imageSource: getTripImage(trip.tripId, trip.imageUrl),
     isFavorite: favoriteIds.includes(trip.tripId),

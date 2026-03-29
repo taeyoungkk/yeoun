@@ -1,5 +1,54 @@
-import { getTripPlacesApi, TripPlaceItem } from '@/src/api/trip';
+import { getTripPlacesApi, getTripRouteDaysApi, TripPlaceItem, TripRouteDayListItem } from '@/src/api/trip';
 import { reverseGeocodeKo } from '@/src/api/mapbox';
+
+/**
+ * Shortens formal Korean administrative names (e.g., "서울특별시" -> "서울", "경기도" -> "경기").
+ * Also removes common suffixes like "광역시", "시", "군", "구".
+ */
+export const shortenLocationName = (name?: string | null): string => {
+  if (!name) return '';
+  const doMap: Record<string, string> = {
+    경기도: '경기',
+    강원도: '강원',
+    충청북도: '충북',
+    충청남도: '충남',
+    전라북도: '전북',
+    전라남도: '전남',
+    경상북도: '경북',
+    경상남도: '경남',
+    제주특별자치도: '제주',
+    '제주 특별자치도': '제주',
+  };
+
+  if (doMap[name]) return doMap[name];
+
+  return name
+    .replace(/(특별시|광역시|특별자치시|특별자치도|시|군|구)$/, '')
+    .trim();
+};
+
+/**
+ * Cleans a reverse geocoding result by prioritizing specific administrative areas (Si, Gun, Gu) over Provinces.
+ * E.g., "대한민국 경기도 의정부시 낙양동" -> "의정부시" -> "의정부".
+ */
+export const cleanLocationLabel = (address: string): string => {
+  const parts = address
+    .replace(/대한민국\s*\d*/g, '')
+    .replace(/,/g, ' ')
+    .trim()
+    .split(/\s+/);
+
+  if (parts.length === 0) return '';
+
+  // Prioritize nouns ending with Si, Gun, or Gu
+  const specificPart = parts.find((part) => /(시|군|구)$/.test(part));
+  if (specificPart) {
+    return specificPart;
+  }
+
+  // Fallback to the first part (usually the province)
+  return parts[0] || '';
+};
 
 export interface DestinationRank {
   name: string;
@@ -20,16 +69,10 @@ export async function identifyMainDestinations(tripId: string): Promise<Destinat
 
     // For each place, resolve its administrative name
     await Promise.all(
-      places.map(async (place) => {
-        const address = await reverseGeocodeKo(place.centerLongitude, place.centerLatitude);
-        if (address) {
-          // Extract the City/Province level (e.g., "부산광역시", "서울특별시")
-          // Mapbox reverseGeocodeKo returns full address, so we need to parse it.
-          // Usually the first or second part of a Korean address after country.
-          const parts = address.split(' ');
-          // Handle "대한민국 서울특별시 ..." or "서울특별시 ..."
-          const cityPart = parts[0] === '대한민국' ? parts[1] : parts[0];
-          
+      places.map(async (place: TripPlaceItem) => {
+        const fullAddress = await reverseGeocodeKo(place.centerLongitude, place.centerLatitude);
+        if (fullAddress) {
+          const cityPart = cleanLocationLabel(fullAddress);
           if (cityPart) {
             durationMap[cityPart] = (durationMap[cityPart] || 0) + place.durationSeconds;
           }
@@ -56,6 +99,38 @@ export async function getTopDestinationName(tripId: string): Promise<string | nu
   const ranks = await identifyMainDestinations(tripId);
   return ranks.length > 0 ? ranks[0].name : null;
 }
+
+/**
+ * Fallback to geographic endpoint identification via the route logs.
+ * Returns the administrative name of the very last coordinate in the route.
+ */
+export async function getRouteEndPointDestination(tripId: string): Promise<string | null> {
+  try {
+    const response = await getTripRouteDaysApi(tripId);
+    if (!response.success || !response.data?.routeDays) return null;
+
+    const routeDays = response.data.routeDays;
+    if (routeDays.length === 0) return null;
+
+    // Sort by day and find the last coordinate
+    const sortedDays = [...routeDays].sort((a, b) => a.day.localeCompare(b.day));
+    const lastDay = sortedDays[sortedDays.length - 1];
+    
+    if (!lastDay.coordinates || lastDay.coordinates.length === 0) return null;
+    
+    const lastCoord = lastDay.coordinates[lastDay.coordinates.length - 1];
+    const [lon, lat] = lastCoord;
+
+    const fullAddress = await reverseGeocodeKo(lon, lat);
+    if (!fullAddress) return null;
+
+    return cleanLocationLabel(fullAddress);
+  } catch (error) {
+    console.error('[TripAnalysis] Endpoint identification failed:', error);
+    return null;
+  }
+}
+
 /**
  * Calculates total distance of a route in kilometers using Haversine formula.
  */
