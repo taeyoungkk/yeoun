@@ -76,8 +76,8 @@ const MAP_SIDE_MARGIN = 16;
 const MAP_TOP_OFFSET = 112;
 const PANEL_TOP_OFFSET = 118;
 const AUTO_PHOTO_SYNC_INTERVAL_MS = 3 * 60 * 1000;
-const MAX_VISIBLE_ROUTE_ACCURACY_M = 35;
-const MIN_VISIBLE_ROUTE_POINT_DISTANCE_M = 10;
+const MAX_VISIBLE_ROUTE_ACCURACY_M = 25;
+const MIN_VISIBLE_ROUTE_POINT_DISTANCE_M = 12;
 
 type DayKey = `day${number}`;
 type DayFilter = 'all' | DayKey;
@@ -98,25 +98,39 @@ const isFiniteCoordinate = (coordinate?: Coordinate | null): coordinate is Coord
 const distanceBetweenCoordinates = (left: Coordinate, right: Coordinate) =>
   calculateDistance([left, right]) * 1000;
 
+const getLogAccuracyM = (log: LocationLog) =>
+  typeof log.accuracyM === 'number' ? log.accuracyM : typeof log.accuracy === 'number' ? log.accuracy : null;
+
 const buildVisibleLiveRouteCoordinates = (logs: LocationLog[]) => {
-  const nextCoordinates: Coordinate[] = [];
+  const acceptedPoints: Array<{ coordinate: Coordinate; accuracyM: number | null }> = [];
 
   logs.forEach((log) => {
-    const accuracyM = typeof log.accuracyM === 'number' ? log.accuracyM : typeof log.accuracy === 'number' ? log.accuracy : null;
+    const accuracyM = getLogAccuracyM(log);
     if (accuracyM != null && accuracyM > MAX_VISIBLE_ROUTE_ACCURACY_M) {
       return;
     }
 
     const coordinate: Coordinate = [log.longitude, log.latitude];
-    const previous = nextCoordinates[nextCoordinates.length - 1];
-    if (previous && distanceBetweenCoordinates(previous, coordinate) < MIN_VISIBLE_ROUTE_POINT_DISTANCE_M) {
+    const previous = acceptedPoints[acceptedPoints.length - 1];
+    if (!previous) {
+      acceptedPoints.push({ coordinate, accuracyM });
       return;
     }
 
-    nextCoordinates.push(coordinate);
+    const distanceM = distanceBetweenCoordinates(previous.coordinate, coordinate);
+    const uncertaintyDistanceM = Math.max(
+      MIN_VISIBLE_ROUTE_POINT_DISTANCE_M,
+      (Math.max(previous.accuracyM ?? 0, accuracyM ?? 0) || 0) * 0.75,
+    );
+
+    if (distanceM < uncertaintyDistanceM) {
+      return;
+    }
+
+    acceptedPoints.push({ coordinate, accuracyM });
   });
 
-  return nextCoordinates;
+  return acceptedPoints.map((point) => point.coordinate);
 };
 
 const mergeLocationLogs = (...groups: LocationLog[][]) =>
