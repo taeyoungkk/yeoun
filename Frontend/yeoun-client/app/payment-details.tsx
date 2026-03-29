@@ -254,7 +254,9 @@ export default function PaymentDetailsScreen() {
   );
 
   const periodOptions = useMemo(() => {
-    const labels = buildDateRange(selectedTrip?.startDate, selectedTrip?.endDate);
+    const tripDateRange = buildDateRange(selectedTrip?.startDate, selectedTrip?.endDate);
+    const expenseDates = Array.from(new Set(expenses.map((expense) => formatDateKey(expense.paidAt)))).sort();
+    const labels = Array.from(new Set([...tripDateRange, ...expenseDates])).sort();
     const options: PeriodOption[] = [{ key: 'all', label: '전체 기간', dateKey: null }];
 
     labels.forEach((dateKey, index) => {
@@ -264,17 +266,6 @@ export default function PaymentDetailsScreen() {
         dateKey,
       });
     });
-
-    if (labels.length === 0) {
-      const uniqueDates = Array.from(new Set(expenses.map((expense) => formatDateKey(expense.paidAt)))).sort();
-      uniqueDates.forEach((dateKey, index) => {
-        options.push({
-          key: dateKey,
-          label: `day ${index + 1} ${formatDateLabel(dateKey)}`,
-          dateKey,
-        });
-      });
-    }
 
     return options;
   }, [expenses, selectedTrip?.endDate, selectedTrip?.startDate]);
@@ -598,15 +589,20 @@ export default function PaymentDetailsScreen() {
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateTitle}>조건에 맞는 지출 내역이 없어요</Text>
             <TouchableOpacity style={styles.addExpenseButton} onPress={() => openAddExpenseMethod(selectedPeriod.dateKey)}>
-              <Text style={styles.addExpenseButtonText}>비용 추가</Text>
+              <Text style={styles.addExpenseButtonText}>+ 비용 추가</Text>
             </TouchableOpacity>
           </View>
         ) : (
           groupedExpenses.map((group, groupIndex) => (
             <View key={group.dateKey} style={[styles.daySection, groupIndex > 0 && styles.daySectionBorder]}>
-              <Text style={styles.dayTitle}>
-                {group.dayLabel} <Text style={styles.dayDate}>{formatDateLabel(group.dateKey)}</Text>
-              </Text>
+              <View style={styles.dayHeaderRow}>
+                <Text style={styles.dayTitle}>
+                  {group.dayLabel} <Text style={styles.dayDate}>{formatDateLabel(group.dateKey)}</Text>
+                </Text>
+                <TouchableOpacity style={styles.dayInlineAddButton} onPress={() => openAddExpenseMethod(group.dateKey)}>
+                  <Text style={styles.dayInlineAddButtonText}>+ 비용 추가</Text>
+                </TouchableOpacity>
+              </View>
 
               {group.items.length > 0 ? (
                 <View style={styles.listContainer}>
@@ -621,10 +617,6 @@ export default function PaymentDetailsScreen() {
                   {group.items.map(renderExpenseRow)}
                 </View>
               ) : null}
-
-              <TouchableOpacity style={styles.dayAddExpenseBlockButton} onPress={() => openAddExpenseMethod(group.dateKey)}>
-                <Text style={styles.dayAddExpenseBlockButtonText}>비용 추가</Text>
-              </TouchableOpacity>
             </View>
           ))
         )}
@@ -995,7 +987,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Pretendard-Bold',
     fontSize: 17,
     color: '#333333',
-    marginBottom: 18,
+    flexShrink: 1,
   },
   dayDate: {
     fontFamily: 'Pretendard-Medium',
@@ -1083,26 +1075,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
-    backgroundColor: '#4F7A62',
+    backgroundColor: '#FFFFFF',
   },
   addExpenseButtonText: {
     fontFamily: 'Pretendard-SemiBold',
     fontSize: 15,
-    color: '#FFFFFF',
+    color: '#4F7A62',
   },
-  dayAddExpenseBlockButton: {
-    minHeight: 40,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#4F7A62',
+  dayHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 18,
+  },
+  dayInlineAddButton: {
+    minHeight: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: '#E7F0EB',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#4F7A62',
   },
-  dayAddExpenseBlockButtonText: {
+  dayInlineAddButtonText: {
     fontFamily: 'Pretendard-SemiBold',
-    fontSize: 17,
-    color: '#FFFFFF',
+    fontSize: 13,
+    color: '#4F7A62',
   },
   summaryCard: {
     paddingTop: 8,
