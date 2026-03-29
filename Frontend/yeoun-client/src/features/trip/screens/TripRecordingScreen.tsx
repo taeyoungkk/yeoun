@@ -119,6 +119,43 @@ const buildVisibleLiveRouteCoordinates = (logs: LocationLog[]) => {
   return nextCoordinates;
 };
 
+const mergeLocationLogs = (...groups: LocationLog[][]) =>
+  Array.from(
+    new Map(
+      groups
+        .flat()
+        .sort((left, right) => left.recordedAt.localeCompare(right.recordedAt))
+        .map((log) => [log.clientLogUuid ?? `${log.recordedAt}-${log.latitude}-${log.longitude}`, log] as const),
+    ).values(),
+  );
+
+const shouldPreferRawRoute = (rawRoute: Coordinate[], serverRoute: Coordinate[]) => {
+  if (rawRoute.length < 2) {
+    return false;
+  }
+
+  if (serverRoute.length < 2) {
+    return true;
+  }
+
+  const rawDistanceKm = calculateDistance(rawRoute);
+  const serverDistanceKm = calculateDistance(serverRoute);
+
+  if (rawRoute.length >= 6 && serverRoute.length <= 3) {
+    return true;
+  }
+
+  if (rawRoute.length >= 8 && serverRoute.length / rawRoute.length < 0.35) {
+    return true;
+  }
+
+  if (rawDistanceKm > 0.2 && serverDistanceKm / rawDistanceKm < 0.55) {
+    return true;
+  }
+
+  return false;
+};
+
 type PhotoContributor = {
   id: string;
   name: string;
@@ -711,13 +748,15 @@ function RealTripRecordingScreen({
     // Only append session trail if we are looking at 'all' or the last day
     // AND we are in ACTIVE mode (not review) for the current active trip
     if (!isReviewMode && activeTripId === currentTripId && (activeFilter === 'all' || activeFilter === `day${tripDays.length}`)) {
-      const inFlightCoords = buildVisibleLiveRouteCoordinates(inFlightLogs);
-      // Show already matched trail + raw points that haven't been matched yet
-      const rawTrailCoords = buildVisibleLiveRouteCoordinates(sessionTrail.slice(lastMatchedIndexRef.current));
-      return [...serverRoute, ...inFlightCoords, ...matchedSessionTrail, ...rawTrailCoords];
+      const liveRouteCoords = buildVisibleLiveRouteCoordinates(mergeLocationLogs(sessionTrail, inFlightLogs));
+      if (shouldPreferRawRoute(liveRouteCoords, serverRoute)) {
+        return liveRouteCoords;
+      }
+
+      return serverRoute.length >= 2 ? serverRoute : liveRouteCoords;
     }
     return serverRoute;
-  }, [activeFilter, filteredDays, inFlightLogs, sessionTrail, matchedSessionTrail, tripDays.length, isReviewMode, activeTripId, currentTripId]);
+  }, [activeFilter, filteredDays, inFlightLogs, sessionTrail, tripDays.length, isReviewMode, activeTripId, currentTripId]);
 
   const currentLocationCoordinate = useMemo(
     () => (isReviewMode ? null : liveCurrentLocation ?? initialCurrentLocation),
@@ -1120,19 +1159,6 @@ function RealTripRecordingScreen({
           );
         }
 
-        // 3. Prune session trail based on the last synced log.
-        const lastSyncedUuid = useTripStore.getState().lastSyncedLogUuid;
-        if (lastSyncedUuid) {
-          setSessionTrail((prev: LocationLog[]) => {
-            const syncedIndex = prev.findIndex(l => l.clientLogUuid === lastSyncedUuid);
-            return syncedIndex !== -1 ? prev.slice(syncedIndex + 1) : prev;
-          });
-        } else {
-          setSessionTrail((prev: LocationLog[]) => {
-            const twoMinsAgo = new Date(Date.now() - 120000).toISOString();
-            return prev.filter(l => l.recordedAt > twoMinsAgo);
-          });
-        }
         setMatchedSessionTrail([]);
         lastMatchedIndexRef.current = 0;
       } catch (err: any) {
