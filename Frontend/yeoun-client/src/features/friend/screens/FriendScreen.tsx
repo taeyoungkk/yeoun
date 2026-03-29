@@ -433,7 +433,7 @@ function EmptyState({ text }: { text: string }) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F3F6EB' },
+  safeArea: { flex: 1, backgroundColor: '#EBF3EA' },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 80, paddingBottom: 40 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 22 },

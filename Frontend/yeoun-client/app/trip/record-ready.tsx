@@ -8,7 +8,7 @@ export default function TripRecordReadyScreen() {
   const router = useRouter();
 
   return (
-    <SafeAreaView className="flex-1 bg-[#EDF3EA]">
+    <SafeAreaView className="flex-1 bg-[#EBF3EA]">
       <View className="flex-1 items-center justify-center px-7">
         <View className="w-[78px] h-[78px] rounded-[26px] bg-[#DDE8DA] items-center justify-center mb-5">
           <MaterialIcons name="explore" size={30} color="#3D5B49" />

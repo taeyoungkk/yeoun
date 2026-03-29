@@ -276,7 +276,11 @@ export default function TripStartScreen() {
   };
 
   const handlePressNext = () => {
-    setNoticeModalType(isFormComplete ? 'start' : 'missing');
+    if (!isFormComplete) {
+      return;
+    }
+
+    setNoticeModalType('start');
   };
 
   const startTrackingAndNavigate = async (tripId: string) => {
@@ -548,12 +552,14 @@ export default function TripStartScreen() {
           <TouchableOpacity
             style={[styles.primaryButton, !isFormComplete && styles.primaryButtonDisabled]}
             onPress={handlePressNext}
-            activeOpacity={0.88}
+            activeOpacity={isFormComplete ? 0.88 : 1}
+            disabled={!isFormComplete}
           >
-            <Text style={styles.primaryButtonText}>{isEditingActiveTrip ? '수정하기' : '시작하기'}</Text>
+            <Text style={[styles.primaryButtonText, !isFormComplete && styles.primaryButtonTextDisabled]}>
+              {isEditingActiveTrip ? '수정하기' : '시작하기'}
+            </Text>
           </TouchableOpacity>
         </View>
-
       </ScrollView>
 
       <FieldNoticeModal
@@ -574,7 +580,7 @@ export default function TripStartScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#EDF3EA',
+    backgroundColor: '#EBF3EA',
   },
   content: {
     paddingHorizontal: 20,
@@ -599,7 +605,7 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#465346',
   },
   primaryButton: {
@@ -608,15 +614,18 @@ const styles = StyleSheet.create({
     borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#DCE6D9',
+    backgroundColor: '#315B45',
   },
   primaryButtonDisabled: {
-    backgroundColor: '#E7ECE5',
+    backgroundColor: '#DCE6D9',
   },
   primaryButtonText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#1A211C',
+    fontFamily: 'Pretendard-Bold',
+    color: '#FFFFFF',
+  },
+  primaryButtonTextDisabled: {
+    color: '#7A867B',
   },
   modalBackdrop: {
     flex: 1,
@@ -645,7 +654,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#19211B',
     textAlign: 'center',
   },
@@ -654,6 +663,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     color: '#5E6962',
+    fontFamily: 'Pretendard-Regular',
     textAlign: 'center',
   },
   modalTagWrap: {
@@ -673,7 +683,7 @@ const styles = StyleSheet.create({
   modalTagText: {
     fontSize: 13,
     color: '#4E5A54',
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
   },
   summaryCard: {
     marginTop: 18,
@@ -691,13 +701,14 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 13,
+    fontFamily: 'Pretendard-Regular',
     color: '#7A877E',
   },
   summaryValue: {
     flex: 1,
     textAlign: 'right',
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'Pretendard-SemiBold',
     color: '#1D2620',
   },
   modalActionRow: {
@@ -714,7 +725,7 @@ const styles = StyleSheet.create({
   },
   modalSecondaryButtonText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#425047',
   },
   modalPrimaryButton: {
@@ -735,7 +746,7 @@ const styles = StyleSheet.create({
   },
   modalPrimaryButtonText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#F7FBF5',
   },
 });

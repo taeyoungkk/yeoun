@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: 'white',
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
   },
   closeBtn: {
     position: 'absolute',
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
   },
   hintText: {
     color: '#003840',
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
@@ -435,7 +435,7 @@ const styles = StyleSheet.create({
   previewTitle: {
     color: 'white',
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
   },
   previewActions: {
     flexDirection: 'row',
@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
   },
   retakeTxt: {
     color: '#ccc',
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     fontSize: 16,
   },
   submitBtn: {
@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
   },
   submitTxt: {
     color: 'white',
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     fontSize: 16,
   },
   permissionContainer: {
@@ -516,7 +516,7 @@ const styles = StyleSheet.create({
   },
   galleryTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: 'Pretendard-Bold',
     color: '#111111',
   },
   galleryCloseButton: {

@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   title: {
-    fontWeight: 'bold',
+    fontFamily: 'Pretendard-Bold',
     fontSize: 16,
     color: '#1A1A1A',
     marginBottom: 8,
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#8A8A8A',
     marginLeft: 4,
-    fontWeight: '500',
+    fontFamily: 'Pretendard-Medium',
   },
   moreOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -117,6 +117,6 @@ const styles = StyleSheet.create({
   moreText: {
     color: 'white',
     fontSize: 32,
-    fontWeight: 'bold',
+    fontFamily: 'Pretendard-Bold',
   }
 });

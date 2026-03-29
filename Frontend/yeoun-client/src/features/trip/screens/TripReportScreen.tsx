@@ -1,5 +1,4 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -19,6 +18,8 @@ import {
   type TimelineDaySummary,
 } from '@/src/api/timeline';
 import { getTripDetailApi, getTripRouteDaysApi, type TripDetail, type TripRouteDayListItem } from '@/src/api/trip';
+import { HouseSvg } from '@/src/components/icons/HouseSvg';
+import { useUserStore } from '@/src/store';
 import { useTripStore, type CurrentTrip } from '@/src/store/trip.store';
 import { getTopDestinationName, calculateDistance } from '@/src/utils/trip-analysis-utils';
 
@@ -225,6 +226,7 @@ export default function TripReportScreen() {
   const currentTrip = useTripStore((state) => state.currentTrip);
   const reviewTrip = useTripStore((state) => state.reviewTrip);
   const inFlightLogs = useTripStore((state) => state.inFlightLogs);
+  const currentUserId = useUserStore((state) => state.profile?.userId ?? null);
   const routeRefreshKey = useTripStore((state) => state.routeRefreshKey);
   const router = useRouter();
 
@@ -430,14 +432,21 @@ export default function TripReportScreen() {
   }, [reportDays, totalInFlightDistance]);
   const totalPhotos = useMemo(() => reportDays.reduce((sum, day) => sum + day.photoCount, 0), [reportDays]);
   const totalLogs = timelineRows.length > 0 ? timelineRows.length : reportDays.reduce((sum, day) => sum + day.eventCount, 0);
-  const totalUsed = settlementDetail?.totalConfirmedAmount ?? expenses.reduce((sum, expense) => sum + expense.totalAmount, 0);
-  const sharedPerPerson =
-    settlementDetail && settlementDetail.memberCount > 0
-      ? Math.round(settlementDetail.totalConfirmedAmount / settlementDetail.memberCount)
-      : trip?.memberCount
-        ? Math.round(totalUsed / trip.memberCount)
-        : totalUsed;
-  const confirmedExpenseCount = settlementDetail?.confirmedExpenseCount ?? expenses.filter((expense) => expense.status !== 'DELETED').length;
+  const activeExpenses = useMemo(
+    () => expenses.filter((expense) => expense.status !== 'DELETED'),
+    [expenses],
+  );
+  const totalUsed = settlementDetail?.totalConfirmedAmount ?? activeExpenses.reduce((sum, expense) => sum + expense.totalAmount, 0);
+  const mySettlement = useMemo(
+    () => settlementDetail?.memberSettlements.find((member) => member.userId === currentUserId) ?? null,
+    [currentUserId, settlementDetail],
+  );
+  const myUsedAmount =
+    mySettlement?.paidAmount ??
+    activeExpenses.reduce(
+      (sum, expense) => sum + (currentUserId && expense.payerUserId === currentUserId ? expense.totalAmount : 0),
+      0,
+    );
   const ticketNumber = (trip?.tripId ?? 'YEOUNTRIP').replace(/-/g, '').slice(0, 8).toUpperCase() || 'YEOUN000';
   const travelerCount = String(trip?.memberCount ?? 0).padStart(2, '0');
   const tripTitle = trip?.tripName || 'Trip';
@@ -449,7 +458,7 @@ export default function TripReportScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <LinearGradient colors={['#F7F8FF', '#EEF4FF', '#F8F6EF']} style={styles.background}>
+      <View style={styles.background}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.headerRow}>
             <TouchableOpacity style={styles.headerButton} onPress={handleBackToTimeline}>
@@ -463,7 +472,7 @@ export default function TripReportScreen() {
               <Text style={styles.headerTitle}>{reportTitle}</Text>
             </View>
             <TouchableOpacity style={styles.headerActionButton} onPress={handleGoHome}>
-              <Text style={styles.headerActionText}>홈</Text>
+              <HouseSvg color="#244934" size={24} />
             </TouchableOpacity>
           </View>
 
@@ -487,7 +496,7 @@ export default function TripReportScreen() {
                 <Text style={styles.ticketNumberLabel}>Ticket Number</Text>
                 <View style={styles.ticketTopRight}>
                   <Text style={styles.ticketNumberValue}>{ticketNumber}</Text>
-                  {isLoading ? <ActivityIndicator size="small" color="#5B4F66" /> : null}
+                  {isLoading ? <ActivityIndicator size="small" color="#315B45" /> : null}
                 </View>
               </View>
 
@@ -499,10 +508,10 @@ export default function TripReportScreen() {
 
                 <View style={styles.ticketRouteCenter}>
                   <Svg width="120" height="60" viewBox="0 0 120 60">
-                    <Path d="M 5,30 Q 60,0 115,30" stroke="#EAEAEA" strokeWidth="1.5" fill="none" />
-                    <Path d="M 5,30 Q 60,60 115,30" stroke="#EAEAEA" strokeWidth="1.5" fill="none" />
+                    <Path d="M 5,30 Q 60,0 115,30" stroke="#DCE4DE" strokeWidth="1.5" fill="none" />
+                    <Path d="M 5,30 Q 60,60 115,30" stroke="#DCE4DE" strokeWidth="1.5" fill="none" />
                   </Svg>
-                  <MaterialIcons name="flight-takeoff" size={20} color="#C0C9EA" style={styles.flightIconCenter} />
+                  <MaterialIcons name="flight-takeoff" size={20} color="#A9B8AD" style={styles.flightIconCenter} />
                 </View>
 
                 <View style={styles.ticketRouteBlock}>
@@ -552,13 +561,21 @@ export default function TripReportScreen() {
             </View>
           </View>
 
+          {totalDistance === 0 && !isLoading && (
+            <View style={styles.processingNotice}>
+              <MaterialIcons name="info-outline" size={16} color="#607067" />
+              <Text style={styles.processingNoticeText}>
+                {'서버에서 상세 데이터 분석이 아직 진행 중입니다.'}
+              </Text>
+            </View>
+          )}
           <View style={styles.sectionCard}>
             <TouchableOpacity style={styles.timelineHeader} activeOpacity={0.8} onPress={() => setIsTimelineOpen((prev) => !prev)}>
               <View style={styles.timelineHeaderCopy}>
                 <Text style={styles.sectionKicker}>Timeline</Text>
                 <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>여행 상세보기</Text>
               </View>
-              <MaterialIcons name={isTimelineOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={28} color="#1C2751" />
+              <MaterialIcons name={isTimelineOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={28} color="#244934" />
             </TouchableOpacity>
 
             {isTimelineOpen ? (
@@ -597,31 +614,25 @@ export default function TripReportScreen() {
                   <Text style={styles.summaryRight}>{formatWon(totalUsed)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLeft}>1인당 금액</Text>
-                  <Text style={styles.summaryRight}>{formatWon(sharedPerPerson)}</Text>
-                </View>
-              </View>
-              <View style={styles.summaryBottom}>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryBottomLeft}>확정 내역 수</Text>
-                  <Text style={styles.summaryBottomRight}>{`${confirmedExpenseCount}건`}</Text>
+                  <Text style={styles.summaryLeft}>내가 사용한 금액</Text>
+                  <Text style={styles.summaryRight}>{formatWon(myUsedAmount)}</Text>
                 </View>
               </View>
             </Animated.View>
 
             <TouchableOpacity style={styles.detailButton} onPress={handleOpenSettlementDetail}>
               <Text style={styles.detailButtonText}>내역 자세히 보기</Text>
-              <MaterialIcons name="chevron-right" size={20} color="#616978" />
+              <MaterialIcons name="chevron-right" size={20} color="#607067" />
             </TouchableOpacity>
           </View>
         </ScrollView>
-      </LinearGradient>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F7F8FF' },
+  safeArea: { flex: 1, backgroundColor: '#EBF3EA' },
   background: { flex: 1 },
   content: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 40 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 15 },
@@ -629,28 +640,24 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#FFF',
+    backgroundColor: '#FCFEFB',
     borderWidth: 1,
-    borderColor: '#DCE4FF',
+    borderColor: '#D7E1DA',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerCopy: { flex: 1 },
-  headerTitle: { fontSize: 22, color: '#182245', fontWeight: '700' },
+  headerTitle: { fontSize: 20, color: '#223428', fontFamily: 'Pretendard-SemiBold' },
   headerActionButton: {
-    minWidth: 56,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#3852D6',
-    paddingHorizontal: 16,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerActionText: { fontSize: 14, color: '#FFF', fontWeight: '700' },
   ticketWrap: {
     borderBottomLeftRadius: 35,
     borderBottomRightRadius: 35,
-    backgroundColor: '#FFF',
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
   },
   barcodeSection: {
@@ -661,13 +668,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   barcodeStrip: { flexDirection: 'row', height: 44, gap: 3 },
-  barcodeBar: { backgroundColor: '#5B4F66' },
+  barcodeBar: { backgroundColor: '#000000' },
   perforationContainer: { flexDirection: 'row', alignItems: 'center', height: 40 },
-  ticketPerforation: { flex: 1, borderTopWidth: 1.5, borderColor: '#5B4F66', borderStyle: 'dashed', opacity: 0.2 },
+  ticketPerforation: { flex: 1, borderTopWidth: 1.5, borderColor: '#315B45', borderStyle: 'dashed', opacity: 0.18 },
   punchHoleLeft: {
     width: 24,
     height: 48,
-    backgroundColor: '#F7F8FF',
+    backgroundColor: '#EBF3EA',
     marginLeft: -12,
     marginRight: 15,
     borderTopRightRadius: 24,
@@ -676,7 +683,7 @@ const styles = StyleSheet.create({
   punchHoleRight: {
     width: 24,
     height: 48,
-    backgroundColor: '#F7F8FF',
+    backgroundColor: '#EBF3EA',
     marginRight: -12,
     marginLeft: 15,
     borderTopLeftRadius: 24,
@@ -685,51 +692,48 @@ const styles = StyleSheet.create({
   ticketContent: { paddingHorizontal: 24, paddingBottom: 30 },
   ticketTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
   ticketTopRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  ticketNumberLabel: { fontSize: 14, color: '#999' },
-  ticketNumberValue: { fontSize: 18, color: '#5B4F66', fontWeight: '700' },
+  ticketNumberLabel: { fontSize: 14, color: '#000000', fontFamily: 'Pretendard-Regular' },
+  ticketNumberValue: { fontSize: 18, color: '#000000', fontFamily: 'Pretendard-Bold' },
   ticketRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   ticketRouteBlock: { flex: 1 },
-  ticketCode: { fontSize: 36, color: '#5B4F66', fontWeight: '700' },
+  ticketCode: { fontSize: 30, color: '#000000', fontFamily: 'Pretendard-SemiBold' },
   ticketCodeRight: { textAlign: 'right' },
-  ticketDateText: { fontSize: 14, color: '#BBB', marginTop: 4 },
+  ticketDateText: { fontSize: 14, color: '#000000', marginTop: 4, fontFamily: 'Pretendard-Regular' },
   ticketDateTextRight: { textAlign: 'right' },
   ticketRouteCenter: { width: 120, height: 60, alignItems: 'center', justifyContent: 'center' },
   flightIconCenter: { position: 'absolute' },
-  ticketRule: { height: 1, backgroundColor: '#EEE', marginVertical: 25 },
+  ticketRule: { height: 1, backgroundColor: '#E3EBDF', marginVertical: 25 },
   ticketInfoGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 25 },
   ticketInfoCell: { width: '33.3%', alignItems: 'center' },
-  ticketInfoLabel: { fontSize: 12, color: '#BBB', marginBottom: 4, textAlign: 'center' },
-  ticketInfoValue: { fontSize: 16, color: '#5B4F66', fontWeight: '700', textAlign: 'center' },
-  ticketSectionTitle: { fontSize: 13, color: '#999', marginBottom: 12, fontWeight: '700' },
+  ticketInfoLabel: { fontSize: 12, color: '#000000', marginBottom: 4, textAlign: 'center', fontFamily: 'Pretendard-Regular' },
+  ticketInfoValue: { fontSize: 16, color: '#000000', fontFamily: 'Pretendard-Bold', textAlign: 'center' },
+  ticketSectionTitle: { fontSize: 13, color: '#000000', marginBottom: 12, fontFamily: 'Pretendard-Bold' },
   inlineDayRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  inlineDayLabel: { fontSize: 16, color: '#5B4F66', fontWeight: '700' },
-  inlineDayValue: { flex: 1, textAlign: 'right', fontSize: 14, color: '#7E8CB6', fontWeight: '700' },
-  sectionCard: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFF', padding: 20 },
-  sectionKicker: { fontSize: 11, color: '#7182BC', fontWeight: '600' },
-  sectionTitle: { fontSize: 19, color: '#1C2751', marginTop: 4, fontWeight: '700', marginBottom: 15 },
+  inlineDayLabel: { fontSize: 16, color: '#000000', fontFamily: 'Pretendard-SemiBold' },
+  inlineDayValue: { flex: 1, textAlign: 'right', fontSize: 14, color: '#000000', fontFamily: 'Pretendard-Medium' },
+  sectionCard: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFFFFF', padding: 20 },
+  sectionKicker: { fontSize: 11, color: '#607067', fontFamily: 'Pretendard-SemiBold' },
+  sectionTitle: { fontSize: 19, color: '#223428', marginTop: 4, fontFamily: 'Pretendard-Bold', marginBottom: 15 },
   timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   timelineHeaderCopy: { flex: 1 },
   timelineBody: { marginTop: 20 },
   timelineRow: { flexDirection: 'row', gap: 12, marginBottom: 15 },
   timelineRail: { width: 12, alignItems: 'center' },
-  timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#5D73FF', marginTop: 6 },
-  timelineLine: { flex: 1, width: 2, backgroundColor: '#E2E8FF' },
-  timelineCard: { flex: 1, backgroundColor: '#F7F9FF', borderRadius: 15, padding: 15 },
+  timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#315B45', marginTop: 6 },
+  timelineLine: { flex: 1, width: 2, backgroundColor: '#DCE4DE' },
+  timelineCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 15, padding: 15 },
   timelineTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  timelineTime: { fontSize: 12, fontWeight: '700', color: '#24305B' },
-  timelineChip: { backgroundColor: '#E9EEFF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
-  timelineChipText: { fontSize: 10, color: '#5C70DF', fontWeight: '700' },
-  timelineTitle: { fontSize: 16, fontWeight: '700', color: '#20284D' },
-  settlementSection: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFF', padding: 20 },
-  settlementTitle: { fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 15 },
-  summaryTicket: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#EEE' },
-  summaryTop: { padding: 15 },
-  summaryBottom: { padding: 15, backgroundColor: '#DFF7FF' },
+  timelineTime: { fontSize: 12, fontFamily: 'Pretendard-Bold', color: '#315B45' },
+  timelineChip: { backgroundColor: '#EEF3EC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  timelineChipText: { fontSize: 10, color: '#315B45', fontFamily: 'Pretendard-Bold' },
+  timelineTitle: { fontSize: 16, fontFamily: 'Pretendard-Bold', color: '#223428' },
+  settlementSection: { marginTop: 20, borderRadius: 25, backgroundColor: '#FFFFFF', padding: 20 },
+  settlementTitle: { fontSize: 20, fontFamily: 'Pretendard-Bold', textAlign: 'left', marginBottom: 15, color: '#223428' },
+  summaryTicket: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#D7E1DA' },
+  summaryTop: { padding: 15, backgroundColor: '#FFFFFF' },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 5 },
-  summaryLeft: { fontSize: 14, color: '#666' },
-  summaryRight: { fontSize: 16, fontWeight: '700' },
-  summaryBottomLeft: { fontSize: 15, fontWeight: '700' },
-  summaryBottomRight: { fontSize: 18, fontWeight: '700', color: '#007AFF' },
+  summaryLeft: { fontSize: 14, color: '#607067', fontFamily: 'Pretendard-Regular' },
+  summaryRight: { fontSize: 16, color: '#223428', fontFamily: 'Pretendard-Bold' },
   detailButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -738,8 +742,19 @@ const styles = StyleSheet.create({
     marginTop: 15,
     borderRadius: 15,
     borderWidth: 1,
-    borderColor: '#EEE',
+    borderColor: '#D7E1DA',
   },
-  detailButtonText: { fontSize: 14, color: '#666', marginRight: 5 },
-  emptyText: { marginTop: 14, fontSize: 13, color: '#8A95B4' },
+  detailButtonText: { fontSize: 14, color: '#607067', marginRight: 5, fontFamily: 'Pretendard-Regular' },
+  emptyText: { marginTop: 14, fontSize: 13, color: '#728077', fontFamily: 'Pretendard-Regular' },
+  processingNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 15,
+    padding: 10,
+    backgroundColor: '#EEF3EC',
+    borderRadius: 12,
+  },
+  processingNoticeText: { fontSize: 12, color: '#607067', fontFamily: 'Pretendard-Medium' },
 });

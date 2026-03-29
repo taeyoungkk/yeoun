@@ -1913,7 +1913,7 @@ export default function MockTripRecordingScreen({
               return (
                 <View key={event.id} style={styles.timelineRow} onLayout={(layoutEvent) => handleEventLayout(event.id, layoutEvent)}>
                   <View style={styles.timelineRail}>
-                    <View style={[styles.timelineDot, { borderColor: theme.accent }]}>
+                    <View style={styles.timelineDot}>
                       <MaterialIcons name={theme.icon} size={14} color={theme.accent} />
                     </View>
                     {index !== filteredEvents.length - 1 ? <View style={styles.timelineLine} /> : null}
@@ -2101,7 +2101,7 @@ export default function MockTripRecordingScreen({
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#EFF4EC' },
+  safeArea: { flex: 1, backgroundColor: '#EBF3EA' },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   emptyTitle: { fontFamily: 'Pretendard-Bold', fontSize: 18, color: '#17201A', marginBottom: 16 },
   primaryButton: {
@@ -2512,7 +2512,7 @@ const styles = StyleSheet.create({
   timelineWrap: { width: '100%', marginTop: 22, paddingBottom: 8 },
   timelineRow: { width: '100%', flexDirection: 'row', alignItems: 'stretch', gap: 14 },
   timelineRail: { width: 30, alignItems: 'center' },
-  timelineDot: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  timelineDot: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   timelineLine: { width: 3, flex: 1, marginTop: 8, marginBottom: -2, borderRadius: 999, backgroundColor: '#9ABCEA' },
   eventCard: { flex: 1, minWidth: 0, marginBottom: 18, borderRadius: 26, backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 16 },
   eventCardSelected: { borderWidth: 2, borderColor: '#9ABCEA' },
