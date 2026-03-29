@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { getLatestSettlementApi, SettlementDetail } from '@/src/api/settlement';
-import { getTripsApi, TripListItem } from '@/src/api/trip';
+import { getTripsApi, isSettlementEligibleTrip, TripListItem } from '@/src/api/trip';
 import { useTripStore, useUserStore } from '@/src/store';
 
 const KRW_FORMATTER = new Intl.NumberFormat('ko-KR');
@@ -44,7 +44,7 @@ export default function PaymentSettlementScreen() {
       setErrorMessage(null);
       const tripsResponse = await getTripsApi();
       if (!tripsResponse.success) throw new Error(tripsResponse.message ?? '여행 정보를 불러오지 못했습니다.');
-      const availableTrips = tripsResponse.data.items.filter((item) => item.status !== 'DELETED');
+      const availableTrips = tripsResponse.data.items.filter(isSettlementEligibleTrip);
       const selectedTrip = availableTrips.find((item) => item.tripId === activeTripId) ?? null;
       setTrip(selectedTrip);
 

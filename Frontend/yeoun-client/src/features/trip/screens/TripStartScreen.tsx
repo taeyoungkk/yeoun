@@ -485,25 +485,6 @@ export default function TripStartScreen() {
     }
   };
 
-  const handleOpenMockTrip = () => {
-    if (!isFormComplete) {
-      setNoticeModalType('missing');
-      return;
-    }
-
-    router.push({
-      pathname: '/trip/mock-recording',
-      params: {
-        tripName: tripDraft.tripName,
-        startDate: tripDraft.startDate,
-        endDate: tripDraft.endDate,
-        memberCount: String(tripDraft.memberCount),
-        origin: tripDraft.origin,
-        destination: tripDraft.destination,
-      },
-    });
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
@@ -573,11 +554,6 @@ export default function TripStartScreen() {
           </TouchableOpacity>
         </View>
 
-        {__DEV__ ? (
-          <TouchableOpacity style={styles.mockButton} onPress={handleOpenMockTrip} activeOpacity={0.88}>
-            <Text style={styles.mockButtonText}>Mock 기록 화면 열기</Text>
-          </TouchableOpacity>
-        ) : null}
       </ScrollView>
 
       <FieldNoticeModal
@@ -641,18 +617,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#1A211C',
-  },
-  mockButton: {
-    marginTop: 18,
-    paddingVertical: 15,
-    borderRadius: 24,
-    alignItems: 'center',
-    backgroundColor: '#40503F',
-  },
-  mockButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#F5F8F3',
   },
   modalBackdrop: {
     flex: 1,

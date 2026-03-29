@@ -225,6 +225,7 @@ export default function TripReportScreen() {
   const currentTrip = useTripStore((state) => state.currentTrip);
   const reviewTrip = useTripStore((state) => state.reviewTrip);
   const inFlightLogs = useTripStore((state) => state.inFlightLogs);
+  const routeRefreshKey = useTripStore((state) => state.routeRefreshKey);
   const router = useRouter();
 
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
@@ -362,7 +363,7 @@ export default function TripReportScreen() {
     return () => {
       mounted = false;
     };
-  }, [trip?.tripId]); // Only load server data when trip changes
+  }, [routeRefreshKey, trip?.tripId]); // Reload when trip data is invalidated elsewhere
 
   // Derive current distance locally to avoid loop
   const totalInFlightDistance = useMemo(() => {
@@ -539,7 +540,7 @@ export default function TripReportScreen() {
                         {day.distanceKm > 0 || day.photoCount > 0 || day.eventCount > 0 ? (
                           `${day.distanceKm.toFixed(1)}km · 사진 ${day.photoCount}장 · 기록 ${day.eventCount}개`
                         ) : (
-                          '분석 중...'
+                          '기록 없음'
                         )}
                       </Text>
                     </View>
@@ -550,15 +551,6 @@ export default function TripReportScreen() {
               </View>
             </View>
           </View>
-
-          {totalDistance === 0 && !isLoading && (
-            <View style={styles.processingNotice}>
-              <MaterialIcons name="info-outline" size={16} color="#7182BC" />
-              <Text style={styles.processingNoticeText}>
-                {'서버에서 상세 데이터 분석이 아직 진행 중입니다. 잠시 후 상단 "새로고침"을 해주세요.'}
-              </Text>
-            </View>
-          )}
 
           <View style={styles.sectionCard}>
             <TouchableOpacity style={styles.timelineHeader} activeOpacity={0.8} onPress={() => setIsTimelineOpen((prev) => !prev)}>
@@ -750,15 +742,4 @@ const styles = StyleSheet.create({
   },
   detailButtonText: { fontSize: 14, color: '#666', marginRight: 5 },
   emptyText: { marginTop: 14, fontSize: 13, color: '#8A95B4' },
-  processingNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 15,
-    padding: 10,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 12,
-  },
-  processingNoticeText: { fontSize: 12, color: '#7182BC', fontWeight: '500' },
 });
