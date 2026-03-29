@@ -302,6 +302,25 @@ function buildTripDateKeys(startDate?: string, endDate?: string, fallbackDates: 
   return dates;
 }
 
+function getTodayDateKey() {
+  return formatDateKey(new Date());
+}
+
+function clampTripDateKeysToToday(dateKeys: string[]) {
+  const todayKey = getTodayDateKey();
+  return dateKeys.filter((dateKey) => dateKey <= todayKey);
+}
+
+function clampTripEndDateToToday(endDate?: string) {
+  if (!endDate) {
+    return endDate;
+  }
+
+  const normalizedEndDate = endDate.slice(0, 10);
+  const todayKey = getTodayDateKey();
+  return normalizedEndDate <= todayKey ? endDate : todayKey;
+}
+
 function buildTripDays(startDate?: string, endDate?: string): TripDay[] {
   const start = startDate ? new Date(startDate) : null;
   const end = endDate ? new Date(endDate) : null;
@@ -712,10 +731,14 @@ function RealTripRecordingScreen({
     : currentTripId ?? currentTrip?.tripId ?? '';
   const activeTripId = (routeTripId || storeTripId || '').trim();
   const displayTrip = isReviewMode ? reviewTrip ?? currentTrip : currentTrip;
+  const visibleTripEndDate = useMemo(
+    () => (isReviewMode ? displayTrip?.endDate : clampTripEndDateToToday(displayTrip?.endDate)),
+    [displayTrip?.endDate, isReviewMode],
+  );
 
   const tripDays = useMemo(() => {
-    return realTripDays ?? buildEmptyRealTripDays(displayTrip?.startDate, displayTrip?.endDate);
-  }, [displayTrip?.endDate, displayTrip?.startDate, realTripDays]);
+    return realTripDays ?? buildEmptyRealTripDays(displayTrip?.startDate, visibleTripEndDate);
+  }, [displayTrip?.startDate, realTripDays, visibleTripEndDate]);
 
   const filteredDays = useMemo(() => getFilteredDays(activeFilter, tripDays), [activeFilter, tripDays]);
   const filteredEvents = useMemo(
@@ -749,11 +772,7 @@ function RealTripRecordingScreen({
     // AND we are in ACTIVE mode (not review) for the current active trip
     if (!isReviewMode && activeTripId === currentTripId && (activeFilter === 'all' || activeFilter === `day${tripDays.length}`)) {
       const liveRouteCoords = buildVisibleLiveRouteCoordinates(mergeLocationLogs(sessionTrail, inFlightLogs));
-      if (shouldPreferRawRoute(liveRouteCoords, serverRoute)) {
-        return liveRouteCoords;
-      }
-
-      return serverRoute.length >= 2 ? serverRoute : liveRouteCoords;
+      return liveRouteCoords.length >= 2 ? liveRouteCoords : serverRoute;
     }
     return serverRoute;
   }, [activeFilter, filteredDays, inFlightLogs, sessionTrail, tripDays.length, isReviewMode, activeTripId, currentTripId]);
@@ -1098,11 +1117,15 @@ function RealTripRecordingScreen({
 
           // Fetch Routes
           const routeByDate = new Map<string, Coordinate[]>();
-          const uniqueDates = buildTripDateKeys(
+          const tripDateKeys = buildTripDateKeys(
             tripDetailResponse.data?.startDate,
             tripDetailResponse.data?.endDate,
             timelineDays.map((day) => day.dayDate),
           );
+          const uniqueDates = isReviewMode ? tripDateKeys : clampTripDateKeysToToday(tripDateKeys);
+          const visibleTimelineDays = isReviewMode
+            ? timelineDays
+            : timelineDays.filter((day) => uniqueDates.includes(day.dayDate.slice(0, 10)));
 
           await Promise.all(
             uniqueDates.map(async (date) => {
@@ -1135,22 +1158,22 @@ function RealTripRecordingScreen({
           // Final State Updates
           setTripMembers(acceptedTripMembers);
           setRealTripDays(buildRealTripDays(
-            timelineDays, 
+            visibleTimelineDays,
             routeByDate, 
             tripDetailResponse.data?.startDate,
-            tripDetailResponse.data?.endDate
+            isReviewMode ? tripDetailResponse.data?.endDate : clampTripEndDateToToday(tripDetailResponse.data?.endDate),
           ));
           setTripEvents(
             appendRealExpenseEvents(
               buildRealTripEvents(
-                timelineDays,
+                visibleTimelineDays,
                 eventDetailsById,
                 photoDetailsById,
                 memberMap,
                 currentUserId,
                 currentUserNickname,
               ),
-              timelineDays,
+              visibleTimelineDays,
               expensesResponse?.data?.items ?? [],
               memberMap,
               currentUserId,
@@ -1431,10 +1454,10 @@ function RealTripRecordingScreen({
 
         const photoResult = await syncTripPhotosForDateRange({
           tripId: activeTripId,
-          tripStartedAt: (displayTrip as { startedAt?: string | null } | null)?.startedAt ?? null,
+          tripStartedAt: loadedTripDetail?.startedAt ?? (displayTrip as { startedAt?: string | null } | null)?.startedAt ?? null,
           startDate: displayTrip.startDate,
           endDate: displayTrip.endDate,
-          syncRequestedAt: new Date().toISOString(),
+          syncRequestedAt: loadedTripDetail?.actualEndedAt ?? new Date().toISOString(),
         });
 
         if (!photoResult.success) {
@@ -1452,7 +1475,7 @@ function RealTripRecordingScreen({
         return { outcome: 'failed', syncedCount: 0 };
       }
     },
-    [activeTripId, displayTrip?.endDate, displayTrip?.startDate, setLocationSyncState],
+    [activeTripId, displayTrip?.endDate, displayTrip?.startDate, loadedTripDetail?.actualEndedAt, loadedTripDetail?.startedAt, setLocationSyncState],
   );
 
   const runAutoPhotoSync = useCallback(

@@ -13,6 +13,10 @@ const STORAGE_KEY_PREFIX = 'pending_location_logs_chunk_';
 const STORAGE_INDEX_KEY = 'pending_location_logs_index';
 const MAX_LOGS_PER_CHUNK = 100;
 const LOG_DEDUPE_WINDOW_MS = 2000;
+const STATIONARY_NOISE_WINDOW_MS = 45000;
+const STATIONARY_NOISE_DISTANCE_M = 18;
+const STATIONARY_NOISE_ACCURACY_M = 20;
+const STATIONARY_NOISE_SPEED_MPS = 1.2;
 
 export type StartTrackingResult = {
   success: boolean;
@@ -39,9 +43,9 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
     const { locations } = data as { locations: Location.LocationObject[] };
     if (locations && locations.length > 0) {
       const newLogs = locations.map(toLocationLog);
-      await appendLogsToStorage(newLogs);
+      const acceptedLogs = await appendLogsToStorage(newLogs);
       // Notify listeners even in background (to update UI if still mounted)
-      newLogs.forEach(log => {
+      acceptedLogs.forEach(log => {
         listeners.forEach(listener => listener(log));
       });
     }
@@ -65,7 +69,7 @@ const toLocationLog = (location: Location.LocationObject): LocationLog => ({
 async function appendLogsToStorage(newLogs: LocationLog[], options: { dedupe?: boolean } = {}) {
   const settings = useUserStore.getState().settings;
   if (!settings.locationPerm) {
-    return;
+    return [] as LocationLog[];
   }
   
   return runQueuedStorageOperation(async () => {
@@ -79,6 +83,10 @@ async function appendLogsToStorage(newLogs: LocationLog[], options: { dedupe?: b
           continue;
         }
 
+        if (shouldDedupe && shouldDropAsStationaryNoise(log, rollingSnapshot)) {
+          continue;
+        }
+
         normalizedLogs.push(log);
         const nextSnapshot = toQueuedLogSnapshot(log);
         if (nextSnapshot) {
@@ -87,7 +95,7 @@ async function appendLogsToStorage(newLogs: LocationLog[], options: { dedupe?: b
       }
 
       if (normalizedLogs.length === 0) {
-        return;
+        return [] as LocationLog[];
       }
 
       const existingIndexRaw = await AsyncStorage.getItem(STORAGE_INDEX_KEY);
@@ -103,8 +111,10 @@ async function appendLogsToStorage(newLogs: LocationLog[], options: { dedupe?: b
 
       normalizedLogs.forEach(rememberQueuedLog);
       await AsyncStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(chunkKeys));
+      return normalizedLogs;
     } catch (error) {
       console.error('Failed to save location logs to storage:', error);
+      return [] as LocationLog[];
     }
   });
 }
@@ -126,6 +136,8 @@ let lastQueuedLogSnapshot:
       latitude: number;
       longitude: number;
       recordedAtMs: number;
+      accuracyM?: number;
+      speedMps?: number;
     }
   | null = null;
 const LOCATION_STATUS_POLL_INTERVAL_MS = 2000;
@@ -166,7 +178,24 @@ const toQueuedLogSnapshot = (log: LocationLog) => {
     latitude: log.latitude,
     longitude: log.longitude,
     recordedAtMs,
+    accuracyM: log.accuracyM,
+    speedMps: log.speedMps,
   };
+};
+
+const haversineDistanceM = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+  const earthRadiusM = 6371000;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const latDelta = toRad(lat2 - lat1);
+  const lngDelta = toRad(lng2 - lng1);
+  const startLat = toRad(lat1);
+  const endLat = toRad(lat2);
+
+  const a =
+    Math.sin(latDelta / 2) * Math.sin(latDelta / 2) +
+    Math.cos(startLat) * Math.cos(endLat) * Math.sin(lngDelta / 2) * Math.sin(lngDelta / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusM * c;
 };
 
 const shouldDropAsDuplicate = (
@@ -193,6 +222,51 @@ const shouldDropAsDuplicate = (
     Math.abs(snapshot.latitude - nextSnapshot.latitude) < 0.00001 &&
     Math.abs(snapshot.longitude - nextSnapshot.longitude) < 0.00001
   );
+};
+
+const shouldDropAsStationaryNoise = (
+  log: LocationLog,
+  snapshot:
+    | {
+        latitude: number;
+        longitude: number;
+        recordedAtMs: number;
+        accuracyM?: number;
+        speedMps?: number;
+      }
+    | null,
+) => {
+  if (!snapshot) {
+    return false;
+  }
+
+  const recordedAtMs = Date.parse(log.recordedAt);
+  if (!Number.isFinite(recordedAtMs)) {
+    return false;
+  }
+
+  const elapsedMs = recordedAtMs - snapshot.recordedAtMs;
+  if (elapsedMs <= 0 || elapsedMs > STATIONARY_NOISE_WINDOW_MS) {
+    return false;
+  }
+
+  const distanceM = haversineDistanceM(snapshot.latitude, snapshot.longitude, log.latitude, log.longitude);
+  if (distanceM > STATIONARY_NOISE_DISTANCE_M) {
+    return false;
+  }
+
+  const currentAccuracy = typeof log.accuracyM === 'number' ? log.accuracyM : 0;
+  const previousAccuracy = typeof snapshot.accuracyM === 'number' ? snapshot.accuracyM : 0;
+  if (Math.max(currentAccuracy, previousAccuracy) >= STATIONARY_NOISE_ACCURACY_M) {
+    return true;
+  }
+
+  if (typeof log.speedMps === 'number') {
+    return log.speedMps <= STATIONARY_NOISE_SPEED_MPS;
+  }
+
+  const inferredSpeedMps = distanceM / Math.max(elapsedMs / 1000, 1);
+  return inferredSpeedMps <= STATIONARY_NOISE_SPEED_MPS;
 };
 
 const rememberQueuedLog = (log: LocationLog) => {
@@ -226,8 +300,11 @@ const startForegroundWatcher = async () => {
         }
 
         const newLog = toLocationLog(loc);
-        void appendLogsToStorage([newLog]);
-        listeners.forEach((listener) => listener(newLog));
+        void appendLogsToStorage([newLog]).then((acceptedLogs) => {
+          acceptedLogs.forEach((acceptedLog) => {
+            listeners.forEach((listener) => listener(acceptedLog));
+          });
+        });
       },
     );
     console.log('Foreground location watcher started');

@@ -39,6 +39,8 @@ class LocationPreprocessor:
         self.jump_speed_threshold_mps = settings.gps_jump_speed_threshold_mps
         self.min_move_distance_m = settings.gps_min_move_distance_m
         self.stationary_speed_threshold_mps = settings.gps_stationary_speed_threshold_mps
+        self.stationary_noise_accuracy_threshold_m = settings.gps_stationary_noise_accuracy_threshold_m
+        self.stationary_noise_distance_m = settings.gps_stationary_noise_distance_m
         self.near_duplicate_window_seconds = settings.gps_near_duplicate_window_seconds
 
     def preprocess(
@@ -139,6 +141,12 @@ class LocationPreprocessor:
             current.latitude,
             current.longitude,
         )
+        if (
+            max(previous.accuracy_m, current.accuracy_m) >= self.stationary_noise_accuracy_threshold_m
+            and distance_m <= self.stationary_noise_distance_m
+        ):
+            return True
+
         if distance_m > self.min_move_distance_m:
             return False
 
